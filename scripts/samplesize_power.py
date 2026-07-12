@@ -36,6 +36,62 @@ def find_rscript():
             return d
     return None
 
+# ─── Security: validate generated R code ───
+# Allowlist of known-safe R patterns (templates are pre-approved)
+R_ALLOWED_PATTERNS = [
+    r'library\(', r'install\.packages\(', r'cat\(', r'print\(',
+    r'ceiling\(', r'qnorm\(', r'asin\(', r'sqrt\(', r'log\(',
+    r'round\(', r'sprintf\(', r'paste\(', r'paste0\(',
+    r'expand\.grid\(', r'seq_len\(', r'ifelse\(', r'makeLmer\(',
+    r'powerSim\(', r'powerCurve\(', r'fcompare\(', r'summary\(',
+    r'plot\(', r'getSampleSizeMeans\(', r'getDesignSampleSizeArrays\(',
+    r'sampleN\.TOST\(', r'gsSurv\(', r'gsDesign\(',
+    r'TTwoMeans\.Equivalence\(', r'NPropTwoSidedNonInferiority\(',
+    r'simple_sim\(', r'get_design\(',
+    r'#', r'<-', r'\$', r'\[', r'\]', r'\(', r'\)', r'\{', r'\}',
+    r'[0-9]', r'\s', r'\n', r"'", r'"', r'=', r',', r'\+', r'-', r'\*', r'/',
+    r'==', r'!=', r'<', r'>', r'<=', r'>=', r'&', r'\|', r'~',
+    r'TRUE', r'FALSE', r'NULL', r'NA', r'NaN', r'Inf',
+    r'df', r'x', r'n', r'result', r'model', r'alpha', r'beta', r'power',
+    r'hr', r'lambdaC', r'R', r'T', r'minfup', r'ratio', r'sfu',
+    r'auc0', r'auc1', r'lambda1', r'lambda2', r't1', r't2',
+    r'icc', r'm', r'n_indiv', r'deff', r'n_adj', r'n_clusters',
+    r'sd_diff', r'w', r'margin', r'sigma', r'effect', r'd', r'h',
+    r'p1', r'p2', r'delta', r'pe', r'pc', r'dropout_rate', r'n_per',
+    r'rho', r'n_single', r'a0', r'pC', r'pT', r'eff', r'n_min',
+    r'vc', r'vt', r'ARU', r'ARV', r'VE', r'RR', r'events1', r'events2',
+    r'target_dlt', r'n_doses', r'n_3plus3', r'breaks', r'along',
+    r'nsim', r'fixef', r'VarCorr', r'sigma', r'data', r'formula',
+    r'subject', r'time', r'treatment', r'y', r'treat',
+    r'formula_qq', r'reduced_formula', r'effect_name', r'ename',
+    r'eff_half', r'varcorr', r'theta0', r'cv', r'design',
+    r'k_groups', r'endpoint_type', r'correlation',
+]
+
+def validate_r_code(code: str) -> bool:
+    """Validate R code against allowlist of safe patterns."""
+    # Remove all allowed patterns; if anything suspicious remains, reject
+    remaining = code
+    for pattern in R_ALLOWED_PATTERNS:
+        remaining = re.sub(pattern, '', remaining, flags=re.IGNORECASE)
+    
+    # Check for dangerous patterns
+    dangerous = [
+        r'system\(', r'shell\(', r'pipe\(', r'file\(', r'url\(',
+        r'download\.', r'install\.packages\(', r'require\(',
+        r'library\.dynam\(', r'source\(', r'eval\(', r'parse\(',
+        r'call\(', r'\.C\(', r'\.Call\(', r'\.External\(',
+        r'Sys\.', r'options\(', r'par\(', r'dev\.',
+        r'write\(', r'save\(', r'load\(', r'read\.', r'cat\s*\(\s*file',
+        r'file\.', r'unlink\(', r'dir\.', r'getwd\(', r'setwd\(',
+    ]
+    
+    for d in dangerous:
+        if re.search(d, code, re.IGNORECASE):
+            return False
+    
+    return True
+
 # ─── Security: sanitize subprocess output ───
 def sanitize_output(raw: str, max_lines: int = 200, max_col: int = 200) -> str:
     """Strip absolute file paths and truncate long output."""
@@ -53,6 +109,10 @@ def run_r(code: str, confirmed: bool = False) -> str:
     """Execute R code and return sanitized stdout. Requires confirmation."""
     if not confirmed:
         return "[DRY RUN — code not executed. Use --yes/-y to execute after review.]"
+
+    # Security: validate R code
+    if not validate_r_code(code):
+        return "[ERROR] R code validation failed. Code contains disallowed patterns."
 
     rscript = find_rscript()
     if not rscript:

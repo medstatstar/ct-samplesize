@@ -4,7 +4,7 @@
 
 > **临床样本量与检验效能计算专家** — 智能检测 R 环境 → 推荐最优工具 → 完成计算与解释。支持 Python 基础统计和 R 高级设计。
 >
-> **输出规则：** R 代码默认**不展示**，说 **"带代码"** 获取可复现 R 代码。| **Output Rule:** R code is hidden by default. Say **"with R code"** to display the reproducible R script.
+> **⚠️ 本地 R 执行：** 本技能通过 subprocess(Rscript) 在本地机器上执行生成的 R 代码。生成的 R 代码按需展示——说 **"带代码"** 查看。执行需要显式确认。
 
 ## 安装
 

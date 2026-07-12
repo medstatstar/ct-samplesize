@@ -4,7 +4,7 @@
 
 > **Clinical Sample Size & Power Calculator** — Auto detect R environment → recommend optimal tools → calculate & explain. Supports Python basic stats and R advanced designs.
 >
-> **Output Rule:** R code is hidden by default. Say **"with R code"** to display the reproducible R script. | 输出规则：R 代码默认隐藏，说 **"带代码"** 获取可复现 R 代码。
+> **⚠️ Local R Execution:** This skill executes R code locally on your machine via subprocess (Rscript). Generated R code is displayed on demand — say **"with R code"** to view it. Execution requires explicit confirmation.
 
 ## Installation
 

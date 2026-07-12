@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.spv
+*.sav
+.Rhistory
+.RData
+.Rapp.history
+*.Rproj
+.Rproj.user/

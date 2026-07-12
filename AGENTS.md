@@ -1,8 +1,8 @@
-# AGENTS.md — ct-samplesize v3.1
+# AGENTS.md — ct-samplesize v3.2
 
 ## Overview / 技能概述
 
-`ct-samplesize`: Clinical trial sample size & power calculator. Supports 18 test types covering all major clinical trial scenarios. Bilingual EN/CN. **R code output is hidden by default and provided only on user request.**
+`ct-samplesize`: Clinical trial sample size & power calculator. Supports 18 test types covering all major clinical trial scenarios. Bilingual EN/CN. **This skill executes R code locally via subprocess.** R code display is on demand.
 
 ---
 

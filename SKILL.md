@@ -1,51 +1,53 @@
 ---
 name: ct-samplesize
 cn_name: 临床样本量与检验效能计算专家 / Clinical Sample Size Expert
-version: 3.1.0
+version: 3.2.0
 required_commands: [Rscript, python]
 required_environment_variables: []
 required_privileges: non-root
-description: "Clinical trial sample size & power expert (v3.1): 18 test types, bilingual EN/CN, R code on demand. | 临床试验样本量计算专家(v3.1)：18种检验，中英双语，R代码按需索取。"
+description: "Clinical trial sample size & power calculator (v3.2): 18 test types, bilingual EN/CN. Executes R code locally via subprocess. R code display is on-demand. | 临床试验样本量计算专家(v3.2)：18种检验，中英双语，通过subprocess本地执行R代码，R代码展示按需索取。"
 triggers:
-  - "sample size"
-  - "power analysis"
-  - "样本量"
-  - "检验效能"
+  - "clinical trial sample size"
+  - "clinical trial power analysis"
   - "样本量计算"
-  - "临床 trial"
-  - "统计设计"
-  - "mixed model"
-  - "repeated measures"
-  - "diagnostic trial"
-  - "cluster randomized"
-  - "vaccine efficacy"
-  - "dose escalation"
-  - "Bayesian design"
-  - "混合模型"
-  - "重复测量"
-  - "诊断试验"
-  - "类随机"
-  - "疫苗效力"
-  - "剂量递增"
-  - "贝叶斯设计"
-  - "期中分析"
-  - "适应性设计"
-  - "非劣效"
-  - "等效性"
-  - "生物等效性"
-  - "组序贯"
-  - "多臂试验"
-  - "生存分析"
-  - "interim analysis"
-  - "adaptive design"
-  - "group sequential"
-  - "platform trial"
-  - "survival analysis"
-  - "bioequivalence"
+  - "检验效能计算"
+  - "临床试验 样本量"
+  - "临床 trial 设计"
+  - "clinical trial statistics"
+  - "medical statistics design"
+  - "统计设计 临床试验"
+  - "mixed model sample size"
+  - "repeated measures power"
+  - "diagnostic trial sample size"
+  - "cluster randomized sample size"
+  - "vaccine clinical trial"
+  - "dose escalation trial"
+  - "Bayesian clinical trial"
+  - "混合模型 样本量"
+  - "重复测量 检验效能"
+  - "诊断试验 样本量"
+  - "类随机设计"
+  - "疫苗 临床试验"
+  - "剂量递增 试验"
+  - "贝叶斯 临床试验"
+  - "期中分析 试验"
+  - "适应性设计 试验"
+  - "非劣效 临床试验"
+  - "等效性 临床试验"
+  - "生物等效性 试验"
+  - "组序贯 试验"
+  - "多臂试验 设计"
+  - "生存分析 样本量"
+  - "clinical mixed model power"
+  - "interim analysis trial"
+  - "adaptive design clinical"
+  - "group sequential clinical"
+  - "platform trial design"
+  - "survival power clinical trial"
 metadata:
   openclaw: { emoji: "📊", icon: "assets/icon.svg" }
   authors: ["medstatstar", "phoe-zip"]
-  version: "3.1.0"
+  version: "3.2.0"
   license: "MIT-0"
   tags: [clinical-trial, sample-size, power, statistics, biostatistics, R, experimental-design, interim-analysis, adaptive-design, group-sequential, bioequivalence, mixed-model, diagnostic-trial, cluster-randomized, bland-altman, poisson, vaccine-efficacy, dose-escalation, bayesian]
   homepage: "https://github.com/medstatstar/ct-samplesize"
@@ -54,16 +56,17 @@ metadata:
   permissions:
     scope: "user-space-only"
     network: "none"
-    filesystem: "read-only (except temp R script)"
-    execution: "R code execution requires explicit user confirmation (-y/--yes)"
+    filesystem: "read-only (except temp R script in skill dir)"
+    execution: "Local R code execution via subprocess (Rscript). Generated R code runs on user's machine with their privileges. Explicit user confirmation required."
     data: "no external data transmission"
+    disclosure: "This skill writes temporary .R files to the skill's scripts/ directory and invokes Rscript via subprocess. Users should review generated R code before execution."
 ---
 
 # CT Sample Size & Power / 临床样本量与检验效能计算专家
 
 > Auto detect → recommend optimal tools → calculate & explain | 自动检测环境 → 推荐最优工具 → 完成计算与解释
 >
-> **📋 Output Rule | 输出规则**: 每次分析必须给出完整结果报告（参数 + 结论 + 解释）。可复现 R 代码默认**不展示**，仅在用户明确要求时提供。 | Every analysis must include a complete report (parameters + results + interpretation). Reproducible R code is **hidden by default** and provided only when the user explicitly requests it.
+> **⚠️ Local R Execution | 本地 R 执行**: This skill executes generated R code locally on your machine via subprocess (Rscript). R code display is on demand (use "带代码"/"with R code" to show). Execution requires explicit user confirmation. | 本技能通过 subprocess(Rscript) 在本地机器上执行生成的 R 代码。R 代码展示按需索取（说"带代码"/"with R code"获取），执行需要用户显式确认。
 
 ---
 
@@ -317,4 +320,4 @@ See `references/examples.md` for complete walkthroughs with bilingual output + R
 
 ---
 
-**Version**: v3.1.0 | **Created**: 2026-07-12 | **Updated**: 2026-07-12 | **License**: MIT-0
+**Version**: v3.2.0 | **Created**: 2026-07-12 | **Updated**: 2026-07-12 | **License**: MIT-0
