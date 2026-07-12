@@ -1,9 +1,10 @@
-# AGENTS.md — ct-samplesize
+# AGENTS.md — ct-samplesize v2.0
 
 ## Overview / 技能概述
-`ct-samplesize`: Clinical trial sample size & power calculator. Intelligently detects R environment, recommends optimal tools, completes calculations with bilingual output.
 
-`ct-samplesize`: 临床试验样本量与检验效能计算工具。智能检测 R 环境，推荐最优工具，完成计算与双语输出。
+`ct-samplesize`: Clinical trial sample size & power calculator. Supports 14 test types: basic stats (t-test/ANOVA/proportion/non-inferiority), advanced designs (group sequential/adaptive/platform), mixed models (simr), bioequivalence (PowerTOST), ROC, Poisson, cluster randomized, Bland-Altman. Bilingual EN/CN.
+
+`ct-samplesize`: 临床试验样本量与检验效能计算工具。支持 14 种检验类型：基础统计(t检验/方差分析/率/非劣效)，高级设计(组序贯/适应性/平台)，混合效应模型，生物等效性，ROC，Poisson率，类随机，Bland-Altman。中英双语。
 
 ---
 
@@ -17,34 +18,50 @@ Must detect user's R installation:
 - Not detected → strongly recommend install + offer Python fallback
 ```
 
-### 2. Tool Selection / 工具选择
-- Simple (t/ANOVA/prop/noninfer/survival simpl) → Python
-- Complex (GS/adaptive/multi-arm/platform/BE) → R required
+### 2. Extended Tool Selection / 扩展工具选择
+| User Need | Path |
+|:----------|:-----|
+| Basic stats (t-test/ANOVA/proportion) | Python → auto gen R code |
+| Longitudinal / Repeated measures | R: `simr` (mixed model) |
+| Diagnostic trial | R: `pROC` (ROC formula) |
+| Count data / Recurrent events | R: custom Wald test |
+| Cluster randomized | R: design effect formula |
+| Method comparison | R: Bland-Altman (Lu et al.) |
+| Bioequivalence | R: `PowerTOST` (TOST) |
+| Group sequential / Adaptive | R: `gsDesign` / `rpact` |
+| Non-inferiority | R: `TrialSize` (exact) |
+| Survival | R: `rpact` |
 
 ### 3. Code Execution / 代码执行规范
-- R via PowerShell (CREATE_NO_WINDOW)
+- R via PowerShell (CREATE_NO_WINDOW), path: `C:\Tools\R-4.5.1\bin\x64\Rscript.exe`
 - Python via Anaconda (`C:\Tools\anaconda3\python.exe`)
+- Output temp files to workbuddy project dir, not C:\Temp
 
 ### 4. Result Output / 结果输出标准
-Every analysis must include: input params, calculation result, dropout adjustment, assumptions, limitations, **standalone R code**.
-
-每次必须包含：输入参数、计算结果、脱落调整、前提假设、方法学限制、**可独立运行的 R 代码**。
+Every analysis must include:
+- Input parameters + defaults used
+- Calculation result (sample size / power / effect size)
+- Dropout adjustment (if applicable)
+- Assumptions & limitations
+- **Standalone reproducible R code** (🔴 mandatory)
 
 ### 5. 🔴 Mandatory R Code / 强制输出 R 代码
-
 **Regardless of calculation path (Python/R/both), every analysis MUST include standalone, reproducible R code.**
 
-**无论使用哪种计算路径（Python/R/混合），每次分析都必须附带可独立运行的原始 R 代码。**
-
-- User can copy R code to R Studio / Rscript to reproduce
-- Must include `install.packages()`, `library()`, hardcoded params, calculation, formatted output
-- For survival, group sequential, etc., R code is the only precise method
+- R code must include: `install.packages()`, `library()`, hardcoded params, calculation, formatted output
+- User can copy-paste to R Studio / Rscript
 
 ### 6. Language Detection / 语言检测
+**EN:** Detect from `<response_language>` tag or user input. Respond in the **same language**. Pick the matching bilingual template from SKILL.md.
 
-**EN:** Detect user's language from system prompt (`<response_language>` tag) or input language. Respond in the **same language**. Use the bilingual templates in SKILL.md — pick the version matching the user's language.
+**CN:** 从 `<response_language>` 标签或用户输入语言自动检测，用**同一种语言**回复。使用 SKILL.md 中的双语模板，选择对应版本。
 
-**CN:** 从系统 prompt 的 `<response_language>` 标签或用户输入语言自动检测用户语言，并用**同一种语言**回复。使用 SKILL.md 中的双语模板，选择与用户语言一致的版本。
+### 7. Mixed Model Specifics / 混合模型特别说明
+- Use `simr::makeLmer()` / `makeGlmer()` to build model from literature parameters
+- Run `powerSim()` with nsim ≥ 500 for stable estimates
+- Always run `powerCurve()` to find minimum sample size
+- Report computation time (can be 1-5 min for complex models)
+- For Poisson GLMM: use `family = poisson` in makeGlmer
 
 ---
 
@@ -52,24 +69,42 @@ Every analysis must include: input params, calculation result, dropout adjustmen
 ```
 ct-samplesize/
 ├── SKILL.md              ← skill definition (bilingual, concise)
-├── README.md             ← ClawHub recommended
+├── README.md             ← English version
+├── README_ZH.md          ← Chinese version
 ├── AGENTS.md             ← this file (core rules)
 ├── assets/
 │   └── icon.svg          ← skill icon (104×104)
 ├── scripts/
-│   └── samplesize_power.py  ← Python calc + auto R code gen
+│   └── samplesize_power.py  ← Python calc + auto R code gen (v2.0)
 └── references/
-    ├── r_packages_zh.md     ← R package reference (20+ pkgs, bilingual)
-    ├── formulas_zh.md       ← formula reference (bilingual)
-    ├── python_usage.md      ← Python quick ref (bilingual)
-    ├── r_usage.md           ← R quick ref (bilingual)
-    ├── effect_size.md       ← effect size standards (bilingual)
-    ├── report_template.md   ← report template (bilingual)
-    └── examples.md          ← 3 full examples (bilingual output + R code)
+    ├── r_packages_zh.md     ← R package reference
+    ├── formulas_zh.md       ← formula reference
+    ├── python_usage.md      ← Python quick ref
+    ├── r_usage.md           ← R quick ref
+    ├── effect_size.md       ← effect size standards
+    ├── report_template.md   ← report template
+    ├── examples.md          ← 3 full examples
+    └── extended_functions.md ← NEW: mixed model/ROC/Poisson/cluster/BE
 ```
 
 ---
 
 ## Dependencies / 依赖
-- Python: statsmodels >= 0.14, numpy >= 1.24, scipy >= 1.11
-- R: rpact >= 4.0, gsDesign >= 3.5, TrialSize >= 1.1
+
+### R Packages (v2.0)
+```r
+install.packages(c(
+  "rpact",          # Adaptive + Group Sequential
+  "gsDesign",       # Classical Group Sequential
+  "TrialSize",      # Comprehensive (80+ functions)
+  "pwr",            # Teaching/demo
+  "PowerTOST",      # Bioequivalence (TOST)
+  "simr",           # Mixed model power (Monte Carlo)
+  "pROC",           # ROC curve formulas
+  "BlandAltmanLeh", # Bland-Altman LoA
+  "lme4",           # Linear mixed models (simr dependency)
+  "lmerTest",       # P-values for lme4 (simr dependency)
+  "survival",       # Survival analysis
+  "powerSurvEpi"    # Survival power
+))
+```

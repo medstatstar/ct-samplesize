@@ -1,24 +1,34 @@
 ---
 name: ct-samplesize
 cn_name: 临床样本量与检验效能计算专家 / Clinical Sample Size Expert
-version: 1.0.0
+version: 3.0.0
 required_commands: [Rscript, python]
 required_environment_variables: []
 required_privileges: non-root
-description: "Skill for clinical trial sample size & power calculation. Simple designs (t-test/ANOVA/proportion) support dual R/Python code; advanced designs (group sequential/adaptive/platform trial/bioequivalence) fully R-based; every analysis mandates standalone reproducible R code for user verification. | 本技能专用于解决临床试验相关的样本量与检验效能计算问题，简单的计算(t检验/方差分析/率比较)支持R和Python双代码，高级设计方法(组序贯/适应性/多臂平台/生物等效性)则完全基于R进行，每次分析强制输出可独立运行的R代码供用户核查和复现结果。"
+description: "Clinical trial sample size & power calculation expert (v3.0): 18 test types covering all major clinical trial scenarios; menu-driven selection; bilingual EN/CN with auto language detection; mandatory reproducible R code output. | 临床试验样本量与检验效能计算专家(v3.0)：18种检验类型覆盖全部主要临床试验场景，菜单式引导选择，中英双语自动切换，强制输出可复现R代码。"
 triggers:
   - "sample size"
   - "power analysis"
-  - "effect size"
-  - "interim analysis"
-  - "adaptive design"
-  - "group sequential"
-  - "platform trial"
-  - "survival analysis"
-  - "临床 trial"
+  - "clinical trial design"
   - "样本量"
   - "检验效能"
-  - "效应量"
+  - "样本量计算"
+  - "临床 trial"
+  - "统计设计"
+  - "mixed model"
+  - "repeated measures"
+  - "diagnostic trial"
+  - "cluster randomized"
+  - "vaccine efficacy"
+  - "dose escalation"
+  - "Bayesian design"
+  - "混合模型"
+  - "重复测量"
+  - "诊断试验"
+  - "类随机"
+  - "疫苗效力"
+  - "剂量递增"
+  - "贝叶斯设计"
   - "期中分析"
   - "适应性设计"
   - "非劣效"
@@ -26,14 +36,24 @@ triggers:
   - "生物等效性"
   - "组序贯"
   - "多臂试验"
+  - "生存分析"
+  - "效应量"
+  - "effect size"
+  - "interim analysis"
+  - "adaptive design"
+  - "group sequential"
+  - "platform trial"
+  - "survival analysis"
+  - "bioequivalence"
+  - "多臂试验"
   - "剂量递增"
   - "生存分析"
 metadata:
   openclaw: { emoji: "📊", icon: "assets/icon.svg" }
   authors: ["medstatstar", "phoe-zip"]
-  version: "1.0.0"
-  license: "MIT"
-  tags: [clinical-trial, sample-size, power, statistics, biostatistics, R, experimental-design, interim-analysis, adaptive-design, group-sequential, bioequivalence]
+  version: "3.0.0"
+  license: "MIT-0"
+  tags: [clinical-trial, sample-size, power, statistics, biostatistics, R, experimental-design, interim-analysis, adaptive-design, group-sequential, bioequivalence, mixed-model, diagnostic-trial, cluster-randomized, bland-altman, poisson, vaccine-efficacy, dose-escalation, bayesian]
   homepage: "https://github.com/medstatstar/ct-samplesize"
   hermes: { platform: "Windows, macOS, Linux", required_binaries: [Rscript, python] }
   required_binaries: [Rscript, python]
@@ -41,7 +61,7 @@ metadata:
 
 # CT Sample Size & Power / 临床样本量与检验效能计算专家
 
-> Detect environment → recommend optimal tools → calculate & explain | 自动检测环境 → 推荐最优工具 → 完成计算与解释
+> Auto detect → recommend optimal tools → calculate & explain | 自动检测环境 → 推荐最优工具 → 完成计算与解释
 >
 > **🔴 Mandatory Rule | 强制规则**: Every analysis must include standalone, reproducible R code. | 每次分析都必须附带可独立运行的原始 R 代码。
 
@@ -49,9 +69,9 @@ metadata:
 
 ## Purpose / 技能目的
 
-**EN:** This skill is a specialized **clinical trial sample size & power calculation expert**. It auto-detects the user's R environment, recommends the optimal calculation path (Python for basic stats, R for advanced designs), performs the computation, and always outputs standalone, reproducible R code. Beyond a calculator, it provides statistical design guidance — helping users choose appropriate hypothesis tests, interpret effect sizes, plan interim analyses, and adjust for dropout. Supports full bilingual output (EN/CN) with automatic language detection.
+**EN:** This skill is a specialized **clinical trial sample size & power calculation expert** supporting **18 test types** covering all major clinical trial scenarios. It auto-detects the user's R environment, recommends the optimal calculation path, performs the computation, and always outputs standalone, reproducible R code. Supports bilingual EN/CN with automatic language detection. Menu-driven selection for rapid navigation.
 
-**CN:** 本技能是专用于**临床试验样本量与检验效能计算**的专家级工具。自动检测用户 R 环境，推荐最优计算路径（简单设计用 Python，复杂/精确设计用 R 专业包），完成计算并**强制输出可独立运行的 R 代码**。不仅是计算器，更提供统计设计决策支持 — 帮助用户选择假设检验类型、解读效应量、制定期中分析策略、调整脱落率。支持中英双语自动切换。
+**CN:** 本技能是专用于**临床试验样本量与检验效能计算**的专家级工具，支持 **18 种检验类型**，覆盖全部主要临床试验场景。自动检测用户 R 环境，推荐最优计算路径，完成计算并强制输出可独立运行的 R 代码。中英双语自动切换。菜单式引导快速定位功能。
 
 ---
 
@@ -59,7 +79,46 @@ metadata:
 
 **EN:** Detect from `<response_language>` tag or user input. Respond in the **same language**. All templates below are bilingual — use the matching version.
 
-**CN:** 从 `<response_language>` 标签或用户输入语言自动检测用户语言，并用**同一种语言**回复。以下所有输出模板均为中英双语，选择与用户语言一致的版本。
+**CN:** 从 `<response_language>` 标签或用户输入语言自动检测，用**同一种语言**回复。以下模板均为中英双语，选择对应版本。
+
+---
+
+## 🔷 Quick Menu / 快速引导菜单
+
+> **Step 1 — Select primary endpoint type:** | **第一步 — 选择主要终点类型：**
+
+| Category 类别 | Test Type 检验类型 | Clinical Scenario 临床场景 | R 包 / 方法 |
+|:---|:---|:---|:---|
+| **Continuous 连续变量** | `ttest_ind` | 两均数比较（平行设计） | `pwr`, `TrialSize` |
+| | `ttest_paired` | 配对t / 交叉设计2×2 | `pwr`, `TrialSize` |
+| | `anova` | 多组比较（k组） | `pwr`, `TrialSize` |
+| | `equivalence` | 等效性检验（均数） | `TrialSize` |
+| | `mixed_model` | **重复测量 / 纵向数据** | `simr` |
+| **Binary 二分类** | `proportion_one` | 单组率检验 | `pwr` |
+| | `proportion_two` | 两组率比较（卡方） | `pwr`, `TrialSize` |
+| | `non_inferiority` | 非劣效设计（率） | `TrialSize` |
+| | `be_tost` | **生物等效性 (TOST)** | `PowerTOST` |
+| **计数/事件率** | `poisson` | **Poisson率 / 复发性事件** | Wald 检验 |
+| | `vaccine_efficacy` | **疫苗效力** | Halloran 公式 |
+| **Time-to-Event 生存** | `survival` | 生存分析（简化） | Schoenfeld 公式 |
+| | `survival_exact` | 生存分析（精确） | `rpact` |
+| **诊断/方法学** | `roc` | **ROC曲线 / 诊断试验** | `pROC` |
+| | `bland_altman` | **Bland-Altman方法学比对** | Lu et al. 公式 |
+| **特殊设计** | `cluster` | **类随机设计** | DEFF 公式 |
+| | `multiple_endpoints` | **多终点 / 复合终点** | 相关系数法 |
+| | `bayesian` | **贝叶斯设计** | `BayesCTDesign` |
+| | `dose_escalation` | **剂量递增 (I期)** | `escalation` |
+| | `group_sequential` | **组序贯 / 期中分析** | `gsDesign`, `rpact` |
+| | `adaptive` | **适应性设计** | `rpact` |
+
+> **Step 2 — If unsure, answer these three questions:** | **第二步 — 如不确定，回答以下三个问题：**
+
+1. **Primary endpoint type?** (Continuous / Binary / Time-to-Event / Count / Other)
+   **主要终点类型？** (连续 / 二分类 / 生存 / 计数 / 其他)
+2. **Hypothesis?** (Superiority / Non-inferiority / Equivalence / Other)
+   **假设检验？** (优效 / 非劣效 / 等效 / 其他)
+3. **Design complexity?** (Parallel / Paired / Repeated / Cluster / Other)
+   **设计复杂度？** (平行 / 配对 / 重复测量 / 类随机 / 其他)
 
 ---
 
@@ -67,7 +126,7 @@ metadata:
 
 | Requirement 要求 | Details 详情 |
 |:-----------|:-----------|
-| **R** | ≥ 3.6.0（推荐 ≥ 4.1.0）+ rpact, gsDesign, TrialSize, pwr, PowerTOST |
+| **R** | ≥ 4.1.0 + rpact, gsDesign, TrialSize, pwr, PowerTOST, simr, pROC, BlandAltmanLeh, BayesCTDesign, escalation |
 | **Python** | ≥ 3.8 + statsmodels ≥ 0.14, numpy ≥ 1.24, scipy ≥ 1.11 |
 | **OS** | Windows / macOS / Linux |
 | **Privileges 权限** | non-root（所有计算在用户空间完成）|
@@ -88,14 +147,14 @@ metadata:
 
 | Parameter | Example |
 |:----------|:--------|
-| Design Type 设计类型 | Parallel / Crossover / Group Sequential |
-| Primary Endpoint 主要终点 | Continuous / Binary / Time-to-Event |
+| Design Type 设计类型 | Parallel / Crossover / Group Sequential / Longitudinal |
+| Primary Endpoint 主要终点 | Continuous / Binary / Time-to-Event / Count |
 | Hypothesis 假设检验 | Superiority / Non-inferiority / Equivalence |
-| Effect 期望效应 | HR=0.75 / Cohen's d=0.5 |
+| Effect 期望效应 | HR=0.75 / Cohen's d=0.5 / AUC=0.75 |
 | α, power | Two-sided 0.05 / 0.85 |
 | Dropout Rate 脱落率 | 10% |
 
-> **EN/CN:** 参数缺失时先给默认值(α=0.05, power=0.80)的初步结果，再逐步调参。| When parameters are missing, provide preliminary results with defaults, then iteratively refine.
+> **EN/CN:** 参数缺失时先给默认值(α=0.05, power=0.80)的初步结果，再逐步调参。
 
 ---
 
@@ -103,21 +162,34 @@ metadata:
 
 ```
 User need
-├── "Simple" 简单设计 → Python ✅ (Two means / Proportions / Non-inferiority / Survival simplified)
-├── "Complex" 复杂设计 → R required ⭐
+├── "Simple" → Python ✅ (auto-generate R code)
+│   ├── ttest_ind, ttest_paired, anova
+│   ├── proportion_one, proportion_two
+│   ├── non_inferiority (prop, approx)
+│   ├── survival (Schoenfeld approx)
+│   └── roc, bland_altman (formula)
+│
+├── "Advanced" → R required ⭐
 │   ├── Group Sequential → gsDesign / rpact
 │   ├── Adaptive Design → rpact
-│   ├── MAMS / Platform Trial → gsMAMS / NCC
+│   ├── Mixed Model (repeated measures) → simr
 │   ├── Bioequivalence → PowerTOST
-│   └── Exact Survival → rpact / gsDesign
-└── "Cross-validation / Submission" 交叉验证 → Python + R combined
+│   ├── Exact Survival → rpact / gsDesign
+│   ├── Poisson Rate → Wald test
+│   ├── Cluster Randomized → DEFF method
+│   ├── Vaccine Efficacy → Halloran formula
+│   ├── Multiple Endpoints → correlation method
+│   ├── Bayesian Design → BayesCTDesign
+│   └── Dose Escalation → escalation
+│
+└── "Cross-validation" → Python + R combined
 ```
 
 ---
 
 ## Phase 3: Result Standards / 结果标准
 
-> **🔴 EN/CN:** Regardless of calculation path (Python/R/both), every analysis MUST include **standalone, reproducible R code**.
+> **🔴 EN/CN:** Regardless of path, every analysis MUST include **standalone, reproducible R code**.
 
 | Item 项目 | Mandatory 强制性 |
 |:---------|:----------------:|
@@ -132,53 +204,55 @@ User need
 
 ## Implementation / 实施
 
-### Python (Simple Designs / 简单设计)
-
-**EN:** Run via CLI, auto-generate R code. Full docs: `references/python_usage.md`
-**CN:** 通过 CLI 执行，自动生成 R 代码。详见 `references/python_usage.md`
+**Full docs:** `references/extended_functions.md` | **快速参考：**
 
 ```bash
-python scripts/samplesize_power.py --test ttest_ind --effect 0.5 --alpha 0.05 --power 0.9
+# === Continuous / 连续变量 ===
+python scripts/samplesize_power.py --test ttest_ind --effect 0.5 --power 0.8
+python scripts/samplesize_power.py --test ttest_paired --effect 0.5 --power 0.8
+python scripts/samplesize_power.py --test anova --effect 0.25 --k_groups 3 --power 0.8
+python scripts/samplesize_power.py --test equivalence --margin 2.0 --effect 3.0 --power 0.8
+python scripts/samplesize_power.py --test mixed_model --effect 0.5 --nsim 500
+
+# === Binary / 二分类 ===
 python scripts/samplesize_power.py --test proportion_two --p1 0.3 --p2 0.15 --power 0.8
-python scripts/samplesize_power.py --test non_inferiority --margin 0.1 --p1 0.85 --p2 0.80
+python scripts/samplesize_power.py --test non_inferiority --margin 0.1 --p1 0.85 --p2 0.80 --power 0.8
+python scripts/samplesize_power.py --test be_tost --theta0 0.95 --cv 0.25 --design "2x2"
+
+# === Count / 计数 ===
+python scripts/samplesize_power.py --test poisson --lambda1 0.05 --lambda2 0.03 --t1 2 --t2 2 --power 0.8
+python scripts/samplesize_power.py --test vaccine_efficacy --ve_control 0.02 --ve_treatment 0.005 --power 0.8
+
+# === Survival / 生存 ===
+python scripts/samplesize_power.py --test survival --hazard_ratio 0.75 --power 0.85
+
+# === Diagnostic / Method Comparison / 诊断/方法学比对 ===
+python scripts/samplesize_power.py --test roc --auc0 0.5 --auc1 0.75 --power 0.8
+python scripts/samplesize_power.py --test bland_altman --sd_diff 5 --w 2.5
+
+# === Special Designs / 特殊设计 ===
+python scripts/samplesize_power.py --test cluster --icc 0.05 --m 30 --n_indiv 64
+python scripts/samplesize_power.py --test multiple_endpoints --effect 0.3 --correlation 0.5
+python scripts/samplesize_power.py --test bayesian --prob_control 0.3 --prob_treatment 0.15 --prior_a0 0.5
+python scripts/samplesize_power.py --test dose_escalation --n_doses 5 --target_dlt 0.33
 ```
-
-### R (Complex Designs / 复杂设计)
-
-| Scenario 场景 | R Package | Function |
-|:--------------|:----------|:---------|
-| Two means 两均数 | TrialSize | `NTwoMeans(α, β, delta, sigma)` |
-| Group Sequential 组序贯 | gsDesign | `gsSurv(k=3, sfu=sfLDOF)` |
-| Adaptive 适应性 | rpact | `getSampleSizeMeans(adaptation="onesided")` |
-| Bioequivalence 生物等效 | PowerTOST | `sampleN.TOST(theta0=0.95, CV=0.25)` |
-
-**EN:** Full R docs: `references/r_usage.md` | Package map: `references/r_packages_zh.md`
-**CN:** R 完整文档：`references/r_usage.md` | 包名映射：`references/r_packages_zh.md`
 
 ---
 
 ## Formula & Report / 公式与报告
 
-**Formulas 公式推导:** `references/formulas_zh.md`
+**Formulas:** `references/formulas_zh.md` | **Extended:** `references/extended_functions.md`
 
 | Scenario | Formula |
 |:---------|:--------|
 | Independent t (equal) | $n_1 = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{d})^2$ |
 | Proportion (arcsin) | $n = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{h})^2$ |
 | Survival (Schoenfeld) | $d = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(\log HR)^2}$ |
+| ROC (Obuchowski) | $n = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{4(\arcsin\sqrt{AUC_1} - \arcsin\sqrt{AUC_0})^2}$ |
+| Cluster DEFF | $DEFF = 1 + (m - 1) \times ICC$ |
+| Bland-Altman | $n = 2(\frac{Z_{1-\alpha/2} \times SD_{diff}}{W})^2$ |
 
-**Effect size standards:** `references/effect_size.md`
-
-**Report template (含强制 R 代码块):** `references/report_template.md`
-
-```r
-# ---- Parameters 参数设置 ----
-alpha <- [value]; power <- [value]; effect <- [value]
-# ---- Calculation 计算 ----
-[core function call]
-# ---- Dropout Adjustment 脱落调整 ----
-n_adj <- ceiling(n / (1 - dropout_rate))
-```
+**Effect size:** `references/effect_size.md` | **Report template:** `references/report_template.md`
 
 ---
 
@@ -189,14 +263,13 @@ n_adj <- ceiling(n / (1 - dropout_rate))
 | "Rscript not found" | Install R or specify path |
 | "package not found" | install.packages("xxx") |
 | ImportError: statsmodels | Anaconda: pip install statsmodels |
+| simr timeout | Reduce --nsim or simplify model |
 
 ---
 
 ## Usage Examples / 使用示例
 
-**EN:** See `references/examples.md` for 3 complete walkthroughs (proportion / group sequential / non-inferiority) with bilingual output + R code.
-
-**CN:** 详见 `references/examples.md`（率比较/组序贯/非劣效 3 个完整示例，含双语输出 + R 代码）。
+See `references/examples.md` for complete walkthroughs with bilingual output + R code.
 
 ---
 
@@ -206,6 +279,10 @@ n_adj <- ceiling(n / (1 - dropout_rate))
 - gsDesign: https://keaven.github.io/gsDesign/
 - TrialSize: https://cran.r-project.org/web/packages/TrialSize/
 - PowerTOST: https://cran.r-project.org/web/packages/PowerTOST/
+- simr: https://github.com/pitakakariki/simr
+- BayesCTDesign: https://cran.r-project.org/web/packages/BayesCTDesign/
 - CRAN ClinicalTrials View: https://cran.r-project.org/web/views/ClinicalTrials.html
 
-**Version 版本**: v1.0.0 | **Created 创建**: 2026-07-12 | **License 许可**: MIT-0
+---
+
+**Version**: v3.0.0 | **Created**: 2026-07-12 | **Updated**: 2026-07-12 | **License**: MIT-0
