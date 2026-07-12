@@ -56,7 +56,7 @@ install.packages("gsDesign")
 library(gsDesign)
 
 # Group sequential survival / 生存组序贯
-gsSurv(k=3, alpha=0.025, beta=0.1, hr=0.7, R=12, T=36, minfup=12)
+gsSurv(k=3, alpha=0.025, beta=0.1, hr=0.7, R=12, T=36, minfup=24)
 
 # Generic group sequential / 通用组序贯
 gsDesign(k=4, delta=0.3, sfu=sfLDOF, test.type=2)

@@ -70,7 +70,7 @@ pwr.t.test(d=0.5, power=0.8, sig.level=0.05, type="two.sample")
 
 ```r
 library(gsDesign)
-x <- gsSurv(k=3, alpha=0.025, beta=0.1, hr=0.7, R=12, T=36, minfup=12)
+x <- gsSurv(k=3, alpha=0.025, beta=0.1, hr=0.7, R=12, T=36, minfup=24)
 print(x)
 cat("Events:", x$events, "\n")
 cat("Max N:", x$n.I[x$k], "\n")

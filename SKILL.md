@@ -1,15 +1,14 @@
 ---
 name: ct-samplesize
 cn_name: 临床样本量与检验效能计算专家 / Clinical Sample Size Expert
-version: 3.0.0
+version: 3.1.0
 required_commands: [Rscript, python]
 required_environment_variables: []
 required_privileges: non-root
-description: "Clinical trial sample size & power calculation expert (v3.0): 18 test types covering all major clinical trial scenarios; menu-driven selection; bilingual EN/CN with auto language detection; mandatory reproducible R code output. | 临床试验样本量与检验效能计算专家(v3.0)：18种检验类型覆盖全部主要临床试验场景，菜单式引导选择，中英双语自动切换，强制输出可复现R代码。"
+description: "Clinical trial sample size & power expert (v3.1): 18 test types, bilingual EN/CN, R code on demand. | 临床试验样本量计算专家(v3.1)：18种检验，中英双语，R代码按需索取。"
 triggers:
   - "sample size"
   - "power analysis"
-  - "clinical trial design"
   - "样本量"
   - "检验效能"
   - "样本量计算"
@@ -37,41 +36,42 @@ triggers:
   - "组序贯"
   - "多臂试验"
   - "生存分析"
-  - "效应量"
-  - "effect size"
   - "interim analysis"
   - "adaptive design"
   - "group sequential"
   - "platform trial"
   - "survival analysis"
   - "bioequivalence"
-  - "多臂试验"
-  - "剂量递增"
-  - "生存分析"
 metadata:
   openclaw: { emoji: "📊", icon: "assets/icon.svg" }
   authors: ["medstatstar", "phoe-zip"]
-  version: "3.0.0"
+  version: "3.1.0"
   license: "MIT-0"
   tags: [clinical-trial, sample-size, power, statistics, biostatistics, R, experimental-design, interim-analysis, adaptive-design, group-sequential, bioequivalence, mixed-model, diagnostic-trial, cluster-randomized, bland-altman, poisson, vaccine-efficacy, dose-escalation, bayesian]
   homepage: "https://github.com/medstatstar/ct-samplesize"
   hermes: { platform: "Windows, macOS, Linux", required_binaries: [Rscript, python] }
   required_binaries: [Rscript, python]
+  permissions:
+    scope: "user-space-only"
+    network: "none"
+    filesystem: "read-only (except temp R script)"
+    execution: "R code execution requires explicit user confirmation (-y/--yes)"
+    data: "no external data transmission"
 ---
 
 # CT Sample Size & Power / 临床样本量与检验效能计算专家
 
 > Auto detect → recommend optimal tools → calculate & explain | 自动检测环境 → 推荐最优工具 → 完成计算与解释
 >
-> **🔴 Mandatory Rule | 强制规则**: Every analysis must include standalone, reproducible R code. | 每次分析都必须附带可独立运行的原始 R 代码。
+> **📋 Output Rule | 输出规则**: 每次分析必须给出完整结果报告（参数 + 结论 + 解释）。可复现 R 代码默认**不展示**，仅在用户明确要求时提供。 | Every analysis must include a complete report (parameters + results + interpretation). Reproducible R code is **hidden by default** and provided only when the user explicitly requests it.
 
 ---
 
 ## Purpose / 技能目的
 
-**EN:** This skill is a specialized **clinical trial sample size & power calculation expert** supporting **18 test types** covering all major clinical trial scenarios. It auto-detects the user's R environment, recommends the optimal calculation path, performs the computation, and always outputs standalone, reproducible R code. Supports bilingual EN/CN with automatic language detection. Menu-driven selection for rapid navigation.
+**EN:** This skill is a specialized **clinical trial sample size & power calculation expert** supporting **18 test types** covering all major clinical trial scenarios. It auto-detects the user's R environment, recommends the optimal calculation path, and delivers a complete results report. Reproducible R code is available on demand. Supports bilingual EN/CN with automatic language detection. Menu-driven selection for rapid navigation.
 
-**CN:** 本技能是专用于**临床试验样本量与检验效能计算**的专家级工具，支持 **18 种检验类型**，覆盖全部主要临床试验场景。自动检测用户 R 环境，推荐最优计算路径，完成计算并强制输出可独立运行的 R 代码。中英双语自动切换。菜单式引导快速定位功能。
+**CN:** 本技能是专用于**临床试验样本量与检验效能计算**的专家级工具，支持 **18 种检验类型**，覆盖全部主要临床试验场景。自动检测用户 R 环境，推荐最优计算路径，输出完整结果报告。可复现 R 代码按需索取。中英双语自动切换。菜单式引导快速定位功能。
 
 ---
 
@@ -127,11 +127,24 @@ metadata:
 | Requirement 要求 | Details 详情 |
 |:-----------|:-----------|
 | **R** | ≥ 4.1.0 + rpact, gsDesign, TrialSize, pwr, PowerTOST, simr, pROC, BlandAltmanLeh, BayesCTDesign, escalation |
-| **Python** | ≥ 3.8 + statsmodels ≥ 0.14, numpy ≥ 1.24, scipy ≥ 1.11 |
-| **OS** | Windows / macOS / Linux |
+| **Python** | ≥ 3.8 + statsmodels==0.14.2, numpy==1.24.3, scipy==1.11.4 |
 | **Privileges 权限** | non-root（所有计算在用户空间完成）|
 
----
+## ⚠️ User Warnings / 用户安全提示
+
+**EN:**
+- This skill generates and executes R code locally on your machine.
+- Review all R code BEFORE execution (use `--dry-run` first).
+- Never paste untrusted parameters into CLI arguments.
+- Outputs are for reference only; validate results before using in regulatory submissions.
+- R execution requires explicit `-y`/`--yes` flag confirmation.
+
+**CN:**
+- 本技能会在你的机器本地生成并执行 R 代码。
+- 执行前务必先审查所有 R 代码（先用 `--dry-run` 查看）。
+- 不要将不受信任的参数粘贴到命令行参数中。
+- 输出仅供参考，用于监管申报前需独立验证结果。
+- R 执行需要显式的 `-y`/`--yes` 标志确认。
 
 ## Phase 1: Environment Detection / 环境检测
 
@@ -189,22 +202,41 @@ User need
 
 ## Phase 3: Result Standards / 结果标准
 
-> **🔴 EN/CN:** Regardless of path, every analysis MUST include **standalone, reproducible R code**.
+> **📋 Output Rule | 输出规则**: 每次分析必须给出完整结果报告（参数 + 结论 + 解释）。可复现 R 代码默认**不展示**，仅在用户明确要求时提供。
 
-| Item 项目 | Mandatory 强制性 |
-|:---------|:----------------:|
-| Input Parameters 输入参数 | ✅ |
-| Calculation Result 计算结果 | ✅ |
-| Interpretation 结果解释 | ✅ |
-| **Reproducible R Code 可复现R代码** | 🔴 Mandatory 强制 |
-| Assumptions 前提假设 | ✅ |
-| Dropout Adjustment 脱落调整 | ✅ |
+| Item 项目 | Mandatory 强制性 | Default 默认 |
+|:---------|:----------------:|:---------:|
+| Input Parameters 输入参数 | ✅ | ✅ 展示 |
+| Calculation Result 计算结果 | ✅ | ✅ 展示 |
+| Interpretation 结果解释 | ✅ | ✅ 展示 |
+| Assumptions 前提假设 | ✅ | ✅ 展示 |
+| Dropout Adjustment 脱落调整 | ✅ | ✅ 展示 |
+| Reproducible R Code 可复现R代码 | ✅ | ❌ **隐藏**（用户要求时提供） |
+
+**R 代码触发短语 / R Code Trigger Phrases:**
+| 中文 | English |
+|:------|:---------|
+| "带代码" | "with R code" |
+| "输出R代码" | "output R code" |
+| "给代码" | "show me the code" |
+| "review 一下代码" | "review the code" |
+| "展示R code" | "display R code" |
+| "我需要复现代码" | "I need the code" |
+| "coderef" (缩写) | "R code please" |
+
+**使用触发短语时的行为:**
+1. 展示完整可运行的 R 代码
+2. 确保代码包含所有必要注释和包引用
+3. 同时仍提供文字解释
 
 ---
 
 ## Implementation / 实施
 
-**Full docs:** `references/extended_functions.md` | **快速参考：**
+**Full docs:** `references/extended_functions.md`
+
+> **EN:** ℹ️ Default mode is dry-run (R code shown, NOT executed). Add `-y`/`--yes` to execute after reviewing.
+> **CN:** ℹ️ 默认为 dry-run 模式（仅显示 R 代码，不执行）。添加 `-y`/`--yes` 在审查后执行。
 
 ```bash
 # === Continuous / 连续变量 ===
@@ -285,4 +317,4 @@ See `references/examples.md` for complete walkthroughs with bilingual output + R
 
 ---
 
-**Version**: v3.0.0 | **Created**: 2026-07-12 | **Updated**: 2026-07-12 | **License**: MIT-0
+**Version**: v3.1.0 | **Created**: 2026-07-12 | **Updated**: 2026-07-12 | **License**: MIT-0

@@ -69,8 +69,10 @@ z_a <- qnorm(1-alpha/2); z_b <- qnorm(power)
 n_chisq <- ceiling((z_a+z_b)^2 * (p1*(1-p1)+p2*(1-p2)) / (p1-p2)^2)
 cat(sprintf("Chi-square approx: %d\n", n_chisq))
 
-# Dropout | _dropout <- 0.10
-n_adj <- ceiling(n_per / (1-dropout))
+# Dropout Adjustment 脱落调整
+# 脱落率 10%，则调整后样本量 = n / (1 - dropout_rate)
+dropout_rate <- 0.10
+n_adj <- ceiling(n_per / (1 - dropout_rate))
 cat(sprintf("Adjusted: %d/group | Total: %d\n", n_adj, n_adj*2))
 ```
 
@@ -122,7 +124,10 @@ cat(sprintf("Adjusted: %d/group | Total: %d\n", n_adj, n_adj*2))
 library(gsDesign)
 
 alpha <- 0.025; beta <- 0.10; hr <- 0.70
-R <- 12; T <- 36; minfup <- 24 - R
+R <- 12; T <- 36
+# minfup = minimum follow-up = T - R = 36 - 12 = 24 months
+# minfup = 最短随访时间 = 总时长 - 入组时间
+minfup <- T - R
 lambdaC <- log(2) / 12  # Median OS 12mo | 中位OS=12月
 
 x <- gsSurv(k=3, alpha=alpha, beta=beta, timeratio=FALSE,

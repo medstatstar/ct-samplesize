@@ -64,9 +64,9 @@ python scripts/samplesize_power.py --test survival --hazard_ratio 0.7 --power 0.
 
 ## Auto R Code Generation / 自动 R 代码生成
 
-**EN:** The Python script includes `generate_r_code()` which automatically outputs equivalent R script after every calculation. No extra action needed.
+**EN:** The Python script has built-in R code templates. Default mode prints the R code for review. Execution of the generated R code requires explicit `-y`/`--yes` confirmation (see dry-run behavior).
 
-**CN:** Python 脚本内置 `generate_r_code()` 函数，每次计算结束后自动输出功能等价的 R 脚本。
+**CN:** Python 脚本内置 R 代码模板。默认模式打印 R 代码供审查，执行生成的 R 代码需要显式的 `-y`/`--yes` 确认（参见 dry-run 行为）。
 
 ---
 

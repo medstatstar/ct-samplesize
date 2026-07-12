@@ -1,24 +1,20 @@
-# AGENTS.md — ct-samplesize v2.0
+# AGENTS.md — ct-samplesize v3.1
 
 ## Overview / 技能概述
 
-`ct-samplesize`: Clinical trial sample size & power calculator. Supports 14 test types: basic stats (t-test/ANOVA/proportion/non-inferiority), advanced designs (group sequential/adaptive/platform), mixed models (simr), bioequivalence (PowerTOST), ROC, Poisson, cluster randomized, Bland-Altman. Bilingual EN/CN.
-
-`ct-samplesize`: 临床试验样本量与检验效能计算工具。支持 14 种检验类型：基础统计(t检验/方差分析/率/非劣效)，高级设计(组序贯/适应性/平台)，混合效应模型，生物等效性，ROC，Poisson率，类随机，Bland-Altman。中英双语。
+`ct-samplesize`: Clinical trial sample size & power calculator. Supports 18 test types covering all major clinical trial scenarios. Bilingual EN/CN. **R code output is hidden by default and provided only on user request.**
 
 ---
 
 ## Core Rules / 核心规则
 
 ### 1. R Environment Detection / R 环境检测
-```
-Must detect user's R installation:
 - PowerShell: `Get-Command Rscript -ErrorAction SilentlyContinue`
 - Detected → report version + check packages
 - Not detected → strongly recommend install + offer Python fallback
-```
 
 ### 2. Extended Tool Selection / 扩展工具选择
+
 | User Need | Path |
 |:----------|:-----|
 | Basic stats (t-test/ANOVA/proportion) | Python → auto gen R code |
@@ -31,67 +27,70 @@ Must detect user's R installation:
 | Group sequential / Adaptive | R: `gsDesign` / `rpact` |
 | Non-inferiority | R: `TrialSize` (exact) |
 | Survival | R: `rpact` |
+| Vaccine efficacy | R: Halloran formula |
+| Bayesian design | R: `BayesCTDesign` |
+| Dose escalation | R: `escalation` |
+| Multiple endpoints | R: correlation method |
 
 ### 3. Code Execution / 代码执行规范
-- R via PowerShell (CREATE_NO_WINDOW), path: `C:\Tools\R-4.5.1\bin\x64\Rscript.exe`
+- R via PowerShell, path: auto-detect (RSCRIPT_PATH env or PATH search)
 - Python via Anaconda (`C:\Tools\anaconda3\python.exe`)
-- Output temp files to workbuddy project dir, not C:\Temp
+- **Default: dry-run mode.** R code is printed for review; execution requires `-y`/`--yes`
+- Output temp files to script directory, not system temp
 
-### 4. Result Output / 结果输出标准
-Every analysis must include:
-- Input parameters + defaults used
-- Calculation result (sample size / power / effect size)
-- Dropout adjustment (if applicable)
-- Assumptions & limitations
-- **Standalone reproducible R code** (🔴 mandatory)
+### 4. 📋 Result Output / 结果输出标准 (v3.1 — R Code On Demand)
 
-### 5. 🔴 Mandatory R Code / 强制输出 R 代码
-**Regardless of calculation path (Python/R/both), every analysis MUST include standalone, reproducible R code.**
+**默认输出（不带 R 代码）**：每次分析必须包含：
+- 输入参数 + 使用的默认值
+- 计算结果（样本量 / 效能 / 效应量）
+- 脱落调整（如适用）
+- 前提假设与局限
+- 末尾附一句提示：「💡 需要可复现 R 代码？说 **'带代码'** 或 **'with R code'** 获取」
 
-- R code must include: `install.packages()`, `library()`, hardcoded params, calculation, formatted output
-- User can copy-paste to R Studio / Rscript
+**R 代码触发短语 / R Code Trigger Phrases:**
+| 中文 | English |
+|:------|:---------|
+| "带代码" | "with R code" |
+| "输出R代码" | "output R code" |
+| "给代码" | "show me the code" |
+| "review 一下代码" | "review the code" |
+| "展示R code" | "display R code" |
+| "我需要复现代码" | "I need the code" |
 
-### 6. Language Detection / 语言检测
-**EN:** Detect from `<response_language>` tag or user input. Respond in the **same language**. Pick the matching bilingual template from SKILL.md.
+**触发后行为**：
+1. 展示完整可运行 R 代码（含 install.packages + library + 参数 + 注释）
+2. 提供文字解释
+3. 标注文件路径供保存
 
-**CN:** 从 `<response_language>` 标签或用户输入语言自动检测，用**同一种语言**回复。使用 SKILL.md 中的双语模板，选择对应版本。
+### 5. Language Detection / 语言检测
+Detect from `<response_language>` tag or user input. Respond in the **same language**.
 
-### 7. Mixed Model Specifics / 混合模型特别说明
+### 6. Mixed Model Specifics / 混合模型特别说明
 - Use `simr::makeLmer()` / `makeGlmer()` to build model from literature parameters
 - Run `powerSim()` with nsim ≥ 500 for stable estimates
 - Always run `powerCurve()` to find minimum sample size
 - Report computation time (can be 1-5 min for complex models)
-- For Poisson GLMM: use `family = poisson` in makeGlmer
 
 ---
 
-## File Structure / 文件结构
-```
-ct-samplesize/
-├── SKILL.md              ← skill definition (bilingual, concise)
-├── README.md             ← English version
-├── README_ZH.md          ← Chinese version
-├── AGENTS.md             ← this file (core rules)
-├── assets/
-│   └── icon.svg          ← skill icon (104×104)
-├── scripts/
-│   └── samplesize_power.py  ← Python calc + auto R code gen (v2.0)
-└── references/
-    ├── r_packages_zh.md     ← R package reference
-    ├── formulas_zh.md       ← formula reference
-    ├── python_usage.md      ← Python quick ref
-    ├── r_usage.md           ← R quick ref
-    ├── effect_size.md       ← effect size standards
-    ├── report_template.md   ← report template
-    ├── examples.md          ← 3 full examples
-    └── extended_functions.md ← NEW: mixed model/ROC/Poisson/cluster/BE
-```
+## Security Fixes (v3.1)
+
+| Fix | Implementation |
+|:----|:--------------|
+| Default dry-run | R code shown, not executed unless `-y` confirmed |
+| Output sanitization | `sanitize_output()` strips paths, truncates |
+| No hardcoded R path | RSCRIPT_PATH env + PATH lookup |
+| Narrowed triggers | Removed "clinical trial design", "effect size" |
+| Permissions declared | `permissions` block in SKILL.md frontmatter |
+| User warnings | `## ⚠️ User Warnings` section |
+| Fixed `minfup` | Examples: `minfup <- T - R` (24 months, matches prose) |
+| Fixed dropout code | Valid R syntax: `dropout_rate <- 0.10; n_adj <- ceiling(n_per / (1 - dropout_rate))` |
 
 ---
 
 ## Dependencies / 依赖
 
-### R Packages (v2.0)
+### R Packages (v3.1)
 ```r
 install.packages(c(
   "rpact",          # Adaptive + Group Sequential
@@ -102,9 +101,18 @@ install.packages(c(
   "simr",           # Mixed model power (Monte Carlo)
   "pROC",           # ROC curve formulas
   "BlandAltmanLeh", # Bland-Altman LoA
-  "lme4",           # Linear mixed models (simr dependency)
-  "lmerTest",       # P-values for lme4 (simr dependency)
+  "lme4",           # Linear mixed models
+  "lmerTest",       # P-values for lme4
   "survival",       # Survival analysis
-  "powerSurvEpi"    # Survival power
+  "powerSurvEpi",   # Survival power
+  "BayesCTDesign",  # Bayesian design
+  "escalation"      # Dose escalation
 ))
+```
+
+### Python (pinned)
+```
+statsmodels==0.14.2
+numpy==1.24.3
+scipy==1.11.4
 ```
