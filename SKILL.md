@@ -47,6 +47,14 @@ metadata:
 
 ---
 
+## Purpose / 技能目的
+
+**EN:** This skill is a specialized **clinical trial sample size & power calculation expert**. It auto-detects the user's R environment, recommends the optimal calculation path (Python for basic stats, R for advanced designs), performs the computation, and always outputs standalone, reproducible R code. Beyond a calculator, it provides statistical design guidance — helping users choose appropriate hypothesis tests, interpret effect sizes, plan interim analyses, and adjust for dropout. Supports full bilingual output (EN/CN) with automatic language detection.
+
+**CN:** 本技能是专用于**临床试验样本量与检验效能计算**的专家级工具。自动检测用户 R 环境，推荐最优计算路径（简单设计用 Python，复杂/精确设计用 R 专业包），完成计算并**强制输出可独立运行的 R 代码**。不仅是计算器，更提供统计设计决策支持 — 帮助用户选择假设检验类型、解读效应量、制定期中分析策略、调整脱落率。支持中英双语自动切换。
+
+---
+
 ## Language Detection / 语言检测
 
 **EN:** Detect from `<response_language>` tag or user input. Respond in the **same language**. All templates below are bilingual — use the matching version.
