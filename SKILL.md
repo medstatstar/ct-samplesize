@@ -1,9 +1,9 @@
 ---
 slug: ct-samplesize
-displayName: 临床试验样本量与检验效能计算专家 / Clinical Trial Sample Size Expert
+displayName: 临床试验样本量与检验效能计算专家 / Clinical Trial Sample Size & Power
 name: ct-samplesize
-cn_name: 临床试验样本量与检验效能计算专家 / Clinical Trial Sample Size Expert
-version: 3.3.0
+cn_name: 临床试验样本量与检验效能计算专家
+version: 3.3.1
 required_commands: [Rscript, python]
 summary: 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 30+ 种检验，100% 提供可复现 R 代码。
 license: MIT
@@ -70,7 +70,7 @@ metadata:
 
 > Auto detect → recommend → calculate & explain | 自动检测环境 → 推荐最优工具 → 完成计算与解释
 >
-> **⚠️ R Code Default Display**: Displays generated R code by default (dry-run). Add `-y/--yes` to execute. | **⚠️ R 代码默认展示**：默认展示 R 代码（dry-run）。添加 `-y/--yes` 执行。
+> **⚠️ R Code Always Shown**: Executes by default and returns results, **always showing the generated R code** for review. Use `--dry-run` to preview code only. | **⚠️ R 代码始终展示**：默认执行并返回结果，**始终附上生成的 R 代码**供浏览。加 `--dry-run` 仅预览代码、不执行。
 
 ## Purpose / 技能目的
 
@@ -115,10 +115,10 @@ metadata:
 
 ## ⚠️ Safety / 安全
 
-- R code is **displayed by default** (dry-run); `-y/--yes` required to execute
+- R code is **executed by default** and the code is **always displayed**; `--dry-run` previews code only (no execution)
 - All computations are local; no data transmission
 - Outputs for reference only; validate before regulatory submissions
-- 生成的 R 代码默认展示；`-y/--yes` 才执行
+- 默认**执行并返回结果**，且 R 代码**始终展示**；`--dry-run` 仅预览代码、不执行
 - 纯本地计算，无数据外传
 - 输出仅供参考，监管申报前需独立验证
 
@@ -126,7 +126,7 @@ metadata:
 
 ## Implementation / 实施
 
-> Default = dry-run (show R code). Add `-y/--yes` to execute. | 默认展示 R 代码，添加 `-y/--yes` 执行。
+> Default = execute & show R code. Add `--dry-run` to preview code only. | 默认执行并展示 R 代码，添加 `--dry-run` 仅预览代码。
 > **数据格式指南：** `references/data_format_guide.md`
 
 > **全部 31 种检验的命令行示例**见 `references/cli_examples.md` → *Implementation Examples*。
