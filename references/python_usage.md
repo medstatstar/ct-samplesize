@@ -75,8 +75,8 @@ python scripts/samplesize_power.py --test survival --hazard_ratio 0.7 --power 0.
 ```python
 import subprocess
 result = subprocess.run(
-    [r"C:\Tools\anaconda3\python.exe",
-     r"C:\Users\WintoneFileSrv\.workbuddy\skills\ct-samplesize\scripts\samplesize_power.py",
+    [r"%USERPROFILE%\AppData\Local\Programs\Python\313\python.exe",
+     r"%USERPROFILE%\.workbuddy\skills\ct-samplesize\scripts\samplesize_power.py",
      "--test", "ttest_ind", "--effect", "0.5", "--alpha", "0.05", "--power", "0.9"],
     capture_output=True, text=True, timeout=30
 )

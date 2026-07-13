@@ -1,21 +1,20 @@
 ---
+slug: ct-samplesize
+displayName: 临床试验样本量与检验效能计算专家 / Clinical Trial Sample Size Expert
 name: ct-samplesize
-cn_name: 临床样本量与检验效能计算专家 / Clinical Sample Size Expert
-version: 3.2.0
+cn_name: 临床试验样本量与检验效能计算专家 / Clinical Trial Sample Size Expert
+version: 3.3.0
 required_commands: [Rscript, python]
-required_environment_variables: []
-required_privileges: non-root
-description: "Clinical trial sample size & power calculator (v3.2): 18 test types, bilingual EN/CN. Executes R code locally via subprocess. R code display is on-demand. | 临床试验样本量计算专家(v3.2)：18种检验，中英双语，通过subprocess本地执行R代码，R代码展示按需索取。"
+summary: 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 30+ 种检验，100% 提供可复现 R 代码。
+license: MIT
+description: "Easy-to-use sample size & power calculator for clinical trial researchers. R backend + 20+ packages (rpact/gsDesign/TrialSize/PowerTOST). Natural language driven. 30+ test types. Bilingual EN/CN. 100% reproducible R code. | 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，用户仅需自然语言提示词，即可在中英双语菜单引导下完成 30+ 种复杂计算，且 100% 提供可复现 R 代码。"
 triggers:
   - "clinical trial sample size"
-  - "clinical trial power analysis"
+  - "clinical trial power"
   - "样本量计算"
   - "检验效能计算"
   - "临床试验 样本量"
   - "临床 trial 设计"
-  - "clinical trial statistics"
-  - "medical statistics design"
-  - "统计设计 临床试验"
   - "mixed model sample size"
   - "repeated measures power"
   - "diagnostic trial sample size"
@@ -38,286 +37,167 @@ triggers:
   - "组序贯 试验"
   - "多臂试验 设计"
   - "生存分析 样本量"
-  - "clinical mixed model power"
-  - "interim analysis trial"
-  - "adaptive design clinical"
-  - "group sequential clinical"
-  - "platform trial design"
-  - "survival power clinical trial"
+  - "win-ratio sample size"
+  - "must-win endpoints"
+  - "co-primary endpoints"
+  - "historical controls borrowing"
+  - "MAMS sample size"
+  - "conditional power"
+  - "sample size re-estimation"
+  - "assurance Bayesian"
+  - "superiority margin"
+  - "Dunnett comparisons"
+  - "mediation sample size"
+  - "复合终点 样本量"
+  - "历史对照 样本量"
+  - "样本量重估计"
+  - "贝叶斯确信度"
+  - "多臂多阶段 设计"
 metadata:
-  openclaw: { emoji: "📊", icon: "assets/icon.svg" }
+  openclaw: { emoji: "📊" }
   authors: ["medstatstar", "phoe-zip"]
-  version: "3.2.0"
-  license: "MIT-0"
-  tags: [clinical-trial, sample-size, power, statistics, biostatistics, R, experimental-design, interim-analysis, adaptive-design, group-sequential, bioequivalence, mixed-model, diagnostic-trial, cluster-randomized, bland-altman, poisson, vaccine-efficacy, dose-escalation, bayesian]
+  license: "MIT"
+  tags: [clinical-trial, sample-size, power, R, adaptive-design, bayesian, win-ratio]
   homepage: "https://github.com/medstatstar/ct-samplesize"
-  hermes: { platform: "Windows, macOS, Linux", required_binaries: [Rscript, python] }
-  required_binaries: [Rscript, python]
   permissions:
     scope: "user-space-only"
     network: "none"
     filesystem: "read-only (except temp R script in skill dir)"
-    execution: "Local R code execution via subprocess (Rscript). Generated R code runs on user's machine with their privileges. Explicit user confirmation required."
     data: "no external data transmission"
-    disclosure: "This skill writes temporary .R files to the skill's scripts/ directory and invokes Rscript via subprocess. Users should review generated R code before execution."
 ---
 
-# CT Sample Size & Power / 临床样本量与检验效能计算专家
+# Clinical Trial Sample Size & Power / 临床试验样本量与检验效能计算专家
 
-> Auto detect → recommend optimal tools → calculate & explain | 自动检测环境 → 推荐最优工具 → 完成计算与解释
+> Auto detect → recommend → calculate & explain | 自动检测环境 → 推荐最优工具 → 完成计算与解释
 >
-> **⚠️ Local R Execution | 本地 R 执行**: This skill executes generated R code locally on your machine via subprocess (Rscript). R code display is on demand (use "带代码"/"with R code" to show). Execution requires explicit user confirmation. | 本技能通过 subprocess(Rscript) 在本地机器上执行生成的 R 代码。R 代码展示按需索取（说"带代码"/"with R code"获取），执行需要用户显式确认。
-
----
+> **⚠️ R Code Default Display**: Displays generated R code by default (dry-run). Add `-y/--yes` to execute. | **⚠️ R 代码默认展示**：默认展示 R 代码（dry-run）。添加 `-y/--yes` 执行。
 
 ## Purpose / 技能目的
 
-**EN:** This skill is a specialized **clinical trial sample size & power calculation expert** supporting **18 test types** covering all major clinical trial scenarios. It auto-detects the user's R environment, recommends the optimal calculation path, and delivers a complete results report. Reproducible R code is available on demand. Supports bilingual EN/CN with automatic language detection. Menu-driven selection for rapid navigation.
+**CN:** 本技能为临床试验从业人员提供一整套简单易用的样本量与检验效能计算工具。后台以 R 软件及 rpact/gsDesign/TrialSize/PowerTOST 等 20+ R 工具包为依托，用户只需使用自然语言对话方式的提示词，就可以在中英双语的菜单式引导下，完成 30+ 种复杂专业的样本量与检验效能计算工作。且 **100% 提供可复现 R 代码**，供用户核查、递交代码或修改后重跑。
 
-**CN:** 本技能是专用于**临床试验样本量与检验效能计算**的专家级工具，支持 **18 种检验类型**，覆盖全部主要临床试验场景。自动检测用户 R 环境，推荐最优计算路径，输出完整结果报告。可复现 R 代码按需索取。中英双语自动切换。菜单式引导快速定位功能。
-
----
-
-## Language Detection / 语言检测
-
-**EN:** Detect from `<response_language>` tag or user input. Respond in the **same language**. All templates below are bilingual — use the matching version.
-
-**CN:** 从 `<response_language>` 标签或用户输入语言自动检测，用**同一种语言**回复。以下模板均为中英双语，选择对应版本。
+**EN:** This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. Powered by R and 20+ professional R packages (rpact, gsDesign, TrialSize, PowerTOST, etc.), users can perform 30+ complex calculations through natural language prompts — bilingual EN/CN menu-driven. **100% reproducible R code** for verification, submission, or re-execution.
 
 ---
 
-## 🔷 Quick Menu / 快速引导菜单
+## Features / 功能特性
 
-> **Step 1 — Select primary endpoint type:** | **第一步 — 选择主要终点类型：**
+除基础的"给定目标效能 → 求解样本量"外，本技能还提供三项进阶能力，覆盖方案设计阶段最常见的分析需求：
 
-| Category 类别 | Test Type 检验类型 | Clinical Scenario 临床场景 | R 包 / 方法 |
-|:---|:---|:---|:---|
-| **Continuous 连续变量** | `ttest_ind` | 两均数比较（平行设计） | `pwr`, `TrialSize` |
-| | `ttest_paired` | 配对t / 交叉设计2×2 | `pwr`, `TrialSize` |
-| | `anova` | 多组比较（k组） | `pwr`, `TrialSize` |
-| | `equivalence` | 等效性检验（均数） | `TrialSize` |
-| | `mixed_model` | **重复测量 / 纵向数据** | `simr` |
-| **Binary 二分类** | `proportion_one` | 单组率检验 | `pwr` |
-| | `proportion_two` | 两组率比较（卡方） | `pwr`, `TrialSize` |
-| | `non_inferiority` | 非劣效设计（率） | `TrialSize` |
-| | `be_tost` | **生物等效性 (TOST)** | `PowerTOST` |
-| **计数/事件率** | `poisson` | **Poisson率 / 复发性事件** | Wald 检验 |
-| | `vaccine_efficacy` | **疫苗效力** | Halloran 公式 |
-| **Time-to-Event 生存** | `survival` | 生存分析（简化） | Schoenfeld 公式 |
-| | `survival_exact` | 生存分析（精确） | `rpact` |
-| **诊断/方法学** | `roc` | **ROC曲线 / 诊断试验** | `pROC` |
-| | `bland_altman` | **Bland-Altman方法学比对** | Lu et al. 公式 |
-| **特殊设计** | `cluster` | **类随机设计** | DEFF 公式 |
-| | `multiple_endpoints` | **多终点 / 复合终点** | 相关系数法 |
-| | `bayesian` | **贝叶斯设计** | `BayesCTDesign` |
-| | `dose_escalation` | **剂量递增 (I期)** | `escalation` |
-| | `group_sequential` | **组序贯 / 期中分析** | `gsDesign`, `rpact` |
-| | `adaptive` | **适应性设计** | `rpact` |
+| 能力 | 说明 | 典型场景 |
+|:---|:---|:---|
+| **① 样本量 ⇄ 检验效能 双向计算** | 除正向求解样本量外，支持给定固定样本量反解可达检验效能（power）。`--power`（正向）与 `--nobs`（反向）互斥，覆盖全部 31 种检验类型。 | 样本量已定，评估把握度是否达标 |
+| **② 样本量变化曲线图** | 给定一组样本量序列，批量计算并绘制 **Power 曲线**（横轴=样本量，纵轴=检验效能），直观呈现"样本量越大、效能越高"的走势，并叠加目标效能参考线。 | 样本量敏感性分析、方案汇报 |
+| **③ 检验效能变化曲线图** | 给定一组效能目标序列，批量计算并绘制 **样本量曲线**（横轴=目标效能，纵轴=所需样本量），一眼看出"要达到某把握度需多少样本"。 | 资源规划、可行性评估 |
 
-> **Step 2 — If unsure, answer these three questions:** | **第二步 — 如不确定，回答以下三个问题：**
+- ② ③ 曲线模式支持**两种序列输入**：显式列表 `"20,40,200"` 或自动生成 `"20:20:200"`（起:步:止），并可叠加多条效应量曲线做敏感性分析，默认输出 PNG 并附数据表。
+- ① 的反向求解与 ②③ 的曲线均**复用与单点求解同一套已验证公式**，数值完全一致。
+- 详细命令参数、31 种检验示例与曲线支持的检验类型清单，分别见下方 *Implementation / 实施* 与 `references/cli_examples.md`。
 
-1. **Primary endpoint type?** (Continuous / Binary / Time-to-Event / Count / Other)
-   **主要终点类型？** (连续 / 二分类 / 生存 / 计数 / 其他)
-2. **Hypothesis?** (Superiority / Non-inferiority / Equivalence / Other)
-   **假设检验？** (优效 / 非劣效 / 等效 / 其他)
-3. **Design complexity?** (Parallel / Paired / Repeated / Cluster / Other)
-   **设计复杂度？** (平行 / 配对 / 重复测量 / 类随机 / 其他)
+---
+
+## Quick Menu / 快速引导菜单
+
+> 完整检验类型对照表与全部命令行示例见 `references/cli_examples.md`（含 31 种检验、双向求解、曲线模式、R 包安装）。
+
+> **如何选择：** 1️⃣ 终点类型 2️⃣ 假设方向 3️⃣ 设计复杂度；不确定时从该参考文件查表。
 
 ---
 
 ## Requirements / 要求
 
-| Requirement 要求 | Details 详情 |
-|:-----------|:-----------|
-| **R** | ≥ 4.1.0 + rpact, gsDesign, TrialSize, pwr, PowerTOST, simr, pROC, BlandAltmanLeh, BayesCTDesign, escalation |
+| Requirement | Details |
+|:---|:---|
+| **R** | ≥ 4.1.0（按需安装，详见 `references/r_packages_zh.md`）|
 | **Python** | ≥ 3.8 + statsmodels==0.14.2, numpy==1.24.3, scipy==1.11.4 |
-| **Privileges 权限** | non-root（所有计算在用户空间完成）|
-
-## ⚠️ User Warnings / 用户安全提示
-
-**EN:**
-- This skill generates and executes R code locally on your machine.
-- Review all R code BEFORE execution (use `--dry-run` first).
-- Never paste untrusted parameters into CLI arguments.
-- Outputs are for reference only; validate results before using in regulatory submissions.
-- R execution requires explicit `-y`/`--yes` flag confirmation.
-
-**CN:**
-- 本技能会在你的机器本地生成并执行 R 代码。
-- 执行前务必先审查所有 R 代码（先用 `--dry-run` 查看）。
-- 不要将不受信任的参数粘贴到命令行参数中。
-- 输出仅供参考，用于监管申报前需独立验证结果。
-- R 执行需要显式的 `-y`/`--yes` 标志确认。
-
-## Phase 1: Environment Detection / 环境检测
-
-**Step 1 — Detect R / 检测 R** (System PATH → Default path → Registry query)
-
-| R Status | Behavior |
-|:---------|:---------|
-| **Installed 已安装** | Report version + check packages |
-| **Not Installed 未安装** | ⚠️ Strongly recommend install + offer Python fallback |
-| **Refused 被拒** | ⚠️ Python for simple designs only; explain limitations |
-
-**Step 2 — Collect Requirements / 收集需求**
-
-| Parameter | Example |
-|:----------|:--------|
-| Design Type 设计类型 | Parallel / Crossover / Group Sequential / Longitudinal |
-| Primary Endpoint 主要终点 | Continuous / Binary / Time-to-Event / Count |
-| Hypothesis 假设检验 | Superiority / Non-inferiority / Equivalence |
-| Effect 期望效应 | HR=0.75 / Cohen's d=0.5 / AUC=0.75 |
-| α, power | Two-sided 0.05 / 0.85 |
-| Dropout Rate 脱落率 | 10% |
-
-> **EN/CN:** 参数缺失时先给默认值(α=0.05, power=0.80)的初步结果，再逐步调参。
 
 ---
 
-## Phase 2: Tool Selection / 工具选择
+## ⚠️ Safety / 安全
 
-```
-User need
-├── "Simple" → Python ✅ (auto-generate R code)
-│   ├── ttest_ind, ttest_paired, anova
-│   ├── proportion_one, proportion_two
-│   ├── non_inferiority (prop, approx)
-│   ├── survival (Schoenfeld approx)
-│   └── roc, bland_altman (formula)
-│
-├── "Advanced" → R required ⭐
-│   ├── Group Sequential → gsDesign / rpact
-│   ├── Adaptive Design → rpact
-│   ├── Mixed Model (repeated measures) → simr
-│   ├── Bioequivalence → PowerTOST
-│   ├── Exact Survival → rpact / gsDesign
-│   ├── Poisson Rate → Wald test
-│   ├── Cluster Randomized → DEFF method
-│   ├── Vaccine Efficacy → Halloran formula
-│   ├── Multiple Endpoints → correlation method
-│   ├── Bayesian Design → BayesCTDesign
-│   └── Dose Escalation → escalation
-│
-└── "Cross-validation" → Python + R combined
-```
-
----
-
-## Phase 3: Result Standards / 结果标准
-
-> **📋 Output Rule | 输出规则**: 每次分析必须给出完整结果报告（参数 + 结论 + 解释）。可复现 R 代码默认**不展示**，仅在用户明确要求时提供。
-
-| Item 项目 | Mandatory 强制性 | Default 默认 |
-|:---------|:----------------:|:---------:|
-| Input Parameters 输入参数 | ✅ | ✅ 展示 |
-| Calculation Result 计算结果 | ✅ | ✅ 展示 |
-| Interpretation 结果解释 | ✅ | ✅ 展示 |
-| Assumptions 前提假设 | ✅ | ✅ 展示 |
-| Dropout Adjustment 脱落调整 | ✅ | ✅ 展示 |
-| Reproducible R Code 可复现R代码 | ✅ | ❌ **隐藏**（用户要求时提供） |
-
-**R 代码触发短语 / R Code Trigger Phrases:**
-| 中文 | English |
-|:------|:---------|
-| "带代码" | "with R code" |
-| "输出R代码" | "output R code" |
-| "给代码" | "show me the code" |
-| "review 一下代码" | "review the code" |
-| "展示R code" | "display R code" |
-| "我需要复现代码" | "I need the code" |
-| "coderef" (缩写) | "R code please" |
-
-**使用触发短语时的行为:**
-1. 展示完整可运行的 R 代码
-2. 确保代码包含所有必要注释和包引用
-3. 同时仍提供文字解释
+- R code is **displayed by default** (dry-run); `-y/--yes` required to execute
+- All computations are local; no data transmission
+- Outputs for reference only; validate before regulatory submissions
+- 生成的 R 代码默认展示；`-y/--yes` 才执行
+- 纯本地计算，无数据外传
+- 输出仅供参考，监管申报前需独立验证
 
 ---
 
 ## Implementation / 实施
 
-**Full docs:** `references/extended_functions.md`
+> Default = dry-run (show R code). Add `-y/--yes` to execute. | 默认展示 R 代码，添加 `-y/--yes` 执行。
+> **数据格式指南：** `references/data_format_guide.md`
 
-> **EN:** ℹ️ Default mode is dry-run (R code shown, NOT executed). Add `-y`/`--yes` to execute after reviewing.
-> **CN:** ℹ️ 默认为 dry-run 模式（仅显示 R 代码，不执行）。添加 `-y`/`--yes` 在审查后执行。
+> **全部 31 种检验的命令行示例**见 `references/cli_examples.md` → *Implementation Examples*。
 
-```bash
-# === Continuous / 连续变量 ===
-python scripts/samplesize_power.py --test ttest_ind --effect 0.5 --power 0.8
-python scripts/samplesize_power.py --test ttest_paired --effect 0.5 --power 0.8
-python scripts/samplesize_power.py --test anova --effect 0.25 --k_groups 3 --power 0.8
-python scripts/samplesize_power.py --test equivalence --margin 2.0 --effect 3.0 --power 0.8
-python scripts/samplesize_power.py --test mixed_model --effect 0.5 --nsim 500
+### 双向求解：给定样本量求效能 / Reverse — Power given N
 
-# === Binary / 二分类 ===
-python scripts/samplesize_power.py --test proportion_two --p1 0.3 --p2 0.15 --power 0.8
-python scripts/samplesize_power.py --test non_inferiority --margin 0.1 --p1 0.85 --p2 0.80 --power 0.8
-python scripts/samplesize_power.py --test be_tost --theta0 0.95 --cv 0.25 --design "2x2"
+默认 `--power`（或省略）为**正向**：给定目标效能 → 求解所需样本量 `n`。
+传入 `--nobs N` 切换为**反向**：给定样本量 → 求解可达检验效能（power）。
+`--power` 与 `--nobs` **互斥**，同时传入时以 `--nobs` 为准。
 
-# === Count / 计数 ===
-python scripts/samplesize_power.py --test poisson --lambda1 0.05 --lambda2 0.03 --t1 2 --t2 2 --power 0.8
-python scripts/samplesize_power.py --test vaccine_efficacy --ve_control 0.02 --ve_treatment 0.005 --power 0.8
+Bidirectional solving: omit `--nobs` (or set `--power`) to solve for **n** given target power;
+pass `--nobs N` to solve for **achieved power** given a fixed sample size. The two flags are mutually exclusive.
 
-# === Survival / 生存 ===
-python scripts/samplesize_power.py --test survival --hazard_ratio 0.75 --power 0.85
+> **反向求解命令行示例**见 `references/cli_examples.md` → *Reverse Examples*。
 
-# === Diagnostic / Method Comparison / 诊断/方法学比对 ===
-python scripts/samplesize_power.py --test roc --auc0 0.5 --auc1 0.75 --power 0.8
-python scripts/samplesize_power.py --test bland_altman --sd_diff 5 --w 2.5
+**覆盖全部 31 种检验类型 / Covers all 31 test types.** 反向求解实现策略：
+- **原生包反解**（优先）：`pwr.*`（`pwr.t.test(n=)` 等自动反解）、`PowerTOST::power.TOST(n=)`、`rpact::getPowerMeans/getPowerSurvival(n=)`，精确反解。
+- **解析逆公式**：自写检验（ROC、Poisson、疫苗效力、多终点、贝叶斯、Win Ratio、MAMS 等）通过非中心参数逆推 `z_b`，再 `power = pnorm(z_b)`。
+- **近似/精度型**：`bland_altman` 回报可达 CI 半宽（精度而非效能）；`dose_escalation` 为启发式设计，效能不适用；`conditional_power`/`assurance` 的 `--nobs` 直接映射至计划样本量/保证样本量。
 
-# === Special Designs / 特殊设计 ===
-python scripts/samplesize_power.py --test cluster --icc 0.05 --m 30 --n_indiv 64
-python scripts/samplesize_power.py --test multiple_endpoints --effect 0.3 --correlation 0.5
-python scripts/samplesize_power.py --test bayesian --prob_control 0.3 --prob_treatment 0.15 --prior_a0 0.5
-python scripts/samplesize_power.py --test dose_escalation --n_doses 5 --target_dlt 0.33
-```
+*注：部分类型（如 `roc` 需 `--auc1`/`--effect`、`mixed_model` 需 `--effect_name`）在双向均要求提供必需参数，缺失时返回参数校验错误（符合预期）。*
+
+### 曲线模式：Power / Sample-size 曲线
+
+在双向求解基础上，支持**批量绘制曲线**，直观展示样本量与检验效能的关系。
+
+- `--n_seq`：给定样本量序列 → 绘制 **Power 曲线**（x=样本量, y=效能）
+- `--power_seq`：给定效能序列 → 绘制 **样本量曲线**（x=效能, y=样本量）
+- 序列支持两种格式（均支持）：
+  - **显式列表**：`"20,40,200"`
+  - **自动生成**：`"20:20:200"`（起:步:止，自动展开为 20,40,…,200）
+- `--plot_effects "0.3,0.5,0.8"`：多效应量叠加多条曲线（敏感性分析，仅部分类型支持）
+- `--out path.png`：指定 PNG 输出路径（默认写入系统临时目录）
+
+> **曲线模式命令行示例**见 `references/cli_examples.md` → *Curve Mode Examples*。
+
+**曲线模式支持的检验类型（22 种）**：ttest_ind、ttest_paired、ttest_one、anova、proportion_one、proportion_two、proportion_paired、odds_ratio、risk_ratio、roc、poisson、non_inferiority、superiority_margin、be_tost、survival、ni_survival、mams、dunnett、group_sequential、survival_exact、equivalence、vaccine_efficacy。
+
+曲线复用与单点求解**同一套已验证公式**（pwr / PowerTOST / 解析逆公式），数值完全一致；`group_sequential`、`survival_exact` 采用固定设计 / Schoenfeld 近似（图注已标注）。
+
+其余类型（mixed_model、bayesian、win_ratio、must_win、historical_controls、assurance、conditional_power、adaptive、dose_escalation、bland_altman、cluster）曲线模式暂未覆盖，运行时会给出清晰提示。
+
+### R 包安装
+
+- **一键安装**：`python scripts/samplesize_power.py --install-all-packages`
+- 完整 R 包清单与按需安装说明见 `references/cli_examples.md` → *R 包安装* 及 `references/r_packages_zh.md`。
 
 ---
 
-## Formula & Report / 公式与报告
+## Formulas & Reports / 公式与报告
 
-**Formulas:** `references/formulas_zh.md` | **Extended:** `references/extended_functions.md`
+**公式：** `references/formulas_zh.md` | **完整函数：** `references/extended_functions.md`
 
 | Scenario | Formula |
-|:---------|:--------|
-| Independent t (equal) | $n_1 = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{d})^2$ |
+|:---|:---|
+| Independent t | $n_1 = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{d})^2$ |
 | Proportion (arcsin) | $n = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{h})^2$ |
 | Survival (Schoenfeld) | $d = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(\log HR)^2}$ |
-| ROC (Obuchowski) | $n = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{4(\arcsin\sqrt{AUC_1} - \arcsin\sqrt{AUC_0})^2}$ |
 | Cluster DEFF | $DEFF = 1 + (m - 1) \times ICC$ |
-| Bland-Altman | $n = 2(\frac{Z_{1-\alpha/2} \times SD_{diff}}{W})^2$ |
-
-**Effect size:** `references/effect_size.md` | **Report template:** `references/report_template.md`
 
 ---
 
-## Common Errors / 常见错误
+## Errors / 常见错误
 
-| Error 错误 | Fix 解决 |
-|:----------|:--------|
+| Error | Fix |
+|:---|:---|
 | "Rscript not found" | Install R or specify path |
 | "package not found" | install.packages("xxx") |
-| ImportError: statsmodels | Anaconda: pip install statsmodels |
-| simr timeout | Reduce --nsim or simplify model |
+| ImportError: statsmodels | pip install statsmodels |
+| simr timeout | Reduce --nsim |
 
 ---
 
-## Usage Examples / 使用示例
-
-See `references/examples.md` for complete walkthroughs with bilingual output + R code.
-
----
-
-## References / 参考文献
-
-- rpact: https://www.rpact.org/
-- gsDesign: https://keaven.github.io/gsDesign/
-- TrialSize: https://cran.r-project.org/web/packages/TrialSize/
-- PowerTOST: https://cran.r-project.org/web/packages/PowerTOST/
-- simr: https://github.com/pitakakariki/simr
-- BayesCTDesign: https://cran.r-project.org/web/packages/BayesCTDesign/
-- CRAN ClinicalTrials View: https://cran.r-project.org/web/views/ClinicalTrials.html
-
----
-
-**Version**: v3.2.0 | **Created**: 2026-07-12 | **Updated**: 2026-07-12 | **License**: MIT-0
+**Version**: v3.3.0 | **Updated**: 2026-07-13 | **License**: MIT
