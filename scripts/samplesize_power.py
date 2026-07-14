@@ -241,7 +241,10 @@ def main():
                    help="(默认即执行)显式执行 R 代码，保留以兼容旧命令")
     p.add_argument("--dry-run", action="store_true",
                    help="只展示生成的 R 代码、不执行（安全预览模式）")
-    p.add_argument("--install-all-packages", action="store_true", help="Install all R packages used by this skill")
+    p.add_argument("--install-all-packages", action="store_true",
+                   help="打印(默认)本技能所需 R 包的 install.packages() 命令供人工审阅；不联网安装")
+    p.add_argument("--run-install", action="store_true",
+                   help="配合 --install-all-packages 使用：显式确认后才真正联网执行 install.packages()")
     # ── Common ──
     p.add_argument("--alpha", type=float, default=0.05)
     p.add_argument("--power", type=float, default=0.8, help="目标检验效能 (与 --nobs 互斥)")
@@ -415,14 +418,29 @@ def main():
         sys.exit(1)
 
     if args.install_all_packages:
-        print("Installing all R packages used by ct-samplesize...")
+        pkgs = ["TrialSize", "pwr", "rpact", "gsDesign", "PowerTOST",
+                "simr", "lme4", "pROC", "powerSurvEpi", "survival"]
+        r_cmd = (
+            'pkgs <- c(%s)\n'
+            'install.packages(pkgs, repos="https://cran.r-project.org")\n'
+            % ", ".join('"%s"' % p for p in pkgs)
+        )
+        if not args.run_install:
+            # 默认安全模式：只打印命令，不联网安装
+            print("=" * 60)
+            print("[R 包安装命令 — 仅供审阅，未执行]")
+            print("=" * 60)
+            print(r_cmd)
+            print("=" * 60)
+            print("此命令会从 CRAN 联网下载并安装 %d 个 R 包。" % len(pkgs))
+            print("如确认无误，请重新运行并追加 --run-install 才会真正安装：")
+            print("  python samplesize_power.py --install-all-packages --run-install")
+            print("或在 R 控制台中手动粘贴上述命令自行安装。")
+            return
+        # 显式二次确认后才执行
+        print("Installing all R packages used by ct-samplesize (--run-install confirmed)...")
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        r_script = """
-pkgs <- c("TrialSize", "pwr", "rpact", "gsDesign", "PowerTOST",
-          "simr", "lme4", "pROC", "powerSurvEpi", "survival")
-install.packages(pkgs, repos="https://cran.r-project.org")
-cat("\nDone. Installed", length(pkgs), "packages.\n")
-"""
+        r_script = r_cmd + 'cat("\\nDone. Installed", length(pkgs), "packages.\\n")\n'
         r_file = os.path.join(script_dir, "_install_packages.R")
         with open(r_file, "w") as f:
             f.write(r_script)
@@ -430,9 +448,9 @@ cat("\nDone. Installed", length(pkgs), "packages.\n")
         if rscript:
             import subprocess
             result = subprocess.run([rscript, r_file], capture_output=True, text=True, timeout=600)
-            print(result.stdout)
+            print(sanitize_output(result.stdout))
             if result.stderr:
-                print(result.stderr)
+                print(sanitize_output(result.stderr))
         else:
             print("[ERROR] Rscript not found. Is R installed?")
         return

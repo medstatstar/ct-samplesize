@@ -16,39 +16,37 @@ cat("Approximate total (3+3):", {n_doses} * 4, "-", {n_doses} * 4 + 6, "\\n")
 """
 
 R_WIN_RATIO = """
-library(BuyseTest)
-# Win-Ratio sample size via BuyseTest power simulation
-set.seed(42)
+# Win-Ratio sample size: closed-form log(Win-Ratio) normal approximation
+# (NOT a BuyseTest Monte-Carlo simulation; no external package required)
 # Parameters
 win_ratio <- {win_ratio_theta}     # Expected win-ratio
 alpha_val <- {alpha}; power_val <- {power}
-n_per_group <- {n_sim_initial}     # Initial guess for simulation
-n_sim <- {n_sim}                   # Number of simulations
 # Effect size approximation (log scale)
 log_wr <- log(win_ratio)
 se_approx <- {se_approx}           # Standard error approximation
 n_required <- ceiling(((qnorm(1-alpha_val/2) + qnorm(power_val)) / log_wr)^2 / se_approx^2)
 cat("\\n========== Win-Ratio Composite Endpoint ==========\\n")
+cat("Method: closed-form log(WR) normal approximation\\n")
 cat("Expected Win-Ratio:", win_ratio, "\\n")
 cat("SE approximation:", se_approx, "\\n")
 cat("Alpha:", alpha_val, "Power:", power_val, "\\n")
 cat("N per group:", n_required, "Total:", 2 * n_required, "\\n")
-cat("\\nNote: For precise calculation, use BuyseTest::powerBuyseTest() with\\n")
-cat("      actual event time data and prioritization rules.\\n")
+cat("\\nNote: This is an approximation. For a precise design use\\n")
+cat("      BuyseTest::powerBuyseTest() with actual event-time data\\n")
+cat("      and prioritization rules (requires installing BuyseTest).\\n")
 """
 
 R_MUST_WIN = """
 # Must-Win / Co-Primary Endpoints (2-5 endpoints)
 # All endpoints must be statistically significant
-set.seed(42)
 alpha_val <- {alpha}
 n_endpoints <- {n_endpoints_must}    # Number of co-primary endpoints
 corr <- {correlation_must}           # Assumed correlation between endpoints
 effect <- {effect_must}              # Standardized effect size per endpoint
-# Bonferroni-adjusted power per endpoint to achieve overall power
-# Using Dunnett-type correction for correlated endpoints
+# Per-endpoint power via Sidak-type split of the overall power target
+# (NOT a validated Dunnett multiple-comparison procedure)
 power_per_endpoint <- 1 - (1 - {power})^(1/n_endpoints)
-# Inflation factor for correlations
+# Heuristic correlation inflation factor (approximate, not validated)
 inflation <- 1 + (n_endpoints - 1) * corr * 0.5
 n_per_endpoint <- ceiling(((qnorm(1-alpha_val/2) + qnorm(power_per_endpoint))^2) / effect^2)
 n_required <- ceiling(n_per_endpoint * inflation)
@@ -63,9 +61,8 @@ cat("N per group (inflated):", n_required, "\\n")
 """
 
 R_DUNNETT = """
-library(MCPAN)
 # Dunnett comparisons (multiple treatments vs. single control)
-set.seed(42)
+# Closed-form critical-value approximation (no external package required)
 alpha_val <- {alpha}; power_val <- {power}
 k <- {n_groups_dunnett}          # Number of treatment groups (excl. control)
 n_control <- {n_control_dunnett}   # N in control group
@@ -92,22 +89,19 @@ cat("Total N:", total_n, "\\n")
 """
 
 R_MEDIATION = """
-library(powerMediation)
-# Mediation effects sample size
-set.seed(42)
+# Mediation effects sample size: Sobel-test closed-form approximation
+# (no external package required)
 alpha_val <- {alpha}; power_val <- {power}
 a <- {a_path}                # a-path (treatment -> mediator)
 b <- {b_path}                # b-path (mediator -> outcome)
 sigma2_m <- {sigma2_m}       # Variance of mediator
 sigma2_y <- {sigma2_y}       # Variance of outcome
 cprime <- {cprime}           # c' (direct effect)
-n_sim <- {n_sim_mediation}   # Simulations
 # Sobel test approximation for mediation
 # Product-of-coefficients: a*b
 indirect_effect <- a * b
 se_sobel <- sqrt(a^2 * (sigma2_y/b^2) + b^2 * sigma2_m)
 n_sobel <- ceiling(((qnorm(1-alpha_val/2) + qnorm(power_val))^2 * se_sobel^2) / indirect_effect^2)
-# Monte Carlo approach (more accurate)
 cat("\\n========== Mediation Effects ==========\\n")
 cat("a-path (treatment -> mediator):", a, "\\n")
 cat("b-path (mediator -> outcome):", b, "\\n")

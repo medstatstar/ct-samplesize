@@ -71,6 +71,8 @@ metadata:
 > Auto detect → recommend → calculate & explain | 自动检测环境 → 推荐最优工具 → 完成计算与解释
 >
 > **⚠️ R Code Always Shown**: Executes by default and returns results, **always showing the generated R code** for review. Use `--dry-run` to preview code only. | **⚠️ R 代码始终展示**：默认执行并返回结果，**始终附上生成的 R 代码**供浏览。加 `--dry-run` 仅预览代码、不执行。
+>
+> **Output language / 输出语言**: Explanations follow the user's language by default (bilingual EN/CN menus are available on request); this is a preference, not a hard requirement. | 解释默认跟随用户使用的语言（如需可提供中英双语菜单引导）；此为偏好而非强制。
 
 ## Purpose / 技能目的
 
@@ -122,6 +124,18 @@ metadata:
 - 纯本地计算，无数据外传
 - 输出仅供参考，监管申报前需独立验证
 
+### Security model / 安全模型（透明披露）
+
+本技能的行为已在此显式披露，便于审计：
+
+| 行为 | 说明 |
+|:---|:---|
+| **本地进程调用** | 通过 `subprocess.run([Rscript, '--vanilla', tmp])` 在本地运行动态生成的 R 代码，超时 300s；不启动网络服务、不执行任意用户输入命令。 |
+| **R 代码来源** | 全部由本技能内置模板参数化生成（`scripts/r_templates/`），无静态 `.R` 文件、不下载远程脚本。生成的代码始终打印供审阅。 |
+| **输出脱敏** | R 的 stdout/stderr 经 `sanitize_output()` 过滤本地绝对路径并截断超长内容后再展示，避免泄露环境信息或注入过长内容。 |
+| **网络访问** | 常规计算**全程离线**。唯一联网点是 R 包安装，且**默认只打印命令不执行**，须显式追加 `--run-install` 才会从 CRAN 下载安装（供应链风险由用户知情后触发）。 |
+| **文件系统** | 仅在技能目录/系统临时目录写入临时 R 脚本，用后即弃；不读写用户数据文件。 |
+
 ---
 
 ## Implementation / 实施
@@ -169,9 +183,15 @@ pass `--nobs N` to solve for **achieved power** given a fixed sample size. The t
 
 其余类型（mixed_model、bayesian、win_ratio、must_win、historical_controls、assurance、conditional_power、adaptive、dose_escalation、bland_altman、cluster）曲线模式暂未覆盖，运行时会给出清晰提示。
 
-### R 包安装
+### R 包安装（默认仅打印命令，需二次确认）
 
-- **一键安装**：`python scripts/samplesize_power.py --install-all-packages`
+出于供应链安全考虑，本技能**不会自动联网安装** R 包：
+
+- **查看安装命令（默认，安全）**：`python scripts/samplesize_power.py --install-all-packages`
+  仅打印 `install.packages()` 命令供人工审阅，**不联网、不执行**。
+- **确认后真正安装**：`python scripts/samplesize_power.py --install-all-packages --run-install`
+  显式追加 `--run-install` 才会从 CRAN 联网下载并安装 10 个 R 包。
+- 也可将打印出的命令复制到 R 控制台中手动执行，完全避免脚本联网。
 - 完整 R 包清单与按需安装说明见 `references/cli_examples.md` → *R 包安装* 及 `references/r_packages_zh.md`。
 
 ---
