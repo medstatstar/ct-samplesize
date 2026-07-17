@@ -4,9 +4,9 @@
 
 > **面向临床试验从业者的易用型样本量与检验效能计算工具**
 >
-> 本技能为临床试验从业人员提供一整套简单易用的样本量与检验效能计算工具。后台以 R 软件及 rpact/gsDesign/TrialSize/PowerTOST 等 20+ R工具包为依托，用户只需使用自然语言对话方式的提示词，就可以在中英双语的菜单式引导下，完成30+ 种复杂专业的样本量与检验效能计算工作。且**100% 提供可复现 R 代码**，供用户核查、递交代码或修改后重跑。
+> 本技能为临床试验从业人员提供一整套简单易用的样本量与检验效能计算工具。后台以 R 软件及 rpact/gsDesign/TrialSize/PowerTOST 等 20+ R工具包为依托，用户只需使用自然语言对话方式的提示词，即可完成（默认英文输出，OS 中文环境时自动切换中文）37 种复杂专业的样本量与检验效能计算工作。可**应要求提供可复现 R 代码**（默认不展示），供用户核查、递交代码或修改后重跑。
 >
-> **⚠️ R 代码默认展示**：默认展示 R 代码（dry-run），添加 `-y/--yes` 执行。
+> **⚠️ R 代码默认不展示**：默认执行并返回结果、不展示 R 代码；仅当要求时提供（用 `--show-code` 展示，或 `--dry-run` 仅预览）。
 
 ---
 
@@ -47,7 +47,7 @@ install.packages(c("TrialSize","pwr","rpact","gsDesign","PowerTOST","simr","lme4
 
 ---
 
-## 支持的检验类型（30+）
+## 支持的检验类型（37）
 
 | 分类 | 检验类型 | 临床场景 | R 包 / 方法 |
 |:---|:---|:---|:---|
@@ -218,7 +218,7 @@ python scripts/samplesize_power.py --test ttest_ind --power_seq "0.6:0.05:0.95" 
 
 ## 安全与声明
 
-- 生成的 R 代码默认展示（dry-run）；`-y/--yes` 才执行
+- 生成的 R 代码默认不展示；`--show-code` 执行并展示，`--dry-run` 仅预览不执行
 - 纯本地计算，无数据外传
 - 输出仅供参考，监管申报前需独立验证
 
@@ -228,10 +228,10 @@ python scripts/samplesize_power.py --test ttest_ind --power_seq "0.6:0.05:0.95" 
 
 ```
 ct-samplesize/
-├── SKILL.md              ← 技能定义（中英双语，精简版）
+├── SKILL.md              ← 技能定义（默认英文，OS 中文环境自动切换中文）
 ├── README.md             ← 英文版说明
 ├── README_ZH.md          ← 中文版说明（当前）
-├── AGENTS.md             ← 核心执行规则（中英双语）
+├── AGENTS.md             ← 核心执行规则（默认英文，OS 中文环境自动切换中文）
 ├── assets/
 │   └── icon.svg          ← 技能图标 (104×104)
 ├── scripts/
@@ -242,7 +242,7 @@ ct-samplesize/
     ├── python_usage.md      ← Python 速查
     ├── r_usage.md           ← R 速查
     ├── effect_size.md       ← 效应量标准 (d/f/h + Z 值表)
-    ├── report_template.md   ← 汇报模板 + 强制 R 代码模板
+    ├── report_template.md   ← 汇报模板 + 按需 R 代码模板
     ├── data_format_guide.md ← 31 种检验数据框架 + 示例
     └── examples.md          ← 3 个完整走查（率比较/GS/非劣效）
 ```
@@ -253,10 +253,10 @@ ct-samplesize/
 
 1. **智能环境检测**：每次触发自动检测 R 安装
 2. **双路径**：Python（简单）+ R（精确）
-3. **强制 R 代码**：无论哪种路径，始终提供可复现 R 代码
+3. **按需 R 代码**：仅当使用者明确要求时提供可复现 R 代码；默认回复提示可提供
 4. **全面**：20+ R 包，完整公式推导，3 个完整示例
 5. **自然语言**：日常语言描述试验设计即可
-6. **中英双语**：完整 EN/CN 支持，自动检测语言
+6. **语言**：默认英文，OS 中文环境时自动切换中文
 
 ---
 
@@ -283,4 +283,4 @@ https://github.com/medstatstar/ct-samplesize
 
 ---
 
-**Version**: v3.3.0 | **License**: MIT | **Authors**: medstatstar, phoe-zip
+**Version**: v3.3.2 | **License**: MIT | **Authors**: medstatstar, phoe-zip

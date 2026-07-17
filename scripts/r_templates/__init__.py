@@ -1,12 +1,21 @@
 # ct-samplesize R template package
+from .r_t_tests import *
+from .r_non_inferiority import *
+from .r_survival_simple import *
 from .r_survival import *
 from .r_bayesian_adaptive import *
 from .r_proportions_rates import *
+from .r_proportions import *
 from .r_equivalence import *
 from .r_design_special import *
+from .r_mixed_model import *
 from .r_curve import *
 
 __all__ = [
+    "R_T_TESTS",
+    "R_NON_INFERIORITY",
+    "R_SURVIVAL_SIMPLE",
+    "R_PROP_FUNCS",
     "R_NI_SURVIVAL",
     "R_SURVIVAL_EXACT",
     "R_BAYESIAN",
@@ -30,6 +39,7 @@ __all__ = [
     "R_DUNNETT",
     "R_MEDIATION",
     "R_GROUP_SEQUENTIAL",
+    "R_MIXED_MODEL",
     "CURVE_SOLVERS",
     "_CURVE_POWER_SINGLE",
     "_CURVE_POWER_MULTI",

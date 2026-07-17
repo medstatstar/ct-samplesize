@@ -42,6 +42,38 @@ def find_rscript():
             return d
     return None
 
+def is_valid_rscript(path):
+    """Ensure the resolved executable is genuinely Rscript (prevent binary substitution).
+
+    Audit hardening: the caller runs generated R code via subprocess. We must guarantee
+    the binary we invoke is the real Rscript, not an attacker-supplied executable, and that
+    it is actually executable.
+    """
+    if not path or not os.path.isfile(path):
+        return False
+    try:
+        real = os.path.realpath(path)
+    except OSError:
+        return False
+    base = os.path.basename(real).lower()
+    if base not in ("rscript", "rscript.exe"):
+        return False
+    if not os.access(real, os.X_OK):
+        return False
+    return True
+
+# Tokens that, if present in generated R code, indicate an attempt to break out of the
+# intended calculation sandbox. The built-in templates never emit these.
+# NOTE: backtick (`) is intentionally excluded — it is legitimate R syntax for quoting
+# non-standard column names (e.g. result$`Total Sample Size`), not shell substitution.
+_DANGEROUS_R_TOKENS = (
+    "system(", "eval(", "source(", "download.file(", "shell(",
+    "pipe(", "file.remove(", "unlink(",
+)
+
+def _contains_dangerous_r(code):
+    return any(tok in code for tok in _DANGEROUS_R_TOKENS)
+
 def sanitize_output(raw, max_lines=200, max_col=200):
     """Strip file paths and truncate output."""
     cleaned = re.sub(
@@ -62,16 +94,30 @@ def run_r(code, confirmed=False):
     if not confirmed:
         return "[DRY RUN — code not executed. Remove --dry-run to execute.]"
     rscript = find_rscript()
-    if not rscript:
-        return "[ERROR] Rscript not found. Set RSCRIPT_PATH env or install R."
+    if not is_valid_rscript(rscript):
+        return "[ERROR] Rscript not found or invalid. Set RSCRIPT_PATH env or install R."
 
-    # Use system temp dir to avoid residue if process is killed
+    # Reject generated code that attempts to escape the calculation sandbox.
+    if _contains_dangerous_r(code):
+        return "[ERROR] Generated R code contains disallowed tokens; execution refused."
+
+    # Use system temp dir to avoid residue if process is killed.
+    tmp_dir = os.path.realpath(tempfile.gettempdir())
     with tempfile.NamedTemporaryFile(
-        suffix='.R', mode='w', delete=False, encoding='utf-8', dir=tempfile.gettempdir()
+        suffix='.R', mode='w', delete=False, encoding='utf-8', dir=tmp_dir
     ) as f:
-        f.write(code)
+        f.write("options(echo = FALSE)\n" + code)
         tmp = f.name
 
+    # Containment: the script must live inside the system temp dir and resolve cleanly.
+    if os.path.dirname(os.path.realpath(tmp)) != tmp_dir:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        return "[ERROR] Invalid temp path; execution refused."
+
+    # NOTE: invoked as a list (no shell), so no command/shell injection is possible.
     try:
         proc = subprocess.run(
             [rscript, '--vanilla', tmp],
@@ -128,13 +174,20 @@ def parse_seq_to_r(s):
 
 def _curve_ctx(args):
     """Safe value context for CURVE_SOLVERS params (.format placeholders)."""
+    # 效应量折算: 提供 --sd 时 --effect 视为原始均差 Δ, 自动折算 d = Δ/sd
+    if args.sd is not None and args.sd > 0:
+        _effect = (args.effect if args.effect is not None else 0.5) / args.sd
+    else:
+        _effect = args.effect if args.effect is not None else 0.5
+    # 检验方向: one -> greater, two -> two.sided
+    _alt = "greater" if args.side == "one" else "two.sided"
     return {
         'alpha': args.alpha,
-        'effect': args.effect if args.effect is not None else 0.5,
+        'effect': _effect,
+        'alt': _alt,
         'k_groups': args.k_groups,
-        'p1': args.p1 if args.p1 is not None else 0.5,
-        'p2': args.p2 if args.p2 is not None else 0.3,
-        'p0': args.p2 if args.p2 is not None else 0.5,
+        'p1': args.p1 if args.p1 is not None else 0.5,   # 对照组/原方法 (control / H0)
+        'p2': args.p2 if args.p2 is not None else 0.3,   # 实验组/新方法 (treatment / H1)
         'margin': args.margin if args.margin is not None else 0.1,
         'auc0': args.auc0,
         'auc1': args.auc1 if args.auc1 is not None else min(args.auc0 + (args.effect or 0.2), 0.99),
@@ -169,7 +222,7 @@ def build_curve_code(args):
     except (KeyError, ValueError, IndexError) as e:
         print("ERROR: parameter missing/invalid for curve of '%s': %s" % (test, e))
         return None
-    # Auto-inject required R packages (curve templates only load ggplot2)
+    # Auto-inject required R packages (curve templates use base R graphics, no ggplot2)
     _LIB_MAP = {
         'pwr': ["ttest_ind", "ttest_paired", "ttest_one", "anova", "proportion_one",
                 "proportion_two", "proportion_paired", "odds_ratio", "risk_ratio"],
@@ -230,7 +283,8 @@ def build_curve_code(args):
 def main():
     p = argparse.ArgumentParser(description="Clinical Trial Sample Size Calculator v3.3.0")
     p.add_argument("--test", required=False, default=None,
-        choices=["ttest_ind","ttest_paired","anova","proportion_one","proportion_two",
+        choices=["ttest_ind","ttest_paired","ttest_one","anova","proportion_one","proportion_two",
+                 "proportion_paired","odds_ratio","risk_ratio",
                  "non_inferiority","survival","mixed_model","roc","poisson",
                  "bland_altman","equivalence","be_tost","cluster",
                  "vaccine_efficacy","multiple_endpoints","bayesian","dose_escalation",
@@ -241,6 +295,8 @@ def main():
                    help="(默认即执行)显式执行 R 代码，保留以兼容旧命令")
     p.add_argument("--dry-run", action="store_true",
                    help="只展示生成的 R 代码、不执行（安全预览模式）")
+    p.add_argument("--show-code", action="store_true", default=False,
+                   help="执行并展示生成的 R 代码（默认不展示，仅按需提供）")
     p.add_argument("--install-all-packages", action="store_true",
                    help="打印(默认)本技能所需 R 包的 install.packages() 命令供人工审阅；不联网安装")
     p.add_argument("--run-install", action="store_true",
@@ -252,6 +308,10 @@ def main():
     # ── t-test / ANOVA ──
     p.add_argument("--effect", type=float)
     p.add_argument("--k_groups", type=int, default=2)
+    p.add_argument("--side", choices=["one", "two"], default="two",
+                   help="检验方向: one=单侧, two=双侧(默认)")
+    p.add_argument("--sd", type=float, default=None,
+                   help="标准差。提供时 --effect 视为原始均差(Δ), 自动折算 Cohen's d = effect/sd; 否则 --effect 直接作为 d")
     # ── Proportion ──
     p.add_argument("--p1", type=float)
     p.add_argument("--p2", type=float)
@@ -417,6 +477,15 @@ def main():
             print(f"  ✗ {e}")
         sys.exit(1)
 
+    # ── 效应量 / 检验方向统一处理 (--side / --sd) ──
+    # alt: one-sided -> "greater" (预期处理组更优); two-sided -> "two.sided"
+    alt = "greater" if args.side == "one" else "two.sided"
+    # d_val: 提供 --sd 时 --effect 视为原始均差 Δ, 自动折算 d = Δ/sd; 否则 --effect 直接为 d
+    if args.sd is not None and args.sd > 0:
+        d_val = (args.effect if args.effect is not None else 0.5) / args.sd
+    else:
+        d_val = args.effect if args.effect is not None else 0.5
+
     if args.install_all_packages:
         pkgs = ["TrialSize", "pwr", "rpact", "gsDesign", "PowerTOST",
                 "simr", "lme4", "pROC", "powerSurvEpi", "survival"]
@@ -432,27 +501,38 @@ def main():
             print("=" * 60)
             print(r_cmd)
             print("=" * 60)
-            print("此命令会从 CRAN 联网下载并安装 %d 个 R 包。" % len(pkgs))
-            print("如确认无误，请重新运行并追加 --run-install 才会真正安装：")
+            print("此命令会**从 CRAN 联网下载并安装** %d 个 R 包（即本技能唯一会触网的操作）。" % len(pkgs))
+            print("如确认无误，请重新运行并追加 --run-install 才会真正联网安装：")
             print("  python samplesize_power.py --install-all-packages --run-install")
             print("或在 R 控制台中手动粘贴上述命令自行安装。")
             return
-        # 显式二次确认后才执行
-        print("Installing all R packages used by ct-samplesize (--run-install confirmed)...")
+        # 显式二次确认后才执行 —— 且执行前完整打印将要运行的 R 代码（透明审计）
+        print("=" * 60)
+        print("⚠️  NETWORK INSTALL: the following R code will download packages from CRAN")
+        print("⚠️  联网安装：以下 R 代码将从 CRAN 下载并安装 R 包（供应链风险由你知情触发）")
+        print("=" * 60)
         script_dir = os.path.dirname(os.path.abspath(__file__))
         r_script = r_cmd + 'cat("\\nDone. Installed", length(pkgs), "packages.\\n")\n'
         r_file = os.path.join(script_dir, "_install_packages.R")
+        print("[R CODE — will be executed by Rscript]")
+        print(r_script)
+        print("=" * 60)
         with open(r_file, "w") as f:
             f.write(r_script)
+        # Containment: r_file must live inside the skill script dir.
+        if os.path.dirname(os.path.realpath(r_file)) != os.path.realpath(script_dir):
+            print("[ERROR] Invalid install script path; execution refused.")
+            return
         rscript = find_rscript()
-        if rscript:
+        if is_valid_rscript(rscript):
             import subprocess
+            # NOTE: invoked as a list (no shell) -> no command injection.
             result = subprocess.run([rscript, r_file], capture_output=True, text=True, timeout=600)
             print(sanitize_output(result.stdout))
             if result.stderr:
                 print(sanitize_output(result.stderr))
         else:
-            print("[ERROR] Rscript not found. Is R installed?")
+            print("[ERROR] Rscript not found or invalid. Is R installed?")
         return
 
     if not args.test:
@@ -464,11 +544,12 @@ def main():
         if r_code is None:
             sys.exit(1)
         r_code = r_code.lstrip('\n')
-        print("=" * 60)
-        print("[R CODE — generated for this analysis (always shown for review)]")
-        print("=" * 60)
-        print(r_code)
-        print("=" * 60)
+        if args.show_code or args.dry_run:
+            print("=" * 60)
+            print("[R CODE — generated for this analysis (shown on request)]")
+            print("=" * 60)
+            print(r_code)
+            print("=" * 60)
         if not confirmed:
             print("[DRY RUN] R code NOT executed. Remove --dry-run to execute.")
             return
@@ -498,43 +579,11 @@ def main():
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', args.effect_name):
             print("ERROR: --effect_name must be a valid R identifier"); sys.exit(1)
         eff = args.effect or 0.5
-        if solve_for_power:
-            n_subj = args.nobs
-            r_code = f"""
-library(simr); library(lme4)
-set.seed(42)
-n_subjects <- {n_subj}; n_treatment <- ceiling({n_subj}/2)
-df <- expand.grid(time = c(0, 1, 2, 3), subject = seq_len(n_subjects))
-df$treatment <- ifelse(df$subject <= n_treatment, "active", "placebo")
-model <- makeLmer(y ~ treatment * time + (1|subject),
-                  fixef = c(0, {eff}, 0, {eff/2}),
-                  VarCorr = {args.varcorr}, sigma = {args.sigma}, data = df)
-result <- powerSim(model, nsim={args.nsim}, test = fcompare(y ~ time + (1|subject)))
-cat("\\n========== Mixed Model Power (given N) ==========\\n")
-cat("Effect: {args.effect_name} = {eff}\\n")
-cat("n subjects:", n_subjects, "\\n")
-print(result)
-"""
-        else:
-            r_code = """
-library(simr); library(lme4)
-set.seed(42)
-n_subjects <- 20; n_treatment <- 10
-df <- expand.grid(time = c(0, 1, 2, 3), subject = seq_len(n_subjects))
-df$treatment <- ifelse(df$subject <= n_treatment, "active", "placebo")
-model <- makeLmer(y ~ treatment * time + (1|subject),
-                  fixef = c(0, {eff}, 0, {eff_half}),
-                  VarCorr = {varcorr}, sigma = {sigma}, data = df)
-result <- powerSim(model, nsim={nsim}, test = fcompare(y ~ time + (1|subject)))
-cat("\\n========== Mixed Model Power ==========\\n")
-cat("Effect: {ename} = {eff}\\n")
-print(result)
-pc <- powerCurve(model, test = fcompare(y ~ time + (1|subject)),
-                 along = "subject", breaks = c(10, 20, 30, 40, 50))
-cat("\\n--- Power Curve ---\\n")
-print(summary(pc))
-""".format(eff=eff, eff_half=eff/2, varcorr=args.varcorr,
-           sigma=args.sigma, nsim=args.nsim, ename=args.effect_name)
+        r_code = R_MIXED_MODEL.format(
+            eff=eff, eff_half=eff/2, varcorr=args.varcorr, sigma=args.sigma,
+            nsim=args.nsim, ename=args.effect_name,
+            nobs=args.nobs, power=args.power,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "roc":
         auc0 = args.auc0
@@ -542,101 +591,68 @@ print(summary(pc))
             print("ERROR: --auc1 or --effect required"); sys.exit(1)
         auc1 = args.auc1 or min(auc0 + args.effect, 0.99)
         if solve_for_power:
-            r_code = f"""
-library(pROC)
-auc0 <- {auc0}; auc1 <- {auc1}
-n <- {args.nobs}
-# Inverse of n = ceil((z_a/2 + z_b)^2 / (2*(asin(sqrt(auc1))-asin(sqrt(auc0)))^2))
-z_b <- sqrt(n * 2 * (asin(sqrt(auc1)) - asin(sqrt(auc0)))^2) - qnorm(1-{args.alpha}/2)
-power <- pnorm(z_b)
+            r_code = R_ROC + f"""
 cat("\\n========== ROC Sample Size (Power given N) ==========\\n")
-cat("H0 AUC:", auc0, "H1 AUC:", auc1, "\\n")
+cat("H0 AUC:", {auc0}, "H1 AUC:", {auc1}, "\\n")
 cat("Alpha:", {args.alpha}, "\\n")
-cat("Sample size:", n, "\\n")
-cat("Achieved power:", round(power, 4), "\\n")
+cat("Sample size:", {args.nobs}, "\\n")
+cat("Achieved power:", ss_roc(auc0={auc0}, auc1={auc1}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
-            r_code = R_ROC.format(alpha=args.alpha, power=args.power, auc0=auc0, auc1=auc1)
+            r_code = R_ROC + f"""
+cat("\\n========== ROC Sample Size ==========\\n")
+cat("H0 AUC:", {auc0}, "H1 AUC:", {auc1}, "\\n")
+cat("Alpha:", {args.alpha}, "Power:", {args.power}, "\\n")
+cat("Sample size:", ss_roc(auc0={auc0}, auc1={auc1}, alpha={args.alpha}, power={args.power}), "\\n")
+"""
 
     elif args.test == "poisson":
         if solve_for_power:
-            r_code = f"""
-lambda1 <- {args.lambda1}; lambda2 <- {args.lambda2}
-t1 <- {args.t1}; t2 <- {args.t2}
-RR <- lambda1 / lambda2
-n <- {args.nobs}
-# Inverse of n = ceil((z_a/2+z_b)^2 * (1/(lam1*t1)+1/(lam2*t2)) / log(RR)^2)
-z_b <- sqrt(n * (log(RR))^2 / (1/(lambda1*t1) + 1/(lambda2*t2))) - qnorm(1-{args.alpha}/2)
-power <- pnorm(z_b)
+            r_code = R_POISSON + f"""
 cat("\\n========== Poisson Rate Comparison (Power given N) ==========\\n")
-cat("Rate Ratio:", round(RR, 3), "\\n")
-cat("Sample size per group:", n, "\\n")
-cat("Achieved power:", round(power, 4), "\\n")
+cat("Rate Ratio:", round({args.lambda1}/{args.lambda2}, 3), "\\n")
+cat("Sample size per group:", {args.nobs}, "\\n")
+cat("Achieved power:", ss_poisson(lambda1={args.lambda1}, lambda2={args.lambda2}, t1={args.t1}, t2={args.t2}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
-            r_code = R_POISSON.format(alpha=args.alpha, power=args.power,
-                lambda1=args.lambda1, lambda2=args.lambda2, t1=args.t1, t2=args.t2)
+            r_code = R_POISSON + f"""
+cat("\\n========== Poisson Rate Comparison ==========\\n")
+cat("Rate Ratio:", round({args.lambda1}/{args.lambda2}, 3), "\\n")
+cat("Sample size per group:", ss_poisson(lambda1={args.lambda1}, lambda2={args.lambda2}, t1={args.t1}, t2={args.t2}, alpha={args.alpha}, power={args.power}), "\\n")
+"""
 
     elif args.test == "cluster":
         if solve_for_power:
-            r_code = f"""
-m <- {args.m}; icc <- {args.icc}
-deff <- 1 + (m - 1) * icc
-# Given total sample size, solve for effective individual n per group
-n_total <- {args.nobs}
-n_indiv_eff <- n_total / 2 / deff
+            r_code = R_CLUSTER + f"""
 cat("\\n========== Cluster-RCT (Power given N) ==========\\n")
-cat("Design effect (DEFF):", round(deff, 3), "\\n")
-cat("Cluster size m:", m, "ICC:", icc, "\\n")
-cat("Total sample size:", n_total, "\\n")
-cat("Effective individual n per group (n_total/2/DEFF):", round(n_indiv_eff, 1), "\\n")
-cat("Implied n clusters per group:", ceiling(n_indiv_eff / m), "\\n")
-cat("Note: To obtain exact power, combine n_indiv_eff with the\\n")
-cat("      corresponding individual-level test's power formula.\\n")
+cat("Design effect (DEFF):", round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
+cat("Cluster size m:", {args.m}, "ICC:", {args.icc}, "\\n")
+cat("Total sample size:", {args.nobs}, "\\n")
+res <- ss_cluster(m={args.m}, icc={args.icc}, n_total={args.nobs})
+cat("Effective individual n per group (n_total/2/DEFF):", res$n_indiv_eff, "\\n")
+cat("Implied n clusters per group:", res$n_clusters, "\\n")
 """
         else:
-            r_code = R_CLUSTER.format(m=args.m, icc=args.icc, n_indiv=args.n_indiv)
+            r_code = R_CLUSTER + f"""
+cat("\\n========== Cluster-Randomized Design ==========\\n")
+cat("DEFF:", round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
+res <- ss_cluster(m={args.m}, icc={args.icc}, n_indiv={args.n_indiv})
+cat("Adjusted n per group:", res$n_adj, "\\n")
+cat("Clusters per group:", res$n_clusters, "Total:", res$total_clusters, "\\n")
+cat("Total sample size:", res$total, "\\n")
+"""
 
     elif args.test == "bland_altman":
-        if solve_for_power:
-            r_code = f"""
-sd_diff <- {args.sd_diff}; alpha_val <- {args.alpha}
-n <- {args.nobs}
-# Bland-Altman is a CI-width (precision) calc, not a power calc.
-# Given n, report the achievable half-width w = z_a/2 * sd_diff * sqrt(2/n)
-w_achieved <- qnorm(1-alpha_val/2) * sd_diff * sqrt(2/n)
-cat("\\n========== Bland-Altman (Width given N) ==========\\n")
-cat("SD diff:", sd_diff, "\\n")
-cat("Sample size (pairs):", n, "\\n")
-cat("Achievable half-width w:", round(w_achieved, 4), "\\n")
-cat("Note: This is a precision (CI width) calc, not a hypothesis power calc.\\n")
-"""
-        else:
-            r_code = R_BLAND_ALTMAN.format(sd_diff=args.sd_diff, w=args.w, alpha=args.alpha)
+        r_code = R_BLAND_ALTMAN.format(
+            sd_diff=args.sd_diff, w=args.w, alpha=args.alpha,
+            power=args.power, nobs=args.nobs,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "equivalence":
-        if solve_for_power:
-            r_code = f"""
-alpha_val <- {args.alpha}; delta <- {args.margin or 1.0}; sigma <- {args.effect or 2.0}
-n_total <- {args.nobs}
-# Two-means equivalence (TOST). Per arm n = n_total/2.
-# Approx power via TOST inversion (each one-sided test at alpha).
-n_arm <- n_total / 2
-se <- sigma * sqrt(2/n_arm)
-# z for each bound
-z1 <- (delta - 0) / se  # crude; use qnorm(1-alpha) threshold
-tcrit <- qnorm(1 - alpha_val)
-# Power approx = Phi((delta - tcrit*se)/se) - Phi((-delta - tcrit*se)/se)  (symmetric)
-power <- pnorm((delta - tcrit*se)/se) - pnorm((-delta - tcrit*se)/se)
-cat("\\n========== Equivalence (Means, Power given N) ==========\\n")
-cat("Equivalence margin delta:", delta, "\\n")
-cat("Sigma:", sigma, "\\n")
-cat("Total N:", n_total, "per arm:", n_arm, "\\n")
-cat("Achieved power (approx):", round(power, 4), "\\n")
-"""
-        else:
-            r_code = R_EQ_MEANS.format(alpha=args.alpha, beta=1-args.power,
-                margin=args.margin or 1.0, sigma=args.effect or 2.0)
+        r_code = R_EQ_MEANS.format(
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            margin=args.margin or 1.0, sigma=args.effect or 2.0,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "be_tost":
         # Validate design against allowlist to prevent R code injection
@@ -644,205 +660,170 @@ cat("Achieved power (approx):", round(power, 4), "\\n")
         if args.design not in _allowed_designs:
             print("ERROR: --design must be one of:", ", ".join(_allowed_designs))
             sys.exit(1)
-        if solve_for_power:
-            r_code = f"""
-library(PowerTOST)
-# power.TOST solves power given n (per sequence)
-result <- power.TOST(theta0={args.theta0}, CV={args.cv}, design="{args.design}",
-                     alpha={args.alpha}, n={args.nobs})
-cat("\\n========== Bioequivalence (Power given N) ==========\\n")
-cat("theta0:", {args.theta0}, "CV:", {args.cv}, "design:", "{args.design}", "\\n")
-cat("n per sequence:", {args.nobs}, "\\n")
-cat("Achieved power:", round(result, 4), "\\n")
-"""
-        else:
-            r_code = R_BE_TOST.format(theta0=args.theta0, cv=args.cv,
-                design=args.design, alpha=args.alpha, power=args.power)
+        r_code = R_BE_TOST.format(
+            theta0=args.theta0, cv=args.cv, design=args.design,
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "vaccine_efficacy":
         if solve_for_power:
-            r_code = f"""
-ARU <- {args.ve_control}; ARV <- {args.ve_treatment}
-VE <- (ARU - ARV) / ARU
-n <- {args.nobs}
-# Inverse of n = ceil((z_a/2+z_b)^2 * (1/ARU+1/ARV) / log(1-VE)^2)
-z_b <- sqrt(n * (log(1-VE))^2 / (1/ARU + 1/ARV)) - qnorm(1-{args.alpha}/2)
-power <- pnorm(z_b)
+            r_code = R_VACCINE_EFFICACY + f"""
 cat("\\n========== Vaccine Efficacy (Power given N) ==========\\n")
-cat("VE:", round(VE*100, 1), "%\\n")
-cat("n per group:", n, "\\n")
-cat("Achieved power:", round(power, 4), "\\n")
+cat("VE:", round(({args.ve_control}-{args.ve_treatment})/{args.ve_control}*100, 1), "%\\n")
+cat("n per group:", {args.nobs}, "\\n")
+cat("Achieved power:", ss_vaccine(vc={args.ve_control}, vt={args.ve_treatment}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
-            r_code = R_VACCINE_EFFICACY.format(alpha=args.alpha, power=args.power,
-                vc=args.ve_control, vt=args.ve_treatment)
+            r_code = R_VACCINE_EFFICACY + f"""
+cat("\\n========== Vaccine Efficacy ==========\\n")
+cat("VE:", round(({args.ve_control}-{args.ve_treatment})/{args.ve_control}*100, 1), "%\\n")
+cat("n per group:", ss_vaccine(vc={args.ve_control}, vt={args.ve_treatment}, alpha={args.alpha}, power={args.power}), "\\n")
+"""
 
     elif args.test == "multiple_endpoints":
         if solve_for_power:
-            r_code = f"""
-rho <- {args.correlation}; effect <- {args.effect or 0.3}; alpha_val <- {args.alpha}
-n_adj <- {args.nobs}
-# Inverse: n_single = n_adj*(1-rho); z_b = sqrt(n_single*effect^2) - z_a/2
-n_single <- n_adj * (1 - rho)
-z_b <- sqrt(n_single * effect^2) - qnorm(1-alpha_val/2)
-power <- pnorm(z_b)
+            r_code = R_MULTIPLE_ENDPOINTS + f"""
 cat("\\n========== Multiple Endpoints (Power given N) ==========\\n")
-cat("Correlation:", rho, "\\n")
-cat("Adjusted n:", n_adj, "\\n")
-cat("Effective single-endpoint n:", round(n_single, 1), "\\n")
-cat("Achieved power:", round(power, 4), "\\n")
+cat("Correlation:", {args.correlation}, "\\n")
+cat("Adjusted n:", {args.nobs}, "\\n")
+cat("Achieved power:", ss_multiple(rho={args.correlation}, effect={args.effect or 0.3}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
-            r_code = R_MULTIPLE_ENDPOINTS.format(alpha=args.alpha, power=args.power,
-                effect=args.effect or 0.3, rho=args.correlation)
+            r_code = R_MULTIPLE_ENDPOINTS + f"""
+cat("\\n========== Multiple Endpoints ==========\\n")
+cat("Correlation:", {args.correlation}, "\\n")
+res <- ss_multiple(rho={args.correlation}, effect={args.effect or 0.3}, alpha={args.alpha}, power={args.power})
+cat("Single endpoint n:", res$n_single, "Adjusted:", res$n_adj, "\\n")
+"""
 
     elif args.test == "bayesian":
-        if solve_for_power:
-            r_code = f"""
-a0 <- {args.prior_a0}; pC <- {args.prob_control}; pT <- {args.prob_treatment}; alpha_val <- {args.alpha}
-eff <- pC - pT
-n_min <- {args.nobs}
-# One-sided: z_b = sqrt(n*eff^2/(pC(1-pC)+pT(1-pT))) - z_alpha
-z_b <- sqrt(n_min * eff^2 / (pC*(1-pC) + pT*(1-pT))) - qnorm(alpha_val)
-power <- pnorm(z_b)
-cat("\\n========== Bayesian Design (Power given N) ==========\\n")
-cat("Prior a0:", a0, "\\n")
-cat("Effective n per group:", n_min, "\\n")
-cat("Achieved power:", round(power, 4), "\\n")
-"""
-        else:
-            r_code = R_BAYESIAN.format(alpha=args.alpha, power=args.power,
-                a0=args.prior_a0, pC=args.prob_control, pT=args.prob_treatment)
+        r_code = R_BAYESIAN.format(
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            a0=args.prior_a0, pC=args.prob_control, pT=args.prob_treatment,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "dose_escalation":
-        if solve_for_power:
-            r_code = f"""
-cat("\\n========== Dose Escalation (3+3 / CRM) ==========\\n")
-cat("Note: Dose-escalation is a heuristic design, not a power-based sample size.\\n")
-cat("Dose levels:", {args.n_doses}, "Target DLT:", "{args.target_dlt}", "\\n")
-cat("Given total N = {args.nobs}, approximate total (3+3):", {args.n_doses} * 4, "-", {args.n_doses} * 4 + 6, "\\n")
-cat("A power calculation does not apply to this design.\\n")
-"""
-        else:
-            r_code = R_DOSE_ESCALATION.format(n_doses=args.n_doses, target_dlt=args.target_dlt)
+        r_code = R_DOSE_ESCALATION.format(
+            n_doses=args.n_doses, target_dlt=args.target_dlt,
+            nobs=args.nobs, solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "ttest_ind":
         if solve_for_power:
-            r_code = f"""
-library(pwr)
-d <- {args.effect or 0.5}
-result <- pwr.t.test(d=d, sig.level={args.alpha}, n={args.nobs}, type="two.sample", alternative="two.sided")
+            r_code = R_T_TESTS + f"""
 cat("\\n========== Two-Sample T-Test (Power given N) ==========\\n")
-cat("Cohen's d:", d, "\\n")
+cat("Cohen's d:", {d_val}, "\\n")
 cat("n per group:", {args.nobs}, "\\n")
-cat("Achieved power:", round(result$power, 4), "\\n")
-print(result)
+cat("Achieved power:", ss_ttest("two.sample", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
 """
         else:
-            r_code = f"""
-library(pwr)
-d <- {args.effect or 0.5}
-result <- pwr.t.test(d=d, sig.level={args.alpha}, power={args.power}, type="two.sample", alternative="two.sided")
+            r_code = R_T_TESTS + f"""
 cat("\\n========== Two-Sample T-Test ==========\\n")
-cat("Cohen's d:", d, "\\n")
-cat("n per group:", ceiling(result$n), "\\n")
-print(result)
+cat("Cohen's d:", {d_val}, "\\n")
+n_pg <- ss_ttest("two.sample", d={d_val}, alpha={args.alpha}, power={args.power}, alt="{alt}")
+cat("n per group:", n_pg, "\\n")
 """
 
     elif args.test == "ttest_paired":
         if solve_for_power:
-            r_code = f"""
-library(pwr)
-d <- {args.effect or 0.5}
-result <- pwr.t.test(d=d, sig.level={args.alpha}, n={args.nobs}, type="paired", alternative="two.sided")
+            r_code = R_T_TESTS + f"""
 cat("\\n========== Paired T-Test (Power given N) ==========\\n")
-cat("Cohen's d:", d, "\\n")
+cat("Cohen's d:", {d_val}, "\\n")
 cat("n (pairs):", {args.nobs}, "\\n")
-cat("Achieved power:", round(result$power, 4), "\\n")
-print(result)
+cat("Achieved power:", ss_ttest("paired", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
 """
         else:
-            r_code = f"""
-library(pwr)
-d <- {args.effect or 0.5}
-result <- pwr.t.test(d=d, sig.level={args.alpha}, power={args.power}, type="paired", alternative="two.sided")
+            r_code = R_T_TESTS + f"""
 cat("\\n========== Paired T-Test ==========\\n")
-cat("Cohen's d:", d, "\\n")
-cat("n (pairs):", ceiling(result$n), "\\n")
-print(result)
+cat("Cohen's d:", {d_val}, "\\n")
+n_pg <- ss_ttest("paired", d={d_val}, alpha={args.alpha}, power={args.power}, alt="{alt}")
+cat("n (pairs):", n_pg, "\\n")
+"""
+
+    elif args.test == "ttest_one":
+        if solve_for_power:
+            r_code = R_T_TESTS + f"""
+cat("\\n========== One-Sample T-Test (Power given N) ==========\\n")
+cat("Cohen's d:", {d_val}, "\\n")
+cat("n:", {args.nobs}, "\\n")
+cat("Achieved power:", ss_ttest("one.sample", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
+"""
+        else:
+            r_code = R_T_TESTS + f"""
+cat("\\n========== One-Sample T-Test ==========\\n")
+cat("Cohen's d:", {d_val}, "\\n")
+n_pg <- ss_ttest("one.sample", d={d_val}, alpha={args.alpha}, power={args.power}, alt="{alt}")
+cat("n:", n_pg, "\\n")
 """
 
     elif args.test == "anova":
         if solve_for_power:
-            r_code = f"""
-library(pwr)
-result <- pwr.anova.test(k={args.k_groups}, f={args.effect or 0.25}, sig.level={args.alpha}, n={args.nobs})
+            r_code = R_T_TESTS + f"""
 cat("\\n========== One-Way ANOVA (Power given N) ==========\\n")
 cat("k groups:", {args.k_groups}, "f:", {args.effect or 0.25}, "\\n")
 cat("n per group:", {args.nobs}, "\\n")
-cat("Achieved power:", round(result$power, 4), "\\n")
-print(result)
+cat("Achieved power:", ss_anova(k={args.k_groups}, f={args.effect or 0.25}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
-            r_code = f"""
-library(pwr)
-result <- pwr.anova.test(k={args.k_groups}, f={args.effect or 0.25}, sig.level={args.alpha}, power={args.power})
-print(result)
+            r_code = R_T_TESTS + f"""
+cat("\\n========== One-Way ANOVA ==========\\n")
+cat("k groups:", {args.k_groups}, "f:", {args.effect or 0.25}, "\\n")
+n_pg <- ss_anova(k={args.k_groups}, f={args.effect or 0.25}, alpha={args.alpha}, power={args.power})
+cat("n per group:", n_pg, "\\n")
 """
 
     elif args.test == "proportion_one":
-        p0 = args.p1 if args.p1 else 0.5
-        p1 = args.p2 if args.p2 else 0.65
+        p0 = args.p1 if args.p1 is not None else 0.5
+        p1 = args.p2 if args.p2 is not None else 0.65
+        alt_r = "greater" if args.side == "one" else "two.sided"
         if solve_for_power:
-            r_code = f"""
-library(pwr)
-p0 <- {p0}; p1 <- {p1}
-h <- 2*asin(sqrt(p1)) - 2*asin(sqrt(p0))
-result <- pwr.1p.test(h=h, sig.level={args.alpha}, n={args.nobs})
+            r_code = R_PROP_FUNCS + f"""
 cat("\\n========== One-Sample Proportion Test (Power given N) ==========\\n")
-cat("H0 proportion:", p0, "\\n")
-cat("H1 proportion:", p1, "\\n")
-cat("n:", {args.nobs}, "\\n")
-cat("Achieved power:", round(result$power, 4), "\\n")
-print(result)
+cat("H0 proportion (p0):", {p0}, "\\n")
+cat("H1 proportion (p1):", {p1}, "\\n")
+cat("Side:", "{alt_r}", "\\n")
+cat("Given n:", {args.nobs}, "\\n")
+cat("Achieved power:", ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, n={args.nobs}, alt="{alt_r}"), "\\n")
 """
         else:
-            r_code = f"""
-library(pwr)
-# One-sample proportion test
-p0 <- {p0}; p1 <- {p1}
-h <- 2*asin(sqrt(p1)) - 2*asin(sqrt(p0))
-result <- pwr.1p.test(h=h, sig.level={args.alpha}, power={args.power})
+            r_code = R_PROP_FUNCS + f"""
 cat("\\n========== One-Sample Proportion Test ==========\\n")
-cat("H0 proportion:", p0, "\\n")
-cat("H1 proportion:", p1, "\\n")
-cat("n:", ceiling(result$n), "\\n")
-print(result)
+cat("H0 proportion (p0):", {p0}, "\\n")
+cat("H1 proportion (p1):", {p1}, "\\n")
+cat("Side:", "{alt_r}", "\\n")
+cat("Target power:", {args.power}, "\\n")
+cat("n (total):", ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, power={args.power}, alt="{alt_r}"), "\\n")
 """
 
-    elif args.test == "proportion_two":
-        p1 = args.p1 if args.p1 else 0.5
-        p2 = args.p2 if args.p2 else 0.65
+    elif args.test in ("proportion_two", "proportion_paired", "odds_ratio", "risk_ratio"):
+        p1 = args.p1 if args.p1 is not None else 0.5
+        p2 = args.p2 if args.p2 is not None else 0.65
+        alt_r = "greater" if args.side == "one" else "two.sided"
+        _fn_map = {
+            "proportion_two": ("ss_prop_two", "Two-Proportions Test (chi-square)"),
+            "proportion_paired": ("ss_prop_paired", "Paired Proportions (McNemar, approx)"),
+            "odds_ratio": ("ss_or_rr", "Odds/Risk Ratio (approx)"),
+            "risk_ratio": ("ss_or_rr", "Odds/Risk Ratio (approx)"),
+        }
+        fn, label = _fn_map[args.test]
         if solve_for_power:
-            r_code = f"""
-library(pwr)
-h <- 2*asin(sqrt({p1})) - 2*asin(sqrt({p2}))
-result <- pwr.2p.test(h=h, sig.level={args.alpha}, n={args.nobs})
-cat("\\n========== Two Proportions Test (Power given N) ==========\\n")
-cat("P1: {p1}, P2: {p2}\\n")
-cat("n per group:", {args.nobs}, "\\n")
-cat("Achieved power:", round(result$power, 4), "\\n")
-print(result)
+            r_code = R_PROP_FUNCS + f"""
+cat("\\n========== {label} (Power given N) ==========\\n")
+cat("Control / H0 (p1):", {p1}, "\\n")
+cat("Treatment / H1 (p2):", {p2}, "\\n")
+cat("Side:", "{alt_r}", "\\n")
+cat("Given n per group:", {args.nobs}, "\\n")
+cat("Achieved power:", {fn}(p1={p1}, p2={p2}, alpha={args.alpha}, n={args.nobs}, alt="{alt_r}"), "\\n")
 """
         else:
-            r_code = f"""
-library(pwr)
-h <- 2*asin(sqrt({p1})) - 2*asin(sqrt({p2}))
-result <- pwr.2p.test(h=h, sig.level={args.alpha}, power={args.power})
-cat("\\n========== Two Proportions Test ==========\\n")
-cat("P1: {p1}, P2: {p2}\\n")
-cat("n per group:", ceiling(result$n), "\\n")
-print(result)
+            r_code = R_PROP_FUNCS + f"""
+cat("\\n========== {label} ==========\\n")
+cat("Control / H0 (p1):", {p1}, "\\n")
+cat("Treatment / H1 (p2):", {p2}, "\\n")
+cat("Side:", "{alt_r}", "\\n")
+cat("Target power:", {args.power}, "\\n")
+n_pg <- {fn}(p1={p1}, p2={p2}, alpha={args.alpha}, power={args.power}, alt="{alt_r}")
+cat("n per group:", n_pg, "\\n")
+cat("Total N:", 2 * n_pg, "\\n")
 """
 
     elif args.test == "non_inferiority":
@@ -850,109 +831,54 @@ print(result)
         p2 = args.p2 or 0.85
         margin = args.margin or 0.1
         if solve_for_power:
-            r_code = f"""
+            r_code = R_NON_INFERIORITY + f"""
 cat("\\n========== Non-Inferiority (Proportions, Power given N) ==========\\n")
-p1 <- {p1}; p2 <- {p2}; margin <- {margin}; alpha_val <- {args.alpha}
-n_total <- {args.nobs}
-# Two-proportion z-test (one-sided), non-inferiority margin
-# Inverse of n = ceil((z_alpha + z_beta)^2 * (p1(1-p1)+p2(1-p2)) / (margin - |p1-p2|)^2)
-z_b <- sqrt(n_total/2 * (margin - abs(p1-p2))^2 / (p1*(1-p1) + p2*(1-p2))) - qnorm(alpha_val)
-power <- pnorm(z_b)
-cat("对照组有效率 p1:", p1, "\\n")
-cat("试验组有效率 p2:", p2, "\\n")
-cat("非劣效界值 delta:", margin, "\\n")
-cat("总样本量 N:", n_total, "每组:", n_total/2, "\\n")
-cat("Achieved power:", round(power, 4), "\\n")
+cat("对照组有效率 p1:", {p1}, "\\n")
+cat("试验组有效率 p2:", {p2}, "\\n")
+cat("非劣效界值 delta:", {margin}, "\\n")
+cat("总样本量 N:", {args.nobs}, "每组:", {args.nobs}/2, "\\n")
+cat("Achieved power:", ss_noninf_prop(p1={p1}, p2={p2}, margin={margin}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
-            r_code = f"""
+            r_code = R_NON_INFERIORITY + f"""
 cat("\\n========== Non-Inferiority (Proportions) ==========\\n")
-cat("TrialSize 包::TwoSampleProportion.NIS\\n\\n")
-if (requireNamespace("TrialSize", quietly=TRUE)) {{
-  library(TrialSize)
-  real_diff <- abs({p1} - {p2})
-  total_n <- tryCatch(
-    TwoSampleProportion.NIS(alpha={args.alpha}, beta=1-{args.power},
-                             p1={p1}, p2={p2}, k=1,
-                             delta={margin}, margin=real_diff),
-    error = function(e) NA_real_
-  )
-  n_arm <- ceiling(total_n)
-  n_total <- n_arm * 2
-  cat("对照组有效率 p1: {p1}\\n")
-  cat("试验组有效率 p2: {p2}\\n")
-  cat("假设真实差异 |p1-p2|: ", real_diff, "\\n")
-  cat("非劣效界值 delta: {margin}\\n")
-  cat("单侧 α: {args.alpha}, 把握度: {args.power}, 1:1 分配\\n\\n")
-  cat("--- 结果 ---\\n")
-  cat("每组样本量 n1:", n_arm, "\\n")
-  cat("每组样本量 n2:", ceiling(total_n * 1), "\\n")
-  cat("总样本量 N:", n_total, "\\n")
-  cat("含 10% 脱落率:", ceiling(n_total * 1.1), "\\n")
-}} else {{
-  n_approx <- ceiling(((qnorm(1-{args.alpha}) + qnorm({args.power}))^2 * ({p1}*(1-{p1}) + {p2}*(1-{p2}))) / ({margin} - abs({p1}-{p2}))^2)
-  cat("P1={p1}, P2={p2}, Margin={margin}, 近似公式.\\n")
-  cat("每组样本量:", n_approx, "\\n")
-  cat("总样本量:", n_approx*2, "\\n")
-}}
+cat("对照组有效率 p1: {p1}\\n")
+cat("试验组有效率 p2: {p2}\\n")
+cat("假设真实差异 |p1-p2|: ", abs({p1} - {p2}), "\\n")
+cat("非劣效界值 delta: {margin}\\n")
+cat("单侧 α: {args.alpha}, 把握度: {args.power}, 1:1 分配\\n\\n")
+res <- ss_noninf_prop(p1={p1}, p2={p2}, margin={margin}, alpha={args.alpha}, power={args.power})
+cat("--- 结果 ---\\n")
+cat("每组样本量 n1:", res$n_arm, "\\n")
+cat("总样本量 N:", res$total, "\\n")
+cat("含 10% 脱落率:", ceiling(res$total * 1.1), "\\n")
 """
 
     elif args.test == "survival":
         hr = args.hazard_ratio or 0.75
         if solve_for_power:
-            r_code = f"""
+            r_code = R_SURVIVAL_SIMPLE + f"""
 cat("\\n========== Survival (Log-Rank, Power given N) ==========\\n")
 cat("Hazard ratio:", {hr}, "\\n")
-# Schoenfeld: d = ceil((z_a/2 + z_b)^2 / log(hr)^2)
-# Given events d -> z_b = sqrt(d)*|log(hr)| - z_a/2; power = Phi(z_b)
-d_events <- {args.nobs}
-z_b <- sqrt(d_events) * abs(log({hr})) - qnorm(1-{args.alpha}/2)
-power <- pnorm(z_b)
-cat("Total events:", d_events, "\\n")
-cat("Achieved power:", round(power, 4), "\\n")
+cat("Total events:", {args.nobs}, "\\n")
+cat("Achieved power:", ss_survival_logrank(hr={hr}, alpha={args.alpha}, n={args.nobs}), "\\n")
 if ({args.event_rate} > 0 && {args.followup_time} > 0) {{
-  # Convert events to approximate n per group
-  n_per_group <- ceiling(d_events / (2 * {args.event_rate}))
+  n_per_group <- ceiling({args.nobs} / (2 * {args.event_rate}))
   cat("Approx n per group (event_rate={args.event_rate}):", n_per_group, "\\n")
 }}
 """
         else:
-            r_code = f"""
+            r_code = R_SURVIVAL_SIMPLE + f"""
 cat("\\n========== Survival (Log-Rank Test) ==========\\n")
 cat("Hazard ratio: {hr}\\n")
-# Schoenfeld 标准公式（事件数）
-d <- ceiling((qnorm(1-{args.alpha}/2) + qnorm({args.power}))^2 / (log({hr})^2))
-cat("Total events needed (Schoenfeld):", d, "\\n")
-# 若提供入组/随访时间、事件率，使用 TrialSize 包计算样本量
-if (!is.na({args.event_rate}) && {args.event_rate} > 0 &&
-    !is.na({args.accrual_time}) && !is.na({args.followup_time}) &&
-    {args.accrual_time} > 0 && {args.followup_time} > 0) {{
-  if (requireNamespace("TrialSize", quietly=TRUE)) {{
-    library(TrialSize)
-    lam1 <- -log(1 - {args.event_rate}) / {args.followup_time}
-    lam2 <- lam1 * {hr}
-    r <- tryCatch(
-      TwoSampleSurvival.Equality(alpha={args.alpha}, beta=1-{args.power},
-                                 lam1=lam1, lam2=lam2, k=1,
-                                 ttotal={args.accrual_time}+{args.followup_time},
-                                 taccrual={args.accrual_time}, gamma=0),
-      error = function(e) NA_real_
-    )
-    if (!is.na(r)) {{
-      cat("\\nTrialSize::TwoSampleSurvival.Equality 计算结果:\\n")
-      cat("  对照组风险率 lambda1:", round(lam1, 5), "\\n")
-      cat("  治疗组风险率 lambda2:", round(lam2, 5), "\\n")
-      cat("  入组时间:", {args.accrual_time}, "随访时间:", {args.followup_time}, "\\n")
-      cat("  对照组事件率:", {args.event_rate}, "\\n")
-      cat("  每组样本量:", ceiling(r), "总样本量:", ceiling(r)*2, "\\n")
-      cat("  含10%脱落率:", ceiling(ceiling(r)*2*1.1), "\\n")
-    }}
-  }} else {{
-    cat("\\n提示: 安装 TrialSize 包可获得更精确的样本量估计\\n")
-  }}
+res <- ss_survival_logrank(hr={hr}, alpha={args.alpha}, power={args.power},
+                           event_rate={args.event_rate}, accrual_time={args.accrual_time}, followup_time={args.followup_time})
+cat("Total events needed (Schoenfeld):", res$d, "\\n")
+if (!is.na(res$n_per_group)) {{
+  cat("Each group n:", res$n_per_group, "Total N:", res$total, "\\n")
+  if (!is.na(res$n_with_dropout)) cat("含10%脱落率:", res$n_with_dropout, "\\n")
 }} else {{
-  cat("\\n注意: 当前仅计算所需事件数。如需计算样本量，请提供:\\n")
-  cat("  --event_rate (对照组事件率), --accrual_time (入组月数), --followup_time (随访月数)\\n")
+  cat("\\n注意: 当前仅计算所需事件数。如需样本量请提供参数\\n")
 }}
 """
 
@@ -961,115 +887,33 @@ if (!is.na({args.event_rate}) && {args.event_rate} > 0 &&
     # ═══════════════════════════════════════════════════════════════════════════
 
     elif args.test == "win_ratio":
-        if solve_for_power:
-            r_code = f"""
-win_ratio <- {args.win_ratio_theta}
-alpha_val <- {args.alpha}
-n_per_group <- {args.nobs}
-log_wr <- log(win_ratio)
-se_approx <- {args.se_approx}
-# Inverse of n = ceil((z_a/2 + z_b)^2 / (log_wr^2 * se_approx^2))
-z_b <- sqrt(n_per_group * log_wr^2 * se_approx^2) - qnorm(1-alpha_val/2)
-power <- pnorm(z_b)
-cat("\\n========== Win-Ratio (Power given N) ==========\\n")
-cat("Expected Win-Ratio:", win_ratio, "\\n")
-cat("N per group:", n_per_group, "\\n")
-cat("Achieved power:", round(power, 4), "\\n")
-"""
-        else:
-            r_code = R_WIN_RATIO.format(
-                win_ratio_theta=args.win_ratio_theta,
-                alpha=args.alpha, power=args.power,
-                n_sim_initial=args.n_sim_initial,
-                n_sim=args.n_sim,
-                se_approx=args.se_approx
-            )
+        r_code = R_WIN_RATIO.format(
+            win_ratio_theta=args.win_ratio_theta, se_approx=args.se_approx,
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "must_win":
-        if solve_for_power:
-            r_code = f"""
-alpha_val <- {args.alpha}
-n_endpoints <- {args.n_endpoints_must}
-corr <- {args.correlation_must}
-effect <- {args.effect_must}
-n_required <- {args.nobs}
-inflation <- 1 + (n_endpoints - 1) * corr * 0.5
-n_per_endpoint <- n_required / inflation
-# Inverse: z_b_per = sqrt(n_per_endpoint * effect^2) - z_a/2
-z_b_per <- sqrt(n_per_endpoint * effect^2) - qnorm(1-alpha_val/2)
-power_per_endpoint <- pnorm(z_b_per)
-power <- 1 - (1 - power_per_endpoint)^n_endpoints
-cat("\\n========== Must-Win / Co-Primary (Power given N) ==========\\n")
-cat("Number of co-primary endpoints:", n_endpoints, "\\n")
-cat("Assumed correlation:", corr, "\\n")
-cat("Effect size per endpoint:", effect, "\\n")
-cat("N per group (total):", n_required, "\\n")
-cat("Power per endpoint:", round(power_per_endpoint, 4), "\\n")
-cat("Overall power:", round(power, 4), "\\n")
-"""
-        else:
-            r_code = R_MUST_WIN.format(
-                alpha=args.alpha, power=args.power,
-                n_endpoints_must=args.n_endpoints_must,
-                correlation_must=args.correlation_must,
-                effect_must=args.effect_must
-            )
+        r_code = R_MUST_WIN.format(
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            n_endpoints_must=args.n_endpoints_must,
+            correlation_must=args.correlation_must,
+            effect_must=args.effect_must,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "historical_controls":
-        if solve_for_power:
-            r_code = f"""
-alpha_val <- {args.alpha}
-p_control_cur <- {args.p_control_current}
-p_treatment <- {args.prob_treatment}
-historical_response <- {args.historical_response}
-historical_n <- {args.historical_n}
-a0_borrowing <- {args.a0_borrowing}
-eff <- p_treatment - p_control_cur
-n_with_borrow <- {args.nobs}
-# Invert: n_with_borrow = n_no_borrow*(1 - ess/(ess+n_no_borrow))
-# => n_no_borrow = n_with_borrow * ess / (ess - n_with_borrow)
-ess <- historical_n * a0_borrowing
-n_no_borrow <- n_with_borrow * ess / (ess - n_with_borrow)
-z_b <- sqrt(n_no_borrow * eff^2 / (p_control_cur*(1-p_control_cur) + p_treatment*(1-p_treatment))) - qnorm(alpha_val)
-power <- pnorm(z_b)
-cat("\\n========== Historical Controls (Power given N) ==========\\n")
-cat("N with borrowing:", n_with_borrow, "\\n")
-cat("Implied N without borrowing:", round(n_no_borrow, 1), "\\n")
-cat("Achieved power:", round(power, 4), "\\n")
-"""
-        else:
-            r_code = R_HISTORICAL_CONTROLS.format(
-                alpha=args.alpha, power=args.power,
-                p_control_current=args.p_control_current,
-                p_treatment=args.prob_treatment,
-                historical_response=args.historical_response,
-                historical_n=args.historical_n,
-                a0_borrowing=args.a0_borrowing
-            )
+        r_code = R_HISTORICAL_CONTROLS.format(
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            p_control_current=args.p_control_current, prob_treatment=args.prob_treatment,
+            historical_response=args.historical_response, historical_n=args.historical_n,
+            a0_borrowing=args.a0_borrowing,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "mams":
-        if solve_for_power:
-            r_code = f"""
-alpha_val <- {args.alpha}
-n_arms <- {args.n_arms_mams}
-n_stages <- {args.n_stages_mams}
-delta <- {args.delta_effect}
-overall_n <- {args.nobs}
-# Reverse: solve power from total N. Bonferroni-adjusted alpha per comparison.
-z_b <- sqrt(overall_n * delta^2) - qnorm(1 - alpha_val/(2*n_arms))
-power <- pnorm(z_b)
-cat("\\n========== MAMS (Power given N) ==========\\n")
-cat("N per group:", overall_n, "\\n")
-cat("Alpha adjusted (Bonferroni):", round(alpha_val/(2*n_arms), 5), "\\n")
-cat("Achieved power:", round(power, 4), "\\n")
-"""
-        else:
-            r_code = R_MAMS.format(
-                alpha=args.alpha, power=args.power,
-                n_arms_mams=args.n_arms_mams,
-                n_stages_mams=args.n_stages_mams,
-                delta_effect=args.delta_effect
-            )
+        r_code = R_MAMS.format(
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            n_arms_mams=args.n_arms_mams, n_stages_mams=args.n_stages_mams,
+            delta_effect=args.delta_effect,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "conditional_power":
         # This test already computes conditional power given interim n; --nobs maps to n_planned
@@ -1087,69 +931,20 @@ cat("Achieved power:", round(power, 4), "\\n")
         )
 
     elif args.test == "ni_survival":
-        if solve_for_power:
-            r_code = f"""
-library(powerSurvEpi)
-alpha_val <- {args.alpha}
-ni_margin <- {args.ni_margin_surv}
-hr_expected <- {args.hr_expected}
-accrual <- {args.accrual_time}
-followup <- {args.followup_time}
-dropout <- {args.dropout_rate}
-p <- {args.event_rate}
-n_total <- {args.nobs}
-# powerAnsi is sample-size given power; for reverse we approximate the
-# log-rank power given events. events per group ~ n_total/2 * p.
-events_per_group <- n_total/2 * p
-d <- 2 * events_per_group
-# Non-inferiority log-rank: z_b = sqrt(d)*(ni_margin) ... approx with HR margin
-# Use approximate: power = Phi(sqrt(d)*(log(ni_margin)) - z_a/2)
-z_b <- sqrt(d) * abs(log(ni_margin)) - qnorm(1-alpha_val/2)
-power <- pnorm(z_b)
-cat("\\n========== NI Survival (Power given N, approx) ==========\\n")
-cat("NI margin (HR):", ni_margin, "\\n")
-cat("Total N:", n_total, "\\n")
-cat("Approx events per group:", round(events_per_group, 1), "\\n")
-cat("Achieved power (approx):", round(power, 4), "\\n")
-"""
-        else:
-            r_code = R_NI_SURVIVAL.format(
-                alpha=args.alpha, power=args.power,
-                ni_margin_surv=args.ni_margin_surv,
-                hr_expected=args.hr_expected,
-                accrual_time=args.accrual_time,
-                followup_time=args.followup_time,
-                dropout_rate=args.dropout_rate,
-                event_rate=args.event_rate
-            )
+        r_code = R_NI_SURVIVAL.format(
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            ni_margin_surv=args.ni_margin_surv, hr_expected=args.hr_expected,
+            accrual_time=args.accrual_time, followup_time=args.followup_time,
+            dropout_rate=args.dropout_rate, event_rate=args.event_rate,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "superiority_margin":
-        if solve_for_power:
-            r_code = f"""
-alpha_val <- {args.alpha}
-delta <- {args.sup_margin}
-p_control <- {args.p_control_sup}
-p_treatment <- p_control + {args.delta_sup}
-eff <- (p_treatment - p_control) - delta
-n_total <- {args.nobs}
-# Fallback z-test: n = ceil((z_alpha+z_beta)^2*(p_c(1-p_c)+p_t(1-p_t))/eff^2)
-z_b <- sqrt(n_total/2 * eff^2 / (p_control*(1-p_control) + p_treatment*(1-p_treatment))) - qnorm(alpha_val)
-power <- pnorm(z_b)
-cat("\\n========== Superiority by a Margin (Power given N) ==========\\n")
-cat("Superiority margin:", delta, "\\n")
-cat("Control rate:", p_control, "\\n")
-cat("Treatment rate:", round(p_treatment, 3), "\\n")
-cat("Total N:", n_total, "\\n")
-cat("Achieved power (approx):", round(power, 4), "\\n")
-"""
-        else:
-            r_code = R_SUPERIORITY_MARGIN.format(
-                alpha=args.alpha, power=args.power,
-                sup_margin=args.sup_margin,
-                sigma_ratio=args.sigma_ratio,
-                p_control_sup=args.p_control_sup,
-                delta_sup=args.delta_sup
-            )
+        r_code = R_SUPERIORITY_MARGIN.format(
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            sup_margin=args.sup_margin,
+            p_control_sup=args.p_control_sup,
+            delta_sup=args.delta_sup,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "assurance":
         # Assurance IS "power given n" — --nobs maps to n_assurance
@@ -1169,65 +964,19 @@ cat("Achieved power (approx):", round(power, 4), "\\n")
         )
 
     elif args.test == "dunnett":
-        if solve_for_power:
-            r_code = f"""
-alpha_val <- {args.alpha}
-k <- {args.n_groups_dunnett}
-n_control <- {args.n_control_dunnett}
-eff <- {args.effect_dunnett}
-z_alpha <- qnorm(1 - alpha_val/2)
-if (k <= 10) {{
-  dunnett_crit <- z_alpha + 0.5 * log(k)
-}} else {{
-  dunnett_crit <- qnorm(1 - alpha_val/(2*k))
-}}
-# Given total_n = n_control + k*n_per_arm, solve n_per_arm then power
-total_n <- {args.nobs}
-n_per_arm <- (total_n - n_control) / k
-z_b <- sqrt(n_per_arm * eff^2 / 2) - dunnett_crit
-power <- pnorm(z_b)
-cat("\\n========== Dunnett (Power given N) ==========\\n")
-cat("N per treatment arm:", round(n_per_arm, 1), "\\n")
-cat("Total N:", total_n, "\\n")
-cat("Dunnett critical value (approx):", round(dunnett_crit, 3), "\\n")
-cat("Achieved power:", round(power, 4), "\\n")
-"""
-        else:
-            r_code = R_DUNNETT.format(
-                alpha=args.alpha, power=args.power,
-                n_groups_dunnett=args.n_groups_dunnett,
-                n_control_dunnett=args.n_control_dunnett,
-                effect_dunnett=args.effect_dunnett
-            )
+        r_code = R_DUNNETT.format(
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            n_groups_dunnett=args.n_groups_dunnett,
+            n_control_dunnett=args.n_control_dunnett,
+            effect_dunnett=args.effect_dunnett,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "mediation":
-        if solve_for_power:
-            r_code = f"""
-alpha_val <- {args.alpha}
-a <- {args.a_path}; b <- {args.b_path}
-sigma2_m <- {args.sigma2_m}; sigma2_y <- {args.sigma2_y}
-indirect_effect <- a * b
-se_sobel <- sqrt(a^2 * (sigma2_y/b^2) + b^2 * sigma2_m)
-n_sobel <- {args.nobs}
-# Inverse of n = ceil((z_a/2 + z_b)^2 * se_sobel^2 / indirect_effect^2)
-z_b <- sqrt(n_sobel * indirect_effect^2 / se_sobel^2) - qnorm(1-alpha_val/2)
-power <- pnorm(z_b)
-cat("\\n========== Mediation (Power given N) ==========\\n")
-cat("Indirect effect (a*b):", round(indirect_effect, 4), "\\n")
-cat("Sobel SE:", round(se_sobel, 4), "\\n")
-cat("N:", n_sobel, "\\n")
-cat("Achieved power:", round(power, 4), "\\n")
-"""
-        else:
-            r_code = R_MEDIATION.format(
-                alpha=args.alpha, power=args.power,
-                a_path=args.a_path,
-                b_path=args.b_path,
-                sigma2_m=args.sigma2_m,
-                sigma2_y=args.sigma2_y,
-                cprime=args.cprime,
-                n_sim_mediation=args.n_sim_mediation
-            )
+        r_code = R_MEDIATION.format(
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            a_path=args.a_path, b_path=args.b_path,
+            sigma2_m=args.sigma2_m, sigma2_y=args.sigma2_y,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "group_sequential":
         # Validate spending function against allowlist
@@ -1235,45 +984,11 @@ cat("Achieved power:", round(power, 4), "\\n")
         if args.spending_func not in _allowed_spending:
             print("ERROR: --spending_func must be one of:", ", ".join(_allowed_spending))
             sys.exit(1)
-        if solve_for_power:
-            r_code = f"""
-library(rpact)
-alpha_val <- {args.alpha}; power_val <- {args.power}
-n_interim <- {args.n_interim}
-effect_gs <- {args.effect_gs}
-spending <- "{args.spending_func}"
-design <- getDesignGroupSequential(
-  kMax = n_interim + 1, typeOfDesign = "OF",
-  alpha = alpha_val, beta = 1 - power_val,
-  spending = spending
-)
-# Given n per group, use rpact getPowerMeans for exact power
-n_per_group <- {args.nobs}
-pow_res <- getPowerMeans(
-  design = design,
-  groups = 2,
-  n = c(rep(n_per_group, n_interim + 1)),
-  alternative = "two.sided",
-  typeOfAlternative = "oneSample"
-)
-cat("\\n========== Group Sequential (Power given N) ==========\\n")
-cat("Number of looks:", n_interim + 1, "(", n_interim, "interim)\\n")
-cat("Spending function:", spending, "\\n")
-cat("Effect size:", effect_gs, "\\n")
-cat("N per group:", n_per_group, "\\n")
-if (!is.null(pow_res$overallReject)) {{
-  cat("Achieved power (approx):", round(pow_res$overallReject, 4), "\\n")
-}} else {{
-  cat("Note: Use rpact::getPowerMeans(n=c(rep(n_per_group, n_interim+1)), ...) for exact power.\\n")
-}}
-"""
-        else:
-            r_code = R_GROUP_SEQUENTIAL.format(
-                alpha=args.alpha, power=args.power,
-                n_interim=args.n_interim,
-                effect_gs=args.effect_gs,
-                spending_func=args.spending_func
-            )
+        r_code = R_GROUP_SEQUENTIAL.format(
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            n_interim=args.n_interim, effect_gs=args.effect_gs,
+            spending_func=args.spending_func,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "adaptive":
         # Validate adaptive type against allowlist
@@ -1281,84 +996,32 @@ if (!is.null(pow_res$overallReject)) {{
         if args.adaptive_type not in _allowed_adaptive:
             print("ERROR: --adaptive_type must be one of:", ", ".join(_allowed_adaptive))
             sys.exit(1)
-        if solve_for_power:
-            r_code = f"""
-library(rpact)
-alpha_val <- {args.alpha}; power_val <- {args.power}
-n_stages_adapt <- {args.n_stages_adapt}
-effect_adaptive <- {args.effect_adaptive}
-adaptive_type <- "{args.adaptive_type}"
-n_per_group <- {args.nobs}
-cat("\\n========== Adaptive Design (Power given N) ==========\\n")
-cat("Type:", adaptive_type, "\\n")
-cat("Stages:", n_stages_adapt, "\\n")
-cat("Effect size:", effect_adaptive, "\\n")
-cat("N per group:", n_per_group, "\\n")
-cat("Note: Use rpact::getPowerMeans(n=c(rep(n_per_group, n_stages_adapt)), ...) for exact power.\\n")
-"""
-        else:
-            r_code = R_ADAPTIVE.format(
-                alpha=args.alpha, power=args.power,
-                n_stages_adapt=args.n_stages_adapt,
-                effect_adaptive=args.effect_adaptive,
-                adaptive_type=args.adaptive_type
-            )
+        r_code = R_ADAPTIVE.format(
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            n_stages_adapt=args.n_stages_adapt, effect_adaptive=args.effect_adaptive,
+            adaptive_type=args.adaptive_type,
+            solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "survival_exact":
-        if solve_for_power:
-            r_code = f"""
-library(rpact)
-alpha_val <- {args.alpha_exact}; power_val <- {args.power_exact}
-hr_val <- {args.hr_exact}
-accrual_val <- {args.accrual_exact}
-followup_val <- {args.followup_exact}
-dropout_val <- {args.dropout_exact}
-event_rate_val <- {args.event_rate_exact}
-n_per_group <- {args.nobs}
-design <- getDesignGroupSequential(
-  kMax = {args.n_stages_exact}, typeOfDesign = "OF",
-  alpha = alpha_val, beta = 1 - power_val
-)
-# rpact getPowerSurvival given nSubjects per stage
-sv_pow <- getPowerSurvival(
-  design = design,
-  thetaH0 = hr_val,
-  pi1 = event_rate_val,
-  pi2 = event_rate_val * hr_val,
-  nSubjects = c(rep(n_per_group, {args.n_stages_exact})),
-  T = accrual_val + followup_val,
-  Ta = accrual_val,
-  f = followup_val,
-  gamma = dropout_val
-)
-cat("\\n========== Survival Design (Exact, Power given N) ==========\\n")
-cat("Hazard ratio:", hr_val, "\\n")
-cat("N per group:", n_per_group, "\\n")
-cat("Achieved power:", round(sv_pow$overallReject, 4), "\\n")
-"""
-        else:
-            r_code = R_SURVIVAL_EXACT.format(
-                alpha_exact=args.alpha_exact,
-                power_exact=args.power_exact,
-                hr_exact=args.hr_exact,
-                accrual_exact=args.accrual_exact,
-                followup_exact=args.followup_exact,
-                dropout_exact=args.dropout_exact,
-                event_rate_exact=args.event_rate_exact,
-                n_stages_exact=args.n_stages_exact
-            )
+        r_code = R_SURVIVAL_EXACT.format(
+            alpha_exact=args.alpha_exact, power_exact=args.power_exact, nobs=args.nobs,
+            hr_exact=args.hr_exact, accrual_exact=args.accrual_exact,
+            followup_exact=args.followup_exact, dropout_exact=args.dropout_exact,
+            event_rate_exact=args.event_rate_exact, n_stages_exact=args.n_stages_exact,
+            solve_for_power=str(solve_for_power).upper())
 
     else:
         print("ERROR: Unknown test type"); sys.exit(1)
 
     r_code = r_code.lstrip('\n')
 
-    # Show R code (audit transparency) — always shown alongside results
-    print("=" * 60)
-    print("[R CODE — generated for this analysis (always shown for review)]")
-    print("=" * 60)
-    print(r_code)
-    print("=" * 60)
+    # R code display policy: hidden by default; shown only on --show-code or --dry-run
+    if args.show_code or args.dry_run:
+        print("=" * 60)
+        print("[R CODE — generated for this analysis (shown on request)]")
+        print("=" * 60)
+        print(r_code)
+        print("=" * 60)
 
     if not confirmed:
         print("[DRY RUN] R code NOT executed. Remove --dry-run to execute.")
@@ -1368,6 +1031,8 @@ cat("Achieved power:", round(sv_pow$overallReject, 4), "\\n")
     sys.stdout.flush()
     output = run_r(r_code, confirmed=True)
     print(output)
+    if not args.show_code:
+        print("[INFO] R code hidden by default. Re-run with --show-code to display it, or ask the assistant for reproducible code.")
     print("=" * 60)
 
 if __name__ == "__main__":

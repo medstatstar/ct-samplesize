@@ -2,7 +2,7 @@
 
 ## Overview / 技能概述
 
-`ct-samplesize`: 面向临床试验从业者的易用型样本量与检验效能计算工具。后台以 R 软件及 rpact/gsDesign/TrialSize/PowerTOST 等 20+ R工具包为依托，用户只需使用自然语言对话方式的提示词，就可以在中英双语的菜单式引导下，完成30+ 种复杂专业的样本量与检验效能计算工作。且 100% 提供可复现 R 代码，供用户核查、递交代码或修改后重跑。
+`ct-samplesize`: 面向临床试验从业者的易用型样本量与检验效能计算工具。后台以 R 软件及 rpact/gsDesign/TrialSize/PowerTOST 等 20+ R工具包为依托，用户只需使用自然语言对话方式的提示词，即可完成（默认英文输出，OS 中文环境时自动切换中文）37 种复杂专业的样本量与检验效能计算工作。可应要求提供可复现 R 代码（默认不展示），供用户核查、递交代码或修改后重跑。
 
 ---
 
@@ -45,7 +45,7 @@
 - R via subprocess (Rscript), path: auto-detect (RSCRIPT_PATH env or PATH search)
 - Python via Anaconda (`C:\Tools\anaconda3\python.exe`)
 - **Default: dry-run mode.** R code is displayed; execution requires `-y`/`--yes`
-- Temp files written to script directory, not system temp
+- Temp R files written to system temp dir (`tempfile.gettempdir()`), auto-cleaned after run
 
 ### 4. Result Output / 结果输出标准 (v4.0)
 
@@ -54,11 +54,16 @@ Every analysis includes:
 - Calculation result (sample size / power / effect size)
 - Dropout adjustment (if applicable)
 - Assumptions & limitations
-- **Generated R code displayed by default** (dry-run, not executed)
-- Clear indication that `-y`/`--yes` is required for execution
+- **Generated R code hidden by default**; shown via `--show-code` (execute + show) or `--dry-run` (preview only)
+- Default = execute & return result (no code shown); `-y`/`--yes` kept for backward compatibility
 
 ### 5. Language Detection / 语言检测
-Detect from `<response_language>` tag or user input. Respond in the **same language**.
+- **默认英文**：所有面向用户的提示内容默认使用英文。
+- **OS 中文环境自动切换中文**：当检测到操作系统为中文环境（locale 含 `zh`/`CN`，如 `LANG=zh_CN.UTF-8`、Windows UI 语言 `zh-CN`）时，给用户的提示内容**自动切换为中文**，无需用户显式要求。
+  - 检测方法：Linux/macOS 读 `LANG`/`LC_ALL`/`LANGUAGE`；Windows 用 `Get-Culture`/`Get-WinSystemLocale` 或 `os` 环境变量判断语言代码是否以 `zh` 开头；若 `<response_language>` 标签明确指定，则服从该标签。
+- **常用模块须备双语**（英文 + 中文两套提示内容）：常用检验类型、报告模板、快速引导菜单、参数速查表。
+- **复杂 / 少用模块可暂只英文**：如 `group_sequential`、`adaptive`、`mixed_model`、`bayesian`、`win_ratio`、`mams`、`vaccine_efficacy` 等。
+- 此策略**不影响代码输出**（R/Python 代码始终英文，按 `--show-code` 展示）。
 
 ### 6. Mixed Model Specifics / 混合模型特别说明
 - Use `simr::makeLmer()` / `makeGlmer()` to build model from literature parameters

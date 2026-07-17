@@ -4,9 +4,9 @@
 
 > **Easy-to-use Clinical Sample Size & Power Calculator for Clinical Researchers**
 >
-> This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. Powered by R and 20+ professional R packages (rpact, gsDesign, TrialSize, PowerTOST, etc.), users can perform 30+ complex calculations through natural language prompts — bilingual EN/CN menu-driven. **100% reproducible R code** for verification, submission, or re-execution.
+> This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. Powered by R and 20+ professional R packages (rpact, gsDesign, TrialSize, PowerTOST, etc.), users can perform 37 complex calculations through natural language prompts — English by default, auto-switches to Chinese on Chinese-OS (locale zh/CN). **reproducible R code available on request (hidden by default)** for verification, submission, or re-execution.
 >
-> **⚠️ R Code Display:** Generated R code is **displayed by default** (dry-run mode). Add `-y/--yes` to execute.
+> **⚠️ R Code Display:** Generated R code is **hidden by default**; use `--show-code` to display (execute + show) or `--dry-run` to preview only.
 
 ---
 
@@ -47,7 +47,7 @@ install.packages(c("TrialSize","pwr","rpact","gsDesign","PowerTOST","simr","lme4
 
 ---
 
-## Supported Test Types (30+)
+## Supported Test Types (37)
 
 | Category | Test Type | Clinical Scenario | R Package(s) |
 |:---|:---|:---|:---|
@@ -225,7 +225,7 @@ and `survival_exact` use fixed-design / Schoenfeld approximations (noted in outp
 
 ## Safety & Disclaimer
 
-- R code is **displayed by default** (dry-run); `-y/--yes` required to execute
+- R code is **hidden by default**; `--show-code` displays it (execute + show), `--dry-run` previews only
 - All computations are local; no data transmission
 - Outputs for reference only; validate before regulatory submissions
 
@@ -235,10 +235,10 @@ and `survival_exact` use fixed-design / Schoenfeld approximations (noted in outp
 
 ```
 ct-samplesize/
-├── SKILL.md              ← Skill definition (bilingual, concise)
+├── SKILL.md              ← Skill definition (English by default, auto-Chinese on Chinese OS)
 ├── README.md             ← This file (English)
 ├── README_ZH.md          ← Chinese version
-├── AGENTS.md             ← Core execution rules (bilingual)
+├── AGENTS.md             ← Core execution rules (English by default, auto-Chinese on Chinese OS)
 ├── assets/
 │   └── icon.svg          ← Skill icon (104×104)
 ├── scripts/
@@ -249,7 +249,7 @@ ct-samplesize/
     ├── python_usage.md      ← Python quick ref
     ├── r_usage.md           ← R quick ref
     ├── effect_size.md       ← Effect size standards (d/f/h + Z table)
-    ├── report_template.md   ← Report template + mandatory R code
+    ├── report_template.md   ← Report template + on-request R code
     ├── data_format_guide.md ← 31 test types data format + examples
     └── examples.md          ← 3 full walkthroughs (proportion/GS/noninferiority)
 ```
@@ -260,10 +260,10 @@ ct-samplesize/
 
 1. **Smart Env Detection**: Auto-detect R installation on every trigger
 2. **Dual-path**: Python (simple) + R (exact & complex)
-3. **Mandatory R Code**: Regardless of path, always include reproducible R script
+3. **R Code on Request**: Hidden by default; shown via `--show-code` or provided when the user asks
 4. **Comprehensive**: 20+ R packages, full formula derivations, 3 complete examples
 5. **Natural Language**: Just describe your trial in plain language
-6. **Bilingual**: Full EN/CN support with auto-detection
+6. **Language**: English by default, auto-switches to Chinese on Chinese-OS (locale zh/CN)
 
 ---
 

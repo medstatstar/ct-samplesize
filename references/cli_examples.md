@@ -1,7 +1,7 @@
 # CLI 命令示例 / Command-Line Examples
 
 > 本文件集中收录 `scripts/samplesize_power.py` 的全部常用命令行示例，供 `SKILL.md` 引用。
-> **R 代码默认执行并返回结果，且始终展示生成的 R 代码**。添加 `--dry-run` 仅预览代码、不执行。`-y/--yes` 保留以兼容旧命令（默认即执行）。
+> **R 代码默认执行并返回结果，但默认不展示代码**。添加 `--show-code` 执行并展示代码；`--dry-run` 仅预览代码、不执行。`-y/--yes` 保留以兼容旧命令（默认即执行）。
 > 序列支持两种格式：逗号显式 `"20,40,200"` 或 自动生成 `"20:20:200"`（起:步:止）。
 
 ---
@@ -70,7 +70,13 @@ python scripts/samplesize_power.py --test anova --effect 0.25 --k_groups 3 --pow
 python scripts/samplesize_power.py --test equivalence --margin 2.0 --effect 3.0 --power 0.8
 
 # === Binary / 二分类 ===
-python scripts/samplesize_power.py --test proportion_two --p1 0.3 --p2 0.15 --power 0.8
+# proportion_* 约定: --p1 = 对照组/原方法, --p2 = 实验组/新方法
+python scripts/samplesize_power.py --test proportion_two --p1 0.15 --p2 0.30 --power 0.8
+python scripts/samplesize_power.py --test proportion_two --p1 0.15 --p2 0.30 --power 0.8 --side one
+python scripts/samplesize_power.py --test proportion_one --p1 0.40 --p2 0.50 --power 0.8
+python scripts/samplesize_power.py --test proportion_paired --p1 0.15 --p2 0.30 --power 0.8
+python scripts/samplesize_power.py --test odds_ratio --p1 0.30 --p2 0.50 --power 0.8
+python scripts/samplesize_power.py --test risk_ratio --p1 0.30 --p2 0.50 --power 0.8
 python scripts/samplesize_power.py --test non_inferiority --margin 0.1 --p1 0.85 --p2 0.80 --power 0.8
 python scripts/samplesize_power.py --test superiority_margin --sup_margin 0.05 --p_control_sup 0.3 --delta_sup 0.15
 

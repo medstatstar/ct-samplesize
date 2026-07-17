@@ -1,6 +1,6 @@
 # Examples / 使用示例
 
-> R code is **always displayed** by default (dry-run mode). To **execute** the R code, re-run with `-y/--yes`.
+> R code is **hidden by default**. Use `--show-code` to display (execute + show), or `--dry-run` to preview only.
 
 ---
 
@@ -15,7 +15,7 @@
 python scripts/samplesize_power.py --test proportion_two --p1 0.35 --p2 0.20 --power 0.8
 ```
 
-Output: R code is displayed but NOT executed.
+Output: R code is displayed (dry-run, NOT executed).
 
 ### Step 2 — Execute (after review) / 第二步 — 执行（审查后）
 
@@ -69,8 +69,8 @@ python scripts/samplesize_power.py --test non_inferiority --p1 0.65 --p2 0.70 --
 
 ## Execution Notes / 执行要点
 
-1. **Default behavior**: R code is displayed (dry-run), NOT executed
-2. **To execute**: Add `-y/--yes` flag after reviewing the displayed R code
+1. **Default behavior**: R code is executed and results returned; code hidden (add `--show-code` to show, `--dry-run` to preview only)
+2. **To show code while executing**: Add `--show-code` (after reviewing a `--dry-run` preview if desired)
 3. **All examples**: Follow the same pattern — preview first, then execute with `-y`
 
 > All R code blocks follow `references/report_template.md` standards.

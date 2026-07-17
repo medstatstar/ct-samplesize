@@ -11,19 +11,19 @@ __all__ = [
 CURVE_SOLVERS = {
     # ── t-tests (pwr) ──
     "ttest_ind": {
-        "params": "alpha <- {alpha}; delta <- {effect}; alt <- 'two.sided'",
+        "params": "alpha <- {alpha}; delta <- {effect}; alt <- '{alt}'",
         "power_fn": "pwr.t.test(n=n, d=delta, sig.level=alpha, alternative=alt)$power",
         "n_fn": "ceiling(pwr.t.test(d=delta, power=p, sig.level=alpha, alternative=alt)$n)",
         "n_label": "N per group", "effect_loop": True, "effect_var": "delta",
     },
     "ttest_paired": {
-        "params": "alpha <- {alpha}; delta <- {effect}",
-        "power_fn": "pwr.t.test(n=n, d=delta, type='paired', sig.level=alpha)$power",
-        "n_fn": "ceiling(pwr.t.test(d=delta, power=p, type='paired', sig.level=alpha)$n)",
+        "params": "alpha <- {alpha}; delta <- {effect}; alt <- '{alt}'",
+        "power_fn": "pwr.t.test(n=n, d=delta, type='paired', sig.level=alpha, alternative=alt)$power",
+        "n_fn": "ceiling(pwr.t.test(d=delta, power=p, type='paired', sig.level=alpha, alternative=alt)$n)",
         "n_label": "N (paired)", "effect_loop": True, "effect_var": "delta",
     },
     "ttest_one": {
-        "params": "alpha <- {alpha}; delta <- {effect}; alt <- 'two.sided'",
+        "params": "alpha <- {alpha}; delta <- {effect}; alt <- '{alt}'",
         "power_fn": "pwr.t.test(n=n, d=delta, type='one.sample', sig.level=alpha, alternative=alt)$power",
         "n_fn": "ceiling(pwr.t.test(d=delta, power=p, type='one.sample', sig.level=alpha, alternative=alt)$n)",
         "n_label": "N", "effect_loop": True, "effect_var": "delta",
@@ -36,34 +36,34 @@ CURVE_SOLVERS = {
     },
     # ── Proportions (pwr) ──
     "proportion_one": {
-        "params": "alpha <- {alpha}; p1 <- {p1}; p0 <- {p0}",
-        "power_fn": "pwr.p.test(n=n, h=ES.h(p1, p0), sig.level=alpha)$power",
-        "n_fn": "ceiling(pwr.p.test(h=ES.h(p1, p0), power=p, sig.level=alpha)$n)",
-        "n_label": "N", "effect_loop": False,
+        "params": "alpha <- {alpha}; p0 <- {p1}; p1 <- {p2}; alt <- '{alt}'",
+        "power_fn": "pwr.p.test(n=n, h=ES.h(p1, p0), sig.level=alpha, alternative=alt)$power",
+        "n_fn": "ceiling(pwr.p.test(h=ES.h(p1, p0), power=p, sig.level=alpha, alternative=alt)$n)",
+        "n_label": "N (total)", "effect_loop": False,
     },
     "proportion_two": {
-        "params": "alpha <- {alpha}; p1 <- {p1}; p2 <- {p2}",
-        "power_fn": "pwr.2p.test(n=n, h=ES.h(p1, p2), sig.level=alpha)$power",
-        "n_fn": "ceiling(pwr.2p.test(h=ES.h(p1, p2), power=p, sig.level=alpha)$n)",
+        "params": "alpha <- {alpha}; p1 <- {p1}; p2 <- {p2}; alt <- '{alt}'",
+        "power_fn": "pwr.2p.test(n=n, h=ES.h(p2, p1), sig.level=alpha, alternative=alt)$power",
+        "n_fn": "ceiling(pwr.2p.test(h=ES.h(p2, p1), power=p, sig.level=alpha, alternative=alt)$n)",
         "n_label": "N per group", "effect_loop": False,
     },
     "proportion_paired": {
-        "params": "alpha <- {alpha}; p1 <- {p1}; p2 <- {p2}",
-        "power_fn": "pwr.2p.test(n=n, h=ES.h(p1, p2), sig.level=alpha)$power",
-        "n_fn": "ceiling(pwr.2p.test(h=ES.h(p1, p2), power=p, sig.level=alpha)$n)",
-        "n_label": "N (paired)", "effect_loop": False,
+        "params": "alpha <- {alpha}; p1 <- {p1}; p2 <- {p2}; alt <- '{alt}'",
+        "power_fn": "pwr.2p.test(n=n, h=ES.h(p2, p1), sig.level=alpha, alternative=alt)$power",
+        "n_fn": "ceiling(pwr.2p.test(h=ES.h(p2, p1), power=p, sig.level=alpha, alternative=alt)$n)",
+        "n_label": "N (paired, approx)", "effect_loop": False,
     },
     "odds_ratio": {
-        "params": "alpha <- {alpha}; p1 <- {p1}; p2 <- {p2}",
-        "power_fn": "pwr.2p.test(n=n, h=ES.h(p1, p2), sig.level=alpha)$power",
-        "n_fn": "ceiling(pwr.2p.test(h=ES.h(p1, p2), power=p, sig.level=alpha)$n)",
-        "n_label": "N per group", "effect_loop": False,
+        "params": "alpha <- {alpha}; p1 <- {p1}; p2 <- {p2}; alt <- '{alt}'",
+        "power_fn": "pwr.2p.test(n=n, h=ES.h(p2, p1), sig.level=alpha, alternative=alt)$power",
+        "n_fn": "ceiling(pwr.2p.test(h=ES.h(p2, p1), power=p, sig.level=alpha, alternative=alt)$n)",
+        "n_label": "N per group (approx)", "effect_loop": False,
     },
     "risk_ratio": {
-        "params": "alpha <- {alpha}; p1 <- {p1}; p2 <- {p2}",
-        "power_fn": "pwr.2p.test(n=n, h=ES.h(p1, p2), sig.level=alpha)$power",
-        "n_fn": "ceiling(pwr.2p.test(h=ES.h(p1, p2), power=p, sig.level=alpha)$n)",
-        "n_label": "N per group", "effect_loop": False,
+        "params": "alpha <- {alpha}; p1 <- {p1}; p2 <- {p2}; alt <- '{alt}'",
+        "power_fn": "pwr.2p.test(n=n, h=ES.h(p2, p1), sig.level=alpha, alternative=alt)$power",
+        "n_fn": "ceiling(pwr.2p.test(h=ES.h(p2, p1), power=p, sig.level=alpha, alternative=alt)$n)",
+        "n_label": "N per group (approx)", "effect_loop": False,
     },
     # ── ROC ──
     "roc": {
@@ -162,14 +162,13 @@ power_given_n <- function(n) { __POWER_FN__ }
 n_seq <- __SEQ__
 pw <- sapply(n_seq, power_given_n)
 df <- data.frame(n = n_seq, power = pw)
-library(ggplot2)
-p <- ggplot(df, aes(x = n, y = power)) +
-  geom_line(color = '#2c7fb8', size = 1.3) +
-  geom_point(color = '#2c7fb8', size = 2) +
-  geom_hline(yintercept = __TARGET__, linetype = 'dashed', color = 'red') +
-  labs(title = 'Power vs Sample Size (__TEST__)', x = '__XLABEL__', y = 'Power') +
-  ylim(0, 1) + theme_minimal()
-ggsave('__OUT__', p, width = 7, height = 5, dpi = 120)
+png('__OUT__', width = 700, height = 500)
+plot(n_seq, pw, type = 'b', col = '#2c7fb8', lwd = 1.3, pch = 19,
+     xlab = '__XLABEL__', ylab = 'Power',
+     main = 'Power vs Sample Size (__TEST__)', ylim = c(0, 1))
+abline(h = __TARGET__, lty = 2, col = 'red')
+grid()
+dev.off()
 print(df)
 cat('PNG saved to __OUT__', '\\n')
 """
@@ -185,13 +184,21 @@ for (e in effects) {
   pw <- sapply(__SEQ__, power_given_n)
   res <- rbind(res, data.frame(n = __SEQ__, power = pw, effect = rep(e, length(__SEQ__))))
 }
-library(ggplot2)
-p <- ggplot(res, aes(x = n, y = power, color = factor(effect))) +
-  geom_line(size = 1.1) + geom_point(size = 1.5) +
-  geom_hline(yintercept = __TARGET__, linetype = 'dashed', color = 'red') +
-  labs(title = 'Power vs Sample Size (__TEST__, by effect)', x = '__XLABEL__', y = 'Power', color = 'Effect') +
-  ylim(0, 1) + theme_minimal()
-ggsave('__OUT__', p, width = 7, height = 5, dpi = 120)
+png('__OUT__', width = 700, height = 500)
+cols <- rainbow(length(effects))
+first <- res[res$effect == effects[1], ]
+plot(first$n, first$power, type = 'b', col = cols[1], lwd = 1.1, pch = 19,
+     xlab = '__XLABEL__', ylab = 'Power',
+     main = 'Power vs Sample Size (__TEST__, by effect)', ylim = c(0, 1))
+for (i in seq_along(effects)) {
+  sub <- res[res$effect == effects[i], ]
+  lines(sub$n, sub$power, col = cols[i], lwd = 1.1)
+  points(sub$n, sub$power, col = cols[i], pch = 19, cex = 0.8)
+}
+abline(h = __TARGET__, lty = 2, col = 'red')
+legend('bottomright', legend = as.character(effects), col = cols, lty = 1, pch = 19)
+grid()
+dev.off()
 print(res)
 cat('PNG saved to __OUT__', '\\n')
 """
@@ -202,14 +209,13 @@ n_given_power <- function(p) { __NFN__ }
 pw_seq <- __SEQ__
 ns <- sapply(pw_seq, n_given_power)
 df <- data.frame(power = pw_seq, n = ns)
-library(ggplot2)
-p <- ggplot(df, aes(x = power, y = n)) +
-  geom_line(color = '#d95f0e', size = 1.3) +
-  geom_point(color = '#d95f0e', size = 2) +
-  geom_vline(xintercept = __TARGET__, linetype = 'dashed', color = 'red') +
-  labs(title = 'Sample Size vs Power (__TEST__)', x = 'Power (target)', y = '__YLABEL__') +
-  theme_minimal()
-ggsave('__OUT__', p, width = 7, height = 5, dpi = 120)
+png('__OUT__', width = 700, height = 500)
+plot(pw_seq, ns, type = 'b', col = '#d95f0e', lwd = 1.3, pch = 19,
+     xlab = 'Power (target)', ylab = '__YLABEL__',
+     main = 'Sample Size vs Power (__TEST__)')
+abline(v = __TARGET__, lty = 2, col = 'red')
+grid()
+dev.off()
 print(df)
 cat('PNG saved to __OUT__', '\\n')
 """
@@ -225,13 +231,21 @@ for (e in effects) {
   ns <- sapply(__SEQ__, n_given_power)
   res <- rbind(res, data.frame(power = __SEQ__, n = ns, effect = rep(e, length(__SEQ__))))
 }
-library(ggplot2)
-p <- ggplot(res, aes(x = power, y = n, color = factor(effect))) +
-  geom_line(size = 1.1) + geom_point(size = 1.5) +
-  geom_vline(xintercept = __TARGET__, linetype = 'dashed', color = 'red') +
-  labs(title = 'Sample Size vs Power (__TEST__, by effect)', x = 'Power (target)', y = '__YLABEL__', color = 'Effect') +
-  theme_minimal()
-ggsave('__OUT__', p, width = 7, height = 5, dpi = 120)
+png('__OUT__', width = 700, height = 500)
+cols <- rainbow(length(effects))
+first <- res[res$effect == effects[1], ]
+plot(first$power, first$n, type = 'b', col = cols[1], lwd = 1.1, pch = 19,
+     xlab = 'Power (target)', ylab = '__YLABEL__',
+     main = 'Sample Size vs Power (__TEST__, by effect)')
+for (i in seq_along(effects)) {
+  sub <- res[res$effect == effects[i], ]
+  lines(sub$power, sub$n, col = cols[i], lwd = 1.1)
+  points(sub$power, sub$n, col = cols[i], pch = 19, cex = 0.8)
+}
+abline(v = __TARGET__, lty = 2, col = 'red')
+legend('bottomright', legend = as.character(effects), col = cols, lty = 1, pch = 19)
+grid()
+dev.off()
 print(res)
 cat('PNG saved to __OUT__', '\\n')
 """

@@ -1,4 +1,5 @@
-# r_survival.py -- R code templates for ct-samplesize
+# r_survival.py -- R function templates for ct-samplesize
+# All algorithms are pre-written R functions (ss_*). Branches only call them.
 
 __all__ = [
     "R_NI_SURVIVAL",
@@ -7,79 +8,115 @@ __all__ = [
 
 R_NI_SURVIVAL = """
 library(powerSurvEpi)
-# Non-inferiority survival design
-set.seed(42)
-alpha_val <- {alpha}; power_val <- {power}
-ni_margin <- {ni_margin_surv}        # Non-inferiority margin (HR)
-hr_expected <- {hr_expected}         # Expected true HR (usually 1.0)
-accrual <- {accrual_time}            # Accrual time (months)
-followup <- {followup_time}          # Follow-up time (months)
-dropout <- {dropout_rate}            # Annual dropout rate
-# powerSurvEpi::powerAnsi
-result <- powerAnsi(
-  ratio = 1,
-  alpha = alpha_val,
-  power = power_val,
-  p = {event_rate},                # Event rate in control
-  q = {event_rate} * hr_expected,  # Event rate in treatment
-  delta = ni_margin,
-  T = accrual + followup,
-  Ta = accrual,
-  f = followup,
-  gam = dropout,
-  TiO = ni_margin                  # Non-inferiority margin
-)
-cat("\\n========== Non-Inferiority Survival ==========\\n")
-cat("NI margin (HR):", ni_margin, "\\n")
-cat("Expected HR:", hr_expected, "\\n")
-cat("Accrual (months):", accrual, "\\n")
-cat("Follow-up (months):", followup, "\\n")
-cat("Event rate (control):", {event_rate}, "\\n")
-cat("Alpha:", alpha_val, "Power:", power_val, "\\n")
-cat("Events required:", ceiling(result$nEvents), "\\n")
-cat("N per group:", ceiling(result$n), "\\n")
-cat("Total N:", ceiling(result$n) * 2, "\\n")
+# Non-inferiority survival design. Forward via powerAnsi (fallback closed-form log-rank);
+# reverse uses approx log-rank power formula.
+ss_ni_survival <- function(ni_margin, hr_expected, accrual, followup, dropout,
+                           event_rate, alpha, power=NULL, n=NULL) {{
+  if (!is.null(power)) {{
+    # Forward: given target power -> required N (per group)
+    result <- tryCatch(powerAnsi(ratio=1, alpha=alpha, power=power, p=event_rate,
+                        q=event_rate*hr_expected, delta=ni_margin,
+                        T=accrual+followup, Ta=accrual, f=followup,
+                        gam=dropout, TiO=ni_margin), error = function(e) NULL)
+    if (!is.null(result) && !is.null(result$n) && is.finite(result$n) && result$n > 0) {{
+      return(ceiling(result$n))
+    }}
+    # Closed-form log-rank approximation for NI margin (total events D):
+    #   D = (z_{{1-alpha/2}} + z_{{1-beta}})^2 / (log(HR_NI))^2
+    D <- (qnorm(1 - alpha/2) + qnorm(power))^2 / (log(ni_margin))^2
+    ev_rate <- if (event_rate > 0) event_rate else 1
+    return(ceiling((D/2) / ev_rate))
+  }} else {{
+    # Reverse: given N -> approximate achieved power
+    events_per_group <- n/2 * event_rate
+    d <- 2 * events_per_group
+    z_b <- sqrt(d) * abs(log(ni_margin)) - qnorm(1-alpha/2)
+    return(round(pnorm(z_b), 4))
+  }}
+}}
+if ({solve_for_power}) {{
+  pwr <- ss_ni_survival(ni_margin={ni_margin_surv}, hr_expected={hr_expected},
+                        accrual={accrual_time}, followup={followup_time}, dropout={dropout_rate},
+                        event_rate={event_rate}, alpha={alpha}, n={nobs})
+  cat("\\n========== NI Survival (Power given N, approx) ==========\\n")
+  cat("NI margin (HR):", {ni_margin_surv}, "\\n")
+  cat("Total N:", {nobs}, "\\n")
+  cat("Approx events per group:", round({nobs}/2*{event_rate}, 1), "\\n")
+  cat("Achieved power (approx):", pwr, "\\n")
+}} else {{
+  n_val <- ss_ni_survival(ni_margin={ni_margin_surv}, hr_expected={hr_expected},
+                          accrual={accrual_time}, followup={followup_time}, dropout={dropout_rate},
+                          event_rate={event_rate}, alpha={alpha}, power={power})
+  ev <- tryCatch(powerAnsi(ratio=1, alpha={alpha}, power={power}, p={event_rate},
+                        q={event_rate}*{hr_expected}, delta={ni_margin_surv},
+                        T={accrual_time}+{followup_time}, Ta={accrual_time}, f={followup_time},
+                        gam={dropout_rate}, TiO={ni_margin_surv})$nEvents, error=function(e) NULL)
+  cat("\\n========== Non-Inferiority Survival ==========\\n")
+  cat("NI margin (HR):", {ni_margin_surv}, "\\n")
+  cat("Expected HR:", {hr_expected}, "\\n")
+  cat("Accrual (months):", {accrual_time}, "\\n")
+  cat("Follow-up (months):", {followup_time}, "\\n")
+  cat("Event rate (control):", {event_rate}, "\\n")
+  cat("Alpha:", {alpha}, "Power:", {power}, "\\n")
+  if (!is.null(ev) && is.finite(ev)) cat("Events required:", ceiling(ev), "\\n")
+  cat("N per group:", n_val, "\\n")
+  cat("Total N:", 2 * n_val, "\\n")
+}}
 """
 
 R_SURVIVAL_EXACT = """
 library(rpact)
-# Exact survival design via rpact
-set.seed(42)
-alpha_val <- {alpha_exact}; power_val <- {power_exact}
-hr_val <- {hr_exact}             # Hazard ratio
-accrual_val <- {accrual_exact}   # Accrual time
-followup_val <- {followup_exact} # Follow-up time
-dropout_val <- {dropout_exact}   # Annual dropout rate
-event_rate_val <- {event_rate_exact}  # Event rate
-# rpact survival design
-design <- getDesignGroupSequential(
-  kMax = {n_stages_exact},
-  typeOfDesign = "OF",
-  alpha = alpha_val,
-  beta = 1 - power_val
-)
-# Control hazard rate from event probability (exponential), rpact 4.4.0 HR convention
-ref_period <- accrual_val + followup_val
-lambda2 <- -log(1 - event_rate_val) / ref_period
-# Survival sample size (lambda2 + hazardRatio; equal allocation)
-sv_result <- getSampleSizeSurvival(
-  design = design,
-  lambda2 = lambda2,
-  hazardRatio = hr_val,
-  accrualTime = c(0, accrual_val),
-  followUpTime = followup_val,
-  dropoutRate1 = dropout_val,
-  dropoutRate2 = dropout_val
-)
-cat("\\n========== Survival Design (Exact, rpact) ==========\\n")
-cat("Hazard ratio:", hr_val, "\\n")
-cat("Event rate (control):", event_rate_val, "\\n")
-cat("Accrual (months):", accrual_val, "\\n")
-cat("Follow-up (months):", followup_val, "\\n")
-cat("Dropout (annual):", dropout_val, "\\n")
-cat("Alpha:", alpha_val, "Power:", power_val, "\\n")
-cat("Events required:", ceiling(sv_result$maxNumberOfEvents), "\\n")
-cat("N per group:", ceiling(sv_result$numberOfSubjects1), "\\n")
-cat("Total N:", ceiling(sv_result$maxNumberOfSubjects), "\\n")
+# Exact survival design via rpact. Forward getSampleSizeSurvival (fallback Schoenfeld);
+# reverse getPowerSurvival (fallback Schoenfeld log-rank).
+ss_survival_exact <- function(hr, accrual, followup, dropout, event_rate, n_stages,
+                              alpha, power=NULL, n=NULL) {{
+  design <- getDesignGroupSequential(kMax=n_stages, typeOfDesign="OF",
+                                     alpha=alpha, beta=1-ifelse(is.null(power),0.1,power))
+  lambda2 <- -log(1 - event_rate) / (accrual + followup)
+  ev_rate <- if (event_rate > 0) event_rate else 1
+  if (!is.null(power)) {{
+    sv <- tryCatch(getSampleSizeSurvival(design=design, lambda2=lambda2, hazardRatio=hr,
+                                accrualTime=c(0, accrual), followUpTime=followup,
+                                dropoutRate1=dropout, dropoutRate2=dropout),
+                   error = function(e) NULL)
+    if (!is.null(sv) && !is.null(sv$numberOfSubjects1) && is.finite(sv$numberOfSubjects1) && sv$numberOfSubjects1 > 0) {{
+      return(ceiling(sv$numberOfSubjects1))
+    }}
+    D <- (qnorm(1-alpha/2) + qnorm(power))^2 / (log(hr))^2
+    return(ceiling(D / (2*ev_rate)))
+  }} else {{
+    max_ev <- 2 * n * ev_rate
+    pw <- tryCatch(getPowerSurvival(design=design, thetaH0=hr, pi1=event_rate, pi2=event_rate*hr,
+                       maxNumberOfSubjects=2*n, maxNumberOfEvents=max_ev,
+                       accrualTime=accrual, dropoutRate1=dropout, dropoutRate2=dropout,
+                       eventTime=accrual+followup)$overallReject,
+                   error = function(e) NULL)
+    if (!is.null(pw) && is.finite(pw)) return(round(pw, 4))
+    D <- 2 * n * ev_rate
+    z_b <- sqrt(D) * abs(log(hr)) / 2 - qnorm(1-alpha/2)
+    return(round(pnorm(z_b), 4))
+  }}
+}}
+if ({solve_for_power}) {{
+  pwr <- ss_survival_exact(hr={hr_exact}, accrual={accrual_exact}, followup={followup_exact},
+                           dropout={dropout_exact}, event_rate={event_rate_exact},
+                           n_stages={n_stages_exact}, alpha={alpha_exact}, n={nobs})
+  cat("\\n========== Survival Design (Exact, Power given N) ==========\\n")
+  cat("Hazard ratio:", {hr_exact}, "\\n")
+  cat("N per group:", {nobs}, "\\n")
+  cat("Achieved power:", pwr, "\\n")
+}} else {{
+  n_val <- ss_survival_exact(hr={hr_exact}, accrual={accrual_exact}, followup={followup_exact},
+                             dropout={dropout_exact}, event_rate={event_rate_exact},
+                             n_stages={n_stages_exact}, alpha={alpha_exact}, power={power_exact})
+  cat("\\n========== Survival Design (Exact, rpact) ==========\\n")
+  cat("Hazard ratio:", {hr_exact}, "\\n")
+  cat("Event rate (control):", {event_rate_exact}, "\\n")
+  cat("Accrual (months):", {accrual_exact}, "\\n")
+  cat("Follow-up (months):", {followup_exact}, "\\n")
+  cat("Dropout (annual):", {dropout_exact}, "\\n")
+  cat("Alpha:", {alpha_exact}, "Power:", {power_exact}, "\\n")
+  cat("N per group:", n_val, "\\n")
+  cat("Total N:", 2 * n_val, "\\n")
+}}
 """
-

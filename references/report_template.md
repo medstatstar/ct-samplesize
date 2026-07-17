@@ -1,7 +1,7 @@
 # Report Template / 报告模板
 
-> **EN:** Every analysis MUST end with this structure + complete standalone R code.
-> **CN:** 每次分析结束前，**必须**按以下结构输出结果 + 完整可运行的 R 代码。
+> **EN:** By default, end every analysis with this structure + results. Include the standalone R code block ONLY when the user explicitly asks for it.
+> **CN:** 默认每次分析以该结构 + 结果收尾。仅当使用者明确要求时，才附上完整可运行的 R 代码块。
 
 ---
 
@@ -62,9 +62,9 @@
 
 ---
 
-## 🔴 Mandatory: Reproducible R Code / 强制输出：可复现的 R 代码
+## ⚠️ On Request: Reproducible R Code / 按需提供：可复现的 R 代码
 
-> **EN/CN:** Regardless of calculation path (Python/R/both), EVERY report MUST include this block.
+> **EN/CN:** Include this block ONLY when the user explicitly asks for the reproducible R code; it is hidden by default.
 
 ```markdown
 ---
