@@ -3,7 +3,7 @@ slug: ct-samplesize
 displayName: 临床试验样本量与检验效能计算专家 / Clinical Trial Sample Size & Power
 name: ct-samplesize
 cn_name: 临床试验样本量与检验效能计算专家
-version: 3.3.7
+version: 3.3.8
 required_commands: [Rscript, python]
 summary: 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 37 种检验，可应要求提供 R 代码（默认不展示）；默认英文输出，中文操作系统自动切换中文。
 license: MIT
@@ -59,12 +59,12 @@ metadata:
   license: "MIT"
   tags: [clinical-trial, sample-size, power, R, adaptive-design, bayesian, win-ratio]
   homepage: "https://github.com/medstatstar/ct-samplesize"
-  permissions:
-    scope: "user-space-only"
-    network: "optional"
-    network_note: "Used ONLY by --run-install to fetch R packages from CRAN. Default analysis mode is fully offline; no network is touched unless the user explicitly adds --run-install."
-    filesystem: "read-only (except temp R script in skill dir / system temp)"
-    data: "no external data transmission (except CRAN download under --run-install)"
+permissions:
+  scope: "user-space-only"
+  network: "optional"
+  network_note: "Used ONLY by --run-install to fetch R packages from CRAN. Default analysis mode is fully offline; no network is touched unless the user explicitly adds --run-install."
+  filesystem: "writes only to system temp (generated R script) and to the current working directory (generated curve PNG reports); otherwise read-only"
+  data: "no external data transmission (except CRAN download under --run-install)"
 ---
 
 # Clinical Trial Sample Size & Power / 临床试验样本量与检验效能计算专家
@@ -76,6 +76,9 @@ metadata:
 > **Output language / 输出语言**: **Default = English** for all user-facing content; **auto-switch to Chinese** when the OS environment is Chinese (locale contains `zh`/`CN`, e.g., `LANG=zh_CN.UTF-8` or Windows UI language `zh-CN`). Common modules must prepare BOTH English & Chinese prompt content; complex/rarely-used modules may temporarily be English-only. This setting does not affect code output. | **默认全部英文**，但**当操作系统为中文环境时自动切换为中文**（locale 含 `zh`/`CN`，如 `LANG=zh_CN.UTF-8` 或 Windows UI 语言 `zh-CN`）。**常用模块须同时准备英文与中文两套提示内容**；**复杂/少用模块可暂只提供英文**。此设置不影响代码输出。
 
 ### Language policy / 语言策略
+
+> **本技能适用「双语语言策略」**（用户级规范，见 `~/.workbuddy/MEMORY.md`）。
+> 适用原因：本技能属**统计分析类**且**已发布 ClawHub**，故需双语；以下为本技能的具体执行细则。
 
 - **默认英文**：所有面向用户的提示内容（报告、解释、菜单）默认使用英文。
 - **中文环境自动切换**：检测到操作系统为中文环境（locale 含 `zh`/`CN`）时，给用户的提示内容**自动切换为中文**，无需用户显式要求。
@@ -249,4 +252,4 @@ python scripts/samplesize_power.py --test ttest_ind --side one --sd 0.8 --effect
 
 ---
 
-**Version**: v3.3.7 | **Updated**: 2026-07-17 | **License**: MIT
+**Version**: v3.3.8 | **Updated**: 2026-07-17 | **License**: MIT
