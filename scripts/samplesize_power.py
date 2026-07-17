@@ -4,13 +4,15 @@ Clinical Trial Sample Size & Power Calculator — v3.3.0
 
 Security model:
 - All R code comes from pre-defined templates (validated str args only)
-- Generated R code is ALWAYS shown to user (default: executed + code shown)
-- Default executes and returns results; --dry-run previews code only (safety)
+- Every user string that reaches generated R is validated against a strict
+  allowlist, so it can NEVER break out of an R string literal (no RCE)
+- SAFE BY DEFAULT: dry-run preview only — generated R code is shown but NOT
+  executed. Use --yes / -y to explicitly opt in to execution
 - R script path auto-detected (RSCRIPT_PATH env or PATH lookup)
 - Output is sanitized (paths stripped, length-capped)
 - String args validated against strict allowlists
 
-Test types (31 total):
+Test types (37 total):
   Core: ttest_ind, ttest_paired, anova, proportion_one, proportion_two,
         non_inferiority, equivalence, be_tost, mixed_model, roc, poisson,
         bland_altman, cluster, vaccine_efficacy, multiple_endpoints,
@@ -73,6 +75,45 @@ _DANGEROUS_R_TOKENS = (
 
 def _contains_dangerous_r(code):
     return any(tok in code for tok in _DANGEROUS_R_TOKENS)
+
+# ── Security: strict validation of EVERY user string that reaches generated R ──
+# Goal: make it impossible for a user-supplied value to break out of an R string
+# literal and inject arbitrary R code (RCE). The generated R templates embed
+# user values inside png('...') / cat('...') (single-quoted) and "..." (double-
+# quoted) literals, so we reject any value containing characters that could
+# terminate the string or start a new R statement.
+#
+# _SAFE_TOKEN_RE : for short categorical tokens (test options, design names, ...)
+# _SAFE_PATH_RE  : for filesystem paths (allows separators, spaces, CJK names)
+_SAFE_TOKEN_RE = re.compile(r'^[A-Za-z0-9_\-]+$')
+_SAFE_PATH_RE = re.compile(r'^[A-Za-z0-9_.\- /\\:一-鿿]+$')
+
+def _validate_token(name, value):
+    """Reject categorical string args that could break out into R code."""
+    if value is None:
+        return value
+    if not _SAFE_TOKEN_RE.match(value):
+        raise ValueError(
+            "Invalid %s=%r: only [A-Za-z0-9_-] allowed "
+            "(no quotes, semicolons or parentheses)." % (name, value)
+        )
+    return value
+
+def _safe_r_path_literal(path):
+    """Return `path` safely embedded in an R (single- or double-quoted) string.
+
+    Validates against a path allowlist, then normalises Windows separators to
+    forward slashes (R accepts them on every platform). Raises ValueError on
+    any value that could escape the R string context.
+    """
+    if path is None:
+        return None
+    if not _SAFE_PATH_RE.match(path):
+        raise ValueError(
+            "Unsafe output path %r: only letters, digits, spaces and ._-:/\\ "
+            "are allowed (no quotes, semicolons or parentheses)." % path
+        )
+    return path.replace("\\", "/")
 
 def sanitize_output(raw, max_lines=200, max_col=200):
     """Strip file paths and truncate output."""
@@ -277,7 +318,7 @@ def build_curve_code(args):
          .replace("__XLABEL__", xlabel)
          .replace("__YLABEL__", ylabel)
          .replace("__TARGET__", repr(float(target)))
-         .replace("__OUT__", out_png.replace("\\", "/")))
+         .replace("__OUT__", _safe_r_path_literal(out_png)))
     return r
 
 def main():
@@ -292,9 +333,9 @@ def main():
                  "conditional_power","ni_survival","superiority_margin","assurance",
                  "dunnett","mediation","group_sequential","adaptive","survival_exact"])
     p.add_argument("--yes", "-y", action="store_true",
-                   help="(默认即执行)显式执行 R 代码，保留以兼容旧命令")
+                   help="显式确认执行 R 代码（默认 dry-run 安全预览，仅展示代码、不执行）")
     p.add_argument("--dry-run", action="store_true",
-                   help="只展示生成的 R 代码、不执行（安全预览模式）")
+                   help="安全预览：仅生成并展示 R 代码、不执行（默认即此模式）")
     p.add_argument("--show-code", action="store_true", default=False,
                    help="执行并展示生成的 R 代码（默认不展示，仅按需提供）")
     p.add_argument("--install-all-packages", action="store_true",
@@ -437,8 +478,23 @@ def main():
                    help="曲线 PNG 输出路径 (默认系统临时目录)")
 
     args = p.parse_args()
-    # 默认执行并返回结果；--dry-run 仅预览 R 代码（安全兜底，优先级最高）
-    confirmed = not args.dry_run
+
+    # ── Security: validate every user string that reaches generated R code ──
+    # These are interpolated into R string literals; enforce strict allowlists so
+    # they can never inject arbitrary R code. Fail fast with a clear message.
+    try:
+        _validate_token("--adaptive_type", args.adaptive_type)
+        _validate_token("--design", args.design)
+        _validate_token("--spending_func", args.spending_func)
+        _validate_token("--effect_name", args.effect_name)
+        if args.out is not None:
+            _safe_r_path_literal(args.out)  # raises ValueError if unsafe
+    except ValueError as e:
+        p.error(str(e))
+
+    # SECURITY: dry-run is the SAFE DEFAULT. Execution requires an explicit
+    # opt-in (--yes / -y) so generated R code is never run silently.
+    confirmed = args.yes and not args.dry_run
 
     # ── Solve direction: --nobs given → solve for power; else solve for n ──
     if args.nobs is not None and args.nobs > 0:
@@ -544,14 +600,16 @@ def main():
         if r_code is None:
             sys.exit(1)
         r_code = r_code.lstrip('\n')
-        if args.show_code or args.dry_run:
+        # TRANSPARENCY: always show the generated R code in preview/dry-run mode
+        # (the safe default); in execute mode show it only with --show-code.
+        if args.show_code or args.dry_run or not confirmed:
             print("=" * 60)
-            print("[R CODE — generated for this analysis (shown on request)]")
+            print("[R CODE — generated for this analysis]")
             print("=" * 60)
             print(r_code)
             print("=" * 60)
         if not confirmed:
-            print("[DRY RUN] R code NOT executed. Remove --dry-run to execute.")
+            print("[SAFE PREVIEW] R code was NOT executed. Re-run with --yes to compute and save the curve.")
             return
         print("[EXECUTING R CODE...]")
         sys.stdout.flush()
@@ -1015,16 +1073,17 @@ if (!is.na(res$n_per_group)) {{
 
     r_code = r_code.lstrip('\n')
 
-    # R code display policy: hidden by default; shown only on --show-code or --dry-run
-    if args.show_code or args.dry_run:
+    # R code display policy: always shown in preview/dry-run (safe default);
+    # in execute mode shown only with --show-code.
+    if args.show_code or args.dry_run or not confirmed:
         print("=" * 60)
-        print("[R CODE — generated for this analysis (shown on request)]")
+        print("[R CODE — generated for this analysis]")
         print("=" * 60)
         print(r_code)
         print("=" * 60)
 
     if not confirmed:
-        print("[DRY RUN] R code NOT executed. Remove --dry-run to execute.")
+        print("[SAFE PREVIEW] R code was NOT executed. Re-run with --yes to compute the result.")
         return
 
     print("[EXECUTING R CODE...]")
@@ -1032,7 +1091,7 @@ if (!is.na(res$n_per_group)) {{
     output = run_r(r_code, confirmed=True)
     print(output)
     if not args.show_code:
-        print("[INFO] R code hidden by default. Re-run with --show-code to display it, or ask the assistant for reproducible code.")
+        print("[INFO] R code is shown by default in preview mode. Re-run with --show-code while using --yes to also display it during execution.")
     print("=" * 60)
 
 if __name__ == "__main__":

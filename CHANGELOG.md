@@ -2,6 +2,16 @@
 
 > This file records ct-samplesize's key architecture & security changes for maintainer auditing (user-facing usage: `SKILL.md` & `references/`). / 本文件记录 ct-samplesize 的关键架构与安全变更，供维护者审计参考（用户面向的使用说明见 `SKILL.md` 与 `references/`）。
 
+## v3.4.1 — Security fixes (ClawHub DO_NOT_INSTALL root causes) / 安全修复（ClawHub DO_NOT_INSTALL 根因）
+
+Addresses the real reasons prior versions were blocked/deleted by ClawHub's automated security review (skillSpector + clawscan):
+
+- **R code injection (CRITICAL RCE) fixed / 修复 R 代码注入（关键 RCE）**: user-supplied `--out` path was interpolated unescaped into generated R `png('...')` / `cat('...')`, allowing `x'); system('id'); #` style breakout. Now every user string reaching R is validated against a strict allowlist (`_SAFE_TOKEN_RE` / `_SAFE_PATH_RE`) and the path is escaped before substitution. Also hardened `--adaptive_type`, `--design`, `--spending_func`, `--effect_name` (same injection class). / 用户传入的 `--out` 路径曾被未转义地插值进生成的 R `png('...')`/`cat('...')`，可构造 `x'); system('id'); #` 逃逸。现对所有进入 R 的用户字符串做严格白名单校验（`_SAFE_TOKEN_RE`/`_SAFE_PATH_RE`）并对路径转义；同时加固 `--adaptive_type`/`--design`/`--spending_func`/`--effect_name`（同类注入）。
+- **Default execution → safe preview / 默认执行改为安全预览**: `confirmed = args.yes and not args.dry_run` — by default the skill ONLY shows the generated R code (no execution); `--yes`/`-y` is an explicit opt-in to run. Aligns with scanner's "make dry-run default, execution opt-in" requirement and the user's "show code by default" preference. / 默认仅展示生成的 R 代码、不执行；`--yes`/`-y` 才显式执行。契合扫描器"dry-run 默认、执行须显式确认"要求与用户"默认展示代码"偏好。
+- **Bayesian mislabel fixed (clinical risk) / 修正贝叶斯误标（临床风险）**: `R_BAYESIAN` used a frequentist closed-form two-proportion formula but was labelled "Bayesian Design" with the prior `a0` printed but unused. Renamed to `ss_prior_informed` and relabelled "Prior-informed Sample Size (closed-form frequentist approximation)", with an explicit disclosure that the prior is informational only and true Bayesian assurance lives in `R_ASSURANCE`. / `R_BAYESIAN` 实为频率派闭式双比例公式却标"Bayesian Design"，且 prior `a0` 仅打印、未参与计算。改名为 `ss_prior_informed` 并改标"先验信息样本量（正态近似）"，明确声明 prior 仅供参考、真正的贝叶斯 assurance 在 `R_ASSURANCE`。
+- **Description aligned with behavior (TP4 HIGH) / 描述与行为对齐**: frontmatter `description`, top rule block, Safety and Security-model sections now honestly state default safe-preview + `--yes` execution + optional `--run-install` network. / frontmatter `description`、顶部规则块、Safety 与安全模型段均如实声明"默认安全预览 + `--yes` 执行 + 可选 `--run-install` 联网"。
+- **Bilingual output made opt-in (SQP-3) / 双语输出改为可选项**: `references/report_template.md` now states output language is configurable (user's requested language; bilingual recommended option, single-language supported) instead of mandating bilingual. / `references/report_template.md` 现声明输出语言可配置（按用户指定语言；双语为推荐可选项，支持单语），不再强制双语。
+
 ## v3.4.0 — Doc bilingual pass (English / 中文) / 文档双语化（英文前中文后）
 
 - Made all skill docs bilingual with **English first, Chinese second**, joined by `/` on one line (no separate EN/CN lines). / 将全部技能文档改为**英文在前、中文在后**、用 `/` 连接在同一行（不再 EN/CN 分行）。

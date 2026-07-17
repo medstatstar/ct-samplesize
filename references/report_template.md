@@ -1,5 +1,12 @@
 # Report Template / 报告模板
 
+> **🌐 Output language / 输出语言 (configurable, opt-in / 可配置、按需):**
+> Output language follows the user's stated preference and is **not mandated**.
+> - Default recommendation: bilingual `English / 中文` (both shown side by side), since this skill is published bilingually.
+> - Single-language output (English-only or Chinese-only) is fully supported — just set the user's requested language.
+> - In regulated clinical workflows where output language must be tightly controlled, use the user's single requested language only.
+> / 输出语言**遵循使用者指定偏好，不做强制**。默认推荐双语 `English / 中文`（并列展示），因为本技能以双语发布；也完全支持单语输出（仅英文或仅中文），只需按使用者要求的语言即可；在输出语言须严格管控的受监管临床试验场景中，仅使用使用者指定的单一语言。
+>
 > **English / 中文:** By default, end every analysis with this structure + results; include the standalone R code block ONLY when the user explicitly asks for it. / 默认每次分析以该结构 + 结果收尾；仅当使用者明确要求时，才附上完整可运行的 R 代码块。
 
 ---

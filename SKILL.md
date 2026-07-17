@@ -3,11 +3,11 @@ slug: ct-samplesize
 displayName: Clinical Trial Sample Size & Power / 临床试验样本量与检验效能计算专家
 name: ct-samplesize
 cn_name: 临床试验样本量与检验效能计算专家
-version: 3.4.0
+version: 3.4.1
 required_commands: [Rscript, python]
 summary: Easy-to-use sample size & power calculator for clinical trial researchers. R backend + 20+ packages (rpact/gsDesign/TrialSize/PowerTOST). Natural language driven. 37 test types. Reproducible R code on request (hidden by default). English by default, auto-Chinese on Chinese-OS. / 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 37 种检验，可应要求提供 R 代码（默认不展示）；默认英文输出，中文操作系统自动切换中文。
 license: MIT
-description: "Easy-to-use sample size & power calculator for clinical trial researchers. R backend + 20+ packages (rpact/gsDesign/TrialSize/PowerTOST). Natural language driven. 37 test types. English by default, auto-switches to Chinese on Chinese-OS (locale zh/CN). Reproducible R code available on request (hidden by default). / 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，用户仅需自然语言提示词，即可完成 37 种复杂计算（默认英文输出；当操作系统为中文环境时自动切换为中文），可应要求提供可复现 R 代码（默认不展示）。"
+description: "Clinical trial sample size & power calculator. R backend + 20+ packages. 37 test types, natural-language driven, English by default / auto-Chinese on Chinese-OS. Generates R code locally and runs in SAFE PREVIEW by default (code shown, NOT executed); use --yes to execute. Optional --run-install fetches R packages from CRAN (network, opt-in). / 临床试验样本量与检验效能计算器。R 后台 + 20+ 专业 R 包。37 种检验类型，自然语言驱动，默认英文、OS 中文环境自动切换中文。本地生成 R 代码并默认运行于安全预览模式（展示代码、不执行），使用 --yes 才显式执行；可选的 --run-install 可从 CRAN 联网安装 R 包（联网、须显式触发）。"
 triggers:
   - "clinical trial sample size"
   - "样本量计算"
@@ -43,7 +43,7 @@ permissions:
 
 > Auto detect → recommend → calculate & explain / 自动检测环境 → 推荐最优工具 → 完成计算与解释
 >
-> **⚠️ R code hidden by default (on request only) / R 代码默认不提供（仅按需）**: Execute & return results without showing code; show reproducible code ONLY when the user explicitly asks. End the default reply with a note like "Ask me if you want the reproducible R code." CLI: `--show-code` executes & shows, `--dry-run` previews only. / 默认执行并返回结果，不展示 R 代码；仅在使用者明确要求时才提供可复现代码（有 R 时附 R 代码，无 R 时附 Python 代码）。默认回复末尾提示"如需可复现 R 代码请告知"。命令行可用 `--show-code` 执行并展示代码，或 `--dry-run` 仅预览不执行。
+> **⚠️ Safe by default — preview, not execute / 默认安全：仅预览、不执行**: By default the skill generates R code and shows it in a SAFE PREVIEW (no execution). Execution requires an explicit opt-in: CLI `--yes`/`-y`, or the agent adds `--yes` when it needs the actual number. `--show-code` shows code; `--dry-run` is the default preview mode. / 技能默认生成 R 代码并以**安全预览模式**展示（不执行）。执行需显式确认：命令行用 `--yes`/`-y`；Agent 在需要真实数值时显式加上 `--yes`。`--show-code` 展示代码；`--dry-run` 即默认预览模式。
 >
 > **Output language / 输出语言**: Default = English for all user-facing content; auto-switch to Chinese when the OS environment is Chinese (locale contains `zh`/`CN`, e.g. `LANG=zh_CN.UTF-8` or Windows UI language `zh-CN`). Common modules must prepare BOTH English & Chinese prompt content; complex/rarely-used modules may temporarily be English-only. This setting does not affect code output. / 默认全部英文，但当操作系统为中文环境时自动切换为中文（locale 含 `zh`/`CN`，如 `LANG=zh_CN.UTF-8` 或 Windows UI 语言 `zh-CN`）。常用模块须同时准备英文与中文两套提示内容；复杂/少用模块可暂只提供英文。此设置不影响代码输出。
 
@@ -57,7 +57,7 @@ permissions:
 
 ## Purpose / 技能目的
 
-**English / 中文**: This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. Powered by R and 20+ professional R packages (rpact, gsDesign, TrialSize, PowerTOST, etc.), users can perform 37 complex calculations through natural language prompts — English by default, auto-Chinese on Chinese-OS (locale zh/CN). Reproducible code is available on request (hidden by default): R code when R is available, Python (statsmodels/scipy) code when R is not, for verification, submission, or re-execution. / 本技能为临床试验从业人员提供一整套简单易用的样本量与检验效能计算工具。后台以 R 软件及 rpact/gsDesign/TrialSize/PowerTOST 等 20+ R 工具包为依托，用户只需使用自然语言对话方式的提示词，即可完成（默认英文输出，OS 中文环境时自动切换中文）37 种复杂专业的样本量与检验效能计算工作。默认不主动提供代码，仅在用户要求时附上可复现 R 代码（无 R 时附 Python 代码），供用户核查、递交或修改后重跑。
+**English / 中文**: This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. Powered by R and 20+ professional R packages (rpact, gsDesign, TrialSize, PowerTOST, etc.), users can perform 37 complex calculations through natural language prompts — English by default, auto-Chinese on Chinese-OS (locale zh/CN). It generates R code locally and, by default, runs in a SAFE PREVIEW mode (code shown, not executed); use `--yes` to explicitly execute and compute. Reproducible code is available on request: R code when R is available, Python (statsmodels/scipy) code when R is not. An optional `--run-install` can fetch R packages from CRAN (network, opt-in). / 本技能为临床试验从业人员提供一整套简单易用的样本量与检验效能计算工具。后台以 R 软件及 rpact/gsDesign/TrialSize/PowerTOST 等 20+ R 工具包为依托，用户只需使用自然语言对话方式的提示词，即可完成（默认英文输出，OS 中文环境时自动切换中文）37 种复杂专业的样本量与检验效能计算工作。技能在本地生成 R 代码，并默认运行于**安全预览模式**（展示代码、不执行），使用 `--yes` 才显式执行并计算；可复现代码按需提供（无 R 时附 Python 代码）。可选的 `--run-install` 可从 CRAN 联网安装 R 包（联网、须显式触发）。
 
 ---
 
@@ -98,7 +98,7 @@ Beyond basic "solve n given target power", the skill offers three advanced capab
 
 ## ⚠️ Safety / 安全
 
-- R code is executed by default but hidden from output; shown only on request (`--show-code`), `--dry-run` previews code only (no execution) / R 代码默认执行但不在输出展示；仅当使用者要求时提供（`--show-code` 展示或回复提示可提供），`--dry-run` 仅预览代码、不执行
+- R code is NOT executed by default — it runs in SAFE PREVIEW (code shown, not run); use `--yes`/`-y` to explicitly execute and compute / R 代码**默认不执行**，运行于安全预览模式（展示代码、不运行）；使用 `--yes`/`-y` 才显式执行并计算
 - All computations are local; no data transmission / 纯本地计算，无数据外传
 - Output for reference only; validate before regulatory submissions / 输出仅供参考，监管申报前需独立验证
 
@@ -110,7 +110,7 @@ This skill's behavior is explicitly disclosed here for auditing:
 
 | Behavior 行为 | Description 说明 |
 |:---|:---|
-| **Local process call / 本地进程调用** | Run dynamically generated R code locally via `subprocess.run([Rscript, '--vanilla', tmp])`, timeout 300s; no network service, no arbitrary user-command execution. / 通过 `subprocess.run([Rscript, '--vanilla', tmp])` 在本地运行动态生成的 R 代码，超时 300s；不启动网络服务、不执行任意用户输入命令。 |
+| **Local process call / 本地进程调用** | Run DYNAMICALLY GENERATED (never raw user input) R code locally via `subprocess.run([Rscript, '--vanilla', tmp])`, timeout 300s, NO shell. Execution is OPT-IN: by default the code is only previewed; it runs only when `--yes` is passed. Every user string that reaches the R code is validated against a strict allowlist first, so it cannot break out of an R string (no RCE). / 在本地运行**动态生成（绝非原始用户输入）**的 R 代码，通过 `subprocess.run([Rscript, '--vanilla', tmp])`，超时 300s，无 shell。执行是**显式确认**的：默认仅预览代码，仅当传入 `--yes` 才运行。所有进入 R 代码的用户字符串都会先经严格白名单校验，无法逃逸出 R 字符串（杜绝 RCE）。 |
 | **R code source / R 代码来源** | All generated by the skill's built-in templates (`scripts/r_templates/`), no static `.R` files, no remote script download. Code hidden by default; shown only on request (`--show-code`) or `--dry-run` preview. / 全部由本技能内置模板参数化生成（`scripts/r_templates/`），无静态 `.R` 文件、不下载远程脚本。生成的代码默认不打印；仅当使用者要求（`--show-code`）或 `--dry-run` 预览时才展示。 |
 | **Output sanitization / 输出脱敏** | R stdout/stderr passes through `sanitize_output()` to strip local absolute paths and truncate over-long content before display, avoiding environment leakage or content injection. / R 的 stdout/stderr 经 `sanitize_output()` 过滤本地绝对路径并截断超长内容后再展示，避免泄露环境信息或注入过长内容。 |
 | **Network access / 网络访问** | Default analysis is fully offline, zero network. The only network touchpoint is the optional R-package install: by default it only prints `install.packages()` commands, not executed; you must explicitly add `--run-install` to download & install from CRAN (supply-chain risk triggered only after user is informed). The permission manifest declares `network: "optional"` (used only by `--run-install`). The full install R code is printed before execution. / 默认计算全程离线、零联网。唯一联网点是可选的 R 包安装：默认仅打印 `install.packages()` 命令、不执行；须显式追加 `--run-install` 才会从 CRAN 下载安装（供应链风险由用户知情后触发）。权限清单已据此声明 `network: "optional"`（仅 `--run-install` 使用）。执行前会完整打印将要运行的安装 R 代码。 |
@@ -120,7 +120,7 @@ This skill's behavior is explicitly disclosed here for auditing:
 
 ## Implementation / 实施
 
-> Default = execute & return result (R code hidden by default; use `--show-code` to display, or `--dry-run` to preview only). / 默认执行并返回结果（R 代码默认不展示；用 `--show-code` 展示，或 `--dry-run` 仅预览）。
+> Default = SAFE PREVIEW (dry-run): generate & show R code, do NOT execute. Add `--yes`/`-y` to execute and compute the result; `--show-code` also shows the code during execution. / 默认**安全预览（dry-run）**：生成并展示 R 代码，但不执行。追加 `--yes`/`-y` 才执行并计算；`--show-code` 在执行时也会展示代码。
 > **Data format guide / 数据格式指南:** `references/data_format_guide.md`
 
 > **All 37 test CLI examples / 全部 37 种检验的命令行示例** see `references/cli_examples.md` → *Implementation Examples*.
@@ -202,4 +202,4 @@ For supply-chain safety, the skill does **not** auto-install R packages over the
 
 ---
 
-**Version**: v3.4.0 | **Updated**: 2026-07-17 | **License**: MIT
+**Version**: v3.4.1 | **Updated**: 2026-07-17 | **License**: MIT

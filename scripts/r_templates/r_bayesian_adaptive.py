@@ -1,6 +1,9 @@
 # r_bayesian_adaptive.py -- R function templates for ct-samplesize
 # All algorithms are pre-written R functions (ss_*) where a power<->n relation exists.
 # Assurance / Conditional Power are pre-written simulation/SSR templates (no simple inverse).
+# NOTE: R_BAYESIAN is a prior-informed CLOSED-FORM FREQUENTIST approximation (the
+# prior is informational only, not used in the formula). True Bayesian assurance
+# is provided by R_ASSURANCE (posterior simulation).
 
 __all__ = [
     "R_BAYESIAN",
@@ -12,8 +15,12 @@ __all__ = [
 ]
 
 R_BAYESIAN = """
-# Bayesian design: effective n per group from prior + two proportions.
-ss_bayesian <- function(pC, pT, alpha, power=NULL, n=NULL) {{
+# Prior-informed sample size (CLOSED-FORM FREQUENTIST APPROXIMATION).
+# NOTE: This is NOT a full Bayesian computation. The prior (a0) is informational
+# only and is NOT incorporated into the sample-size formula below, which is the
+# standard two-proportion z-test closed form. For true Bayesian assurance
+# (posterior simulation), use the assurance template (R_ASSURANCE).
+ss_prior_informed <- function(pC, pT, alpha, power=NULL, n=NULL) {{
   eff <- pC - pT
   denom <- pC*(1-pC) + pT*(1-pT)
   if (!is.null(power)) {{
@@ -24,15 +31,17 @@ ss_bayesian <- function(pC, pT, alpha, power=NULL, n=NULL) {{
   }}
 }}
 if ({solve_for_power}) {{
-  pwr <- ss_bayesian(pC={pC}, pT={pT}, alpha={alpha}, n={nobs})
-  cat("\\n========== Bayesian Design (Power given N) ==========\\n")
-  cat("Prior a0:", {a0}, "\\n")
+  pwr <- ss_prior_informed(pC={pC}, pT={pT}, alpha={alpha}, n={nobs})
+  cat("\\n========== Prior-informed Sample Size (Power given N) ==========\\n")
+  cat("Method: closed-form frequentist approximation (prior a0 is informational only)\\n")
+  cat("Prior a0 (informational, not used in calc):", {a0}, "\\n")
   cat("Effective n per group:", {nobs}, "\\n")
   cat("Achieved power:", pwr, "\\n")
 }} else {{
-  n_val <- ss_bayesian(pC={pC}, pT={pT}, alpha={alpha}, power={power})
-  cat("\\n========== Bayesian Design ==========\\n")
-  cat("Prior a0:", {a0}, "\\n")
+  n_val <- ss_prior_informed(pC={pC}, pT={pT}, alpha={alpha}, power={power})
+  cat("\\n========== Prior-informed Sample Size ==========\\n")
+  cat("Method: closed-form frequentist approximation (prior a0 is informational only)\\n")
+  cat("Prior a0 (informational, not used in calc):", {a0}, "\\n")
   cat("Effective n per group:", n_val, "\\n")
 }}
 """
