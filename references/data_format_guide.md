@@ -1,17 +1,17 @@
-# 数据输入格式指南 / Data Format Guide
+# Data Format Guide / 数据输入格式指南
 
-> 本指南按"你需要准备什么数据"的角度，为 31 种检验类型分别给出友好的输入框架。
-> 每个类型都包含：**需要填写的参数表** + **实际例子** + **数据来源提示**。
+> This guide takes the "what data do you need to prepare" angle and gives a friendly input framework for each of the 37 test types. / 本指南按"你需要准备什么数据"的角度，为 37 种检验类型分别给出友好的输入框架。
+> Each type includes: a **parameter table to fill in** + **a real example** + **data-source hints**. / 每个类型都包含：**需要填写的参数表** + **实际例子** + **数据来源提示**。
 
 ---
 
-## 📌 通用参数（所有类型都需要）
+## 📌 General Parameters (all types) / 通用参数（所有类型都需要）
 
-| 参数 | 说明 | 默认 | 示例 |
+| Param 参数 | Description 说明 | Default 默认 | Example 示例 |
 |:-----|:-----|:-----|:---------|
-| `α` (alpha) | 显著性水平，双侧 | 0.05 | 0.05 |
-| `Power` | 检验效能 | 0.8 | 0.8 / 0.85 / 0.9 |
-| `--show-code` | 执行并展示 R 代码 | 默认仅执行不展示 | 默认隐藏代码，加 `--show-code` 才展示 |
+| `α` (alpha) | Significance level, two-sided / 显著性水平，双侧 | 0.05 | 0.05 |
+| `Power` | Test power / 检验效能 | 0.8 | 0.8 / 0.85 / 0.9 |
+| `--show-code` | Execute & show R code / 执行并展示 R 代码 | Execute only by default, code hidden / 默认仅执行不展示 | Hidden by default; add `--show-code` to show / 默认隐藏代码，加 `--show-code` 才展示 |
 
 ---
 

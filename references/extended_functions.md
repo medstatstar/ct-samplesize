@@ -4,7 +4,7 @@
 
 ---
 
-## 混合效应模型 (Mixed Model Power) — `simr`
+## Mixed Model Power (混合效应模型) — `simr`
 
 ### Clinical Use / 临床场景
 - **重复测量**（同一受试者多次随访：基线、3月、6月、12月）
@@ -12,7 +12,7 @@
 - **阶梯式设计**（Cluster-level intervention with individual outcomes）
 - **纵向数据**（肿瘤大小随时间变化、血糖控制轨迹）
 
-### R 代码
+### R Code / R 代码
 ```r
 library(simr); library(lme4)
 set.seed(42)
@@ -56,7 +56,7 @@ python scripts/samplesize_power.py --test mixed_model --effect 0.5 --nsim 500
 - **预测模型**：构建诊断评分系统
 - **生物标志物验证**：确定标志物检测所需样本量
 
-### 公式
+### Formula / 公式
 基于 Obuchowski 方法（AUC方差的二项分布近似）：
 
 $$n = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{4(\arcsin\sqrt{AUC_1} - \arcsin\sqrt{AUC_0})^2}$$
@@ -109,7 +109,7 @@ python scripts/samplesize_power.py --test cluster --icc 0.05 --m 30 --n_indiv 64
 - **两次测量一致性**：超声 vs. CT 肿瘤测量
 - **诊断方法一致性**：同一标本两种试剂盒
 
-### 公式
+### Formula / 公式
 基于 Lu et al. (2016) 的 LoA 精度法：
 
 $$n = 2 \times \left(\frac{Z_{1-\alpha/2} \times SD_{diff}}{W}\right)^2$$
@@ -131,7 +131,7 @@ python scripts/samplesize_power.py --test bland_altman --sd_diff 5 --w 2.5
 - **食物影响**: Fed vs. Fasted BE
 - **特殊药品**：窄治疗指数药物（NTID）的高阶BE
 
-### R 代码
+### R Code / R 代码
 ```r
 library(PowerTOST)
 sampleN.TOST(theta0 = 0.95, CV = 0.25, design = "2x2", alpha = 0.05, targetpower = 0.8)
@@ -150,7 +150,7 @@ python scripts/samplesize_power.py --test be_tost --theta0 0.95 --cv 0.25 --desi
 - **传染病预防**：流感、新冠、肺炎球菌等疫苗试验
 - **真实世界效果**：疫苗保护效力研究
 
-### 公式
+### Formula / 公式
 基于 Halloran et al. 的 Poisson 发病率法：
 
 $$VE = \frac{ARU - ARV}{ARU}$$
@@ -235,7 +235,7 @@ python scripts/samplesize_power.py --test dose_escalation --n_doses 5 --target_d
 - Win-Ratio = 优胜次数 / 落败次数
 - 样本量通过 log(WR) 的 SE 近似反推
 
-### 公式（近似）
+### Formula (approx) / 公式（近似）
 $$n = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(\ln WR)^2 / SE_{approx}^2}$$
 
 ### CLI

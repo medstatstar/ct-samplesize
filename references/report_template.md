@@ -1,7 +1,6 @@
 # Report Template / 报告模板
 
-> **EN:** By default, end every analysis with this structure + results. Include the standalone R code block ONLY when the user explicitly asks for it.
-> **CN:** 默认每次分析以该结构 + 结果收尾。仅当使用者明确要求时，才附上完整可运行的 R 代码块。
+> **English / 中文:** By default, end every analysis with this structure + results; include the standalone R code block ONLY when the user explicitly asks for it. / 默认每次分析以该结构 + 结果收尾；仅当使用者明确要求时，才附上完整可运行的 R 代码块。
 
 ---
 

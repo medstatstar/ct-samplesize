@@ -1,7 +1,6 @@
 # Python Implementation Reference / Python 实施参考
 
-> **EN:** Python path is the fallback when the user refuses R installation. Supports simple, fixed designs only.
-> **CN:** Python 路径用于用户拒绝安装 R 时的降级方案。仅支持简单固定设计。
+> **English / 中文:** Python path is the fallback when the user refuses R installation. Supports simple, fixed designs only. / Python 路径用于用户拒绝安装 R 时的降级方案。仅支持简单固定设计。
 
 ---
 
@@ -64,9 +63,7 @@ python scripts/samplesize_power.py --test survival --hazard_ratio 0.7 --power 0.
 
 ## Auto R Code Generation / 自动 R 代码生成
 
-**EN:** The Python script has built-in R code templates. Default mode prints the R code for review. Execution of the generated R code requires explicit `-y`/`--yes` confirmation (see dry-run behavior).
-
-**CN:** Python 脚本内置 R 代码模板。默认模式打印 R 代码供审查，执行生成的 R 代码需要显式的 `-y`/`--yes` 确认（参见 dry-run 行为）。
+**English / 中文:** The Python script has built-in R code templates. Default mode prints the R code for review; execution of the generated R code requires explicit `-y`/`--yes` confirmation (see dry-run behavior). / Python 脚本内置 R 代码模板。默认模式打印 R 代码供审查，执行生成的 R 代码需要显式的 `-y`/`--yes` 确认（参见 dry-run 行为）。
 
 ---
 
@@ -87,9 +84,6 @@ print(result.stdout)
 
 ## Limitations / 限制
 
-- **EN:** Simple, fixed designs only. Survival uses simplified Schoenfeld formula.
-- **CN:** 仅支持简单固定设计；生存分析使用简化 Schoenfeld 公式。
-- **EN:** Does NOT support group sequential, adaptive, or platform designs.
-- **CN:** **不支持**组序贯、适应性设计、多臂平台试验。
-- **EN:** For precise/complex results, R is mandatory.
-- **CN:** 如需精确结果或复杂设计，**必须安装 R**。
+- **English / 中文:** Simple, fixed designs only; survival uses simplified Schoenfeld formula. / 仅支持简单固定设计；生存分析使用简化 Schoenfeld 公式。
+- **English / 中文:** Does NOT support group sequential, adaptive, or platform designs. / **不支持**组序贯、适应性设计、多臂平台试验。
+- **English / 中文:** For precise/complex results, R is mandatory. / 如需精确结果或复杂设计，**必须安装 R**。

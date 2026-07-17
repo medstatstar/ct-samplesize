@@ -1,7 +1,6 @@
 # R Implementation Reference / R 实施参考
 
-> **EN:** R path for complex designs (group sequential, adaptive, platform trials). Generated R code is hidden by default; use `--show-code` to display (execute + show) or `--dry-run` to preview only.
-> **CN:** R 路径用于复杂设计（组序贯、适应性、平台试验）。生成的 R 代码默认不展示；用 `--show-code` 展示（执行+展示），或 `--dry-run` 仅预览。
+> **English / 中文:** R path for complex designs (group sequential, adaptive, platform trials). Generated R code is hidden by default; use `--show-code` to display (execute + show) or `--dry-run` to preview only. / R 路径用于复杂设计（组序贯、适应性、平台试验）。生成的 R 代码默认不展示；用 `--show-code` 展示（执行+展示），或 `--dry-run` 仅预览。
 
 ---
 

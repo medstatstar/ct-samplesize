@@ -1,7 +1,6 @@
 # Effect Size Reference / 效应量参考
 
-> **EN:** Cohen's d / f / h standards for judging effect size magnitude.
-> **CN:** Cohen's d / f / h 标准，用于判断效应量大小。
+> **English / 中文:** Cohen's d / f / h standards for judging effect size magnitude. / Cohen's d / f / h 标准，用于判断效应量大小。
 
 ## Cohen's d / Cohen's d 标准
 
