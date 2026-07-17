@@ -3,56 +3,28 @@ slug: ct-samplesize
 displayName: 临床试验样本量与检验效能计算专家 / Clinical Trial Sample Size & Power
 name: ct-samplesize
 cn_name: 临床试验样本量与检验效能计算专家
-version: 3.3.8
+version: 3.3.9
 required_commands: [Rscript, python]
 summary: 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 37 种检验，可应要求提供 R 代码（默认不展示）；默认英文输出，中文操作系统自动切换中文。
 license: MIT
 description: "Easy-to-use sample size & power calculator for clinical trial researchers. R backend + 20+ packages (rpact/gsDesign/TrialSize/PowerTOST). Natural language driven. 37 test types. English by default, auto-switches to Chinese on Chinese-OS (locale zh/CN). Reproducible R code available on request (hidden by default). | 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，用户仅需自然语言提示词，即可完成 37 种复杂计算（默认英文输出；当操作系统为中文环境时自动切换为中文），可应要求提供可复现 R 代码（默认不展示）。"
 triggers:
   - "clinical trial sample size"
-  - "clinical trial power"
   - "样本量计算"
+  - "clinical trial power"
   - "检验效能计算"
-  - "临床试验 样本量"
-  - "临床 trial 设计"
-  - "mixed model sample size"
-  - "repeated measures power"
-  - "diagnostic trial sample size"
-  - "cluster randomized sample size"
-  - "vaccine clinical trial"
-  - "dose escalation trial"
-  - "Bayesian clinical trial"
-  - "混合模型 样本量"
-  - "重复测量 检验效能"
-  - "诊断试验 样本量"
-  - "类随机设计"
-  - "疫苗 临床试验"
-  - "剂量递增 试验"
-  - "贝叶斯 临床试验"
-  - "期中分析 试验"
-  - "适应性设计 试验"
-  - "非劣效 临床试验"
-  - "等效性 临床试验"
-  - "生物等效性 试验"
-  - "组序贯 试验"
-  - "多臂试验 设计"
+  - "临床试验 设计"
+  - "non-inferiority sample size"
+  - "非劣效 样本量"
+  - "equivalence sample size"
+  - "等效性 样本量"
+  - "survival analysis sample size"
   - "生存分析 样本量"
-  - "win-ratio sample size"
-  - "must-win endpoints"
-  - "co-primary endpoints"
-  - "historical controls borrowing"
-  - "MAMS sample size"
-  - "conditional power"
-  - "sample size re-estimation"
-  - "assurance Bayesian"
-  - "superiority margin"
-  - "Dunnett comparisons"
-  - "mediation sample size"
-  - "复合终点 样本量"
-  - "历史对照 样本量"
-  - "样本量重估计"
-  - "贝叶斯确信度"
-  - "多臂多阶段 设计"
+  - "adaptive design"
+  - "适应性设计"
+  - "group sequential design"
+  - "Bayesian clinical trial"
+  - "贝叶斯 临床试验"
 metadata:
   openclaw: { emoji: "📊" }
   authors: ["medstatstar", "phoe-zip"]
@@ -77,17 +49,11 @@ permissions:
 
 ### Language policy / 语言策略
 
-> **本技能适用「双语语言策略」**（用户级规范，见 `~/.workbuddy/MEMORY.md`）。
-> 适用原因：本技能属**统计分析类**且**已发布 ClawHub**，故需双语；以下为本技能的具体执行细则。
+> 详细双语细则（检测方式、模块清单）见 `references/language_policy.md`。要点：**默认英文**；检测到 OS 为中文环境（locale 含 `zh`/`CN`）时**自动切换中文**；常用模块备英/中两套，复杂/少用模块暂只英文。**代码输出不受影响**（始终英文）。
 
-- **默认英文**：所有面向用户的提示内容（报告、解释、菜单）默认使用英文。
-- **中文环境自动切换**：检测到操作系统为中文环境（locale 含 `zh`/`CN`）时，给用户的提示内容**自动切换为中文**，无需用户显式要求。
-  - 检测方法：Linux/macOS 读取 `LANG` / `LC_ALL` / `LANGUAGE`；Windows 用 `Get-Culture` / `Get-WinSystemLocale` 或 `os` 环境变量判断语言代码是否以 `zh` 开头（如 `zh-CN`）。
-- **常用模块须备双语（英文 + 中文两套提示内容）**：
-  - 常用检验类型：`ttest_ind`、`ttest_paired`、`ttest_one`、`anova`、`proportion_one` / `proportion_two` / `proportion_paired`、`odds_ratio`、`risk_ratio`、`roc`、`poisson`、`non_inferiority`、`superiority_margin`、`be_tost`、`equivalence`、`survival`、`ni_survival`、`cluster`、`dunnett`
-  - 通用组件：报告模板（`references/report_template.md`）、快速引导菜单、参数速查表
-- **复杂 / 少用模块可暂只英文**（后续再补中文）：`group_sequential`、`adaptive`、`mixed_model`、`bayesian`、`win_ratio`、`must_win`、`historical_controls`、`assurance`、`conditional_power`、`dose_escalation`、`bland_altman`、`vaccine_efficacy`、`mams`、`survival_exact`、`mediation`
-- 此策略**不影响代码输出**：R / Python 代码本身始终为英文，按 `--show-code` 规则展示。
+- 本技能适用「双语语言策略」（用户级规范，见 `~/.workbuddy/MEMORY.md`）：属统计分析类且已发布 ClawHub，故需双语。
+- 常用模块（英/中双套）：`ttest_*`、`anova`、`proportion_*`、`odds_ratio`、`risk_ratio`、`roc`、`poisson`、`non_inferiority`、`superiority_margin`、`be_tost`、`equivalence`、`survival`、`ni_survival`、`cluster`、`dunnett` + 报告模板/快速菜单/参数速查。
+- 复杂/少用模块（暂只英文）：`group_sequential`、`adaptive`、`mixed_model`、`bayesian`、`win_ratio`、`historical_controls`、`assurance`、`conditional_power`、`dose_escalation`、`vaccine_efficacy`、`mams`、`survival_exact`、`mediation` 等。
 
 ## Purpose / 技能目的
 
@@ -178,9 +144,9 @@ pass `--nobs N` to solve for **achieved power** given a fixed sample size. The t
 
 *注：部分类型（如 `roc` 需 `--auc1`/`--effect`、`mixed_model` 需 `--effect_name`）在双向均要求提供必需参数，缺失时返回参数校验错误（符合预期）。*
 
-> **实现架构（v3.3.5）**：本技能所有检验算法均以**预编写的 R 函数**（`ss_*`）形式提供，存放于 `scripts/r_templates/` 下各模板文件；`samplesize_power.py` 的主分发逻辑仅做参数注入与模板 `.format()` 调用，**不再包含散落的 R 代码片段**。含 R 包的类型（`equivalence` / `be_tost` / `survival_exact` / `ni_survival` / `group_sequential` / `adaptive` / `mixed_model` 等）在包调用失败时均自动回退至解析闭式近似（Schoenfeld / O'Brien-Fleming 等），保证结果稳定、可复现、零崩溃。
+> **实现架构**：所有检验算法以**预编写的 R 函数**（`ss_*`）形式提供，存放于 `scripts/r_templates/`；主分发脚本仅做参数注入与模板 `.format()` 调用，无散落 R 代码。含 R 包的类型在包调用失败时自动回退至解析闭式近似（Schoenfeld / O'Brien-Fleming 等），结果稳定可复现、零崩溃。
 >
-> **安全加固（v3.3.5，对应 ClawHub 审计 9 findings）**：① 权限清单 `network` 由 `none` 改为 `optional`，并显式声明仅 `--run-install` 从 CRAN 下载；② R 执行前校验 `Rscript` 为真实二进制（`is_valid_rscript`），临时脚本路径做 containment 检查，`subprocess` 以列表调用（无 shell，杜绝命令注入），并对生成的 R 代码做危险 token 拦截（`system`/`eval`/`source`/`download.file`/`shell`/反引号等）；③ `--run-install` 执行前完整打印将运行的安装 R 代码并加网络横幅，消除"透明性落差"。审计 #7「强制双语+必给R代码」已按用户指示解决：**默认英文、不强制双语，但 OS 中文环境时自动切换中文**（中文可应要求提供），**R 代码默认不提供，仅使用者明确要求时提供（默认回复提示可提供）**，与用户最新指示一致。
+> **安全加固与版本历史**见 `CHANGELOG.md`（含 v3.3.5 对 ClawHub 审计 9 findings 的整改、v3.3.8 权限声明修复）。
 
 ### 常用参数：检验方向 `--side` 与效应量输入 `--sd`
 
@@ -196,35 +162,17 @@ python scripts/samplesize_power.py --test ttest_ind --side one --sd 0.8 --effect
 
 ### 曲线模式：Power / Sample-size 曲线
 
-在双向求解基础上，支持**批量绘制曲线**，直观展示样本量与检验效能的关系。
+在双向求解基础上支持**批量绘制曲线**，直观展示样本量 ⇄ 检验效能关系。
 
-- `--n_seq`：给定样本量序列 → 绘制 **Power 曲线**（x=样本量, y=效能）
-- `--power_seq`：给定效能序列 → 绘制 **样本量曲线**（x=效能, y=样本量）
-- 序列支持两种格式（均支持）：
-  - **显式列表**：`"20,40,200"`
-  - **自动生成**：`"20:20:200"`（起:步:止，自动展开为 20,40,…,200）
-- `--plot_effects "0.3,0.5,0.8"`：多效应量叠加多条曲线（敏感性分析，仅部分类型支持）
-- `--out path.png`：指定 PNG 输出路径（默认写入系统临时目录）
-- **绘图零额外依赖**：曲线图使用 **基础 R 图形**（`png()`+`plot()`+`abline()`）绘制，**无需 `ggplot2`**；随 `pwr`/`PowerTOST` 等计算包一并加载即可，避免未安装包导致的失败。
+- `--n_seq "20,40,200"` 或 `"20:20:200"`（起:步:止）→ **Power 曲线**（x=样本量, y=效能）
+- `--power_seq "0.8,0.9"` → **样本量曲线**（x=效能, y=样本量）
+- `--plot_effects "0.3,0.5,0.8"`：多效应量叠曲线（敏感性分析，部分类型支持）；`--out path.png` 指定输出
+- 绘图用**基础 R 图形**（`png()`+`plot()`），**无需 ggplot2**
+- 支持 22 种检验类型（详见 `references/cli_examples.md` → *Curve Mode Examples*）；其余类型运行时会提示暂未覆盖
 
-> **曲线模式命令行示例**见 `references/cli_examples.md` → *Curve Mode Examples*。
+### R 包安装（默认仅打印命令）
 
-**曲线模式支持的检验类型（22 种）**：ttest_ind、ttest_paired、ttest_one、anova、proportion_one、proportion_two、proportion_paired、odds_ratio、risk_ratio、roc、poisson、non_inferiority、superiority_margin、be_tost、survival、ni_survival、mams、dunnett、group_sequential、survival_exact、equivalence、vaccine_efficacy。
-
-曲线复用与单点求解**同一套已验证公式**（pwr / PowerTOST / 解析逆公式），数值完全一致；`group_sequential`、`survival_exact` 采用固定设计 / Schoenfeld 近似（图注已标注）。
-
-其余类型（mixed_model、bayesian、win_ratio、must_win、historical_controls、assurance、conditional_power、adaptive、dose_escalation、bland_altman、cluster）曲线模式暂未覆盖，运行时会给出清晰提示。
-
-### R 包安装（默认仅打印命令，需二次确认）
-
-出于供应链安全考虑，本技能**不会自动联网安装** R 包：
-
-- **查看安装命令（默认，安全）**：`python scripts/samplesize_power.py --install-all-packages`
-  仅打印 `install.packages()` 命令供人工审阅，**不联网、不执行**。
-- **确认后真正安装**：`python scripts/samplesize_power.py --install-all-packages --run-install`
-  显式追加 `--run-install` 才会从 CRAN 联网下载并安装 10 个 R 包。
-- 也可将打印出的命令复制到 R 控制台中手动执行，完全避免脚本联网。
-- 完整 R 包清单与按需安装说明见 `references/cli_examples.md` → *R 包安装* 及 `references/r_packages_zh.md`。
+出于供应链安全，本技能**不自动联网安装** R 包：`--install-all-packages` 仅打印 `install.packages()` 命令（不执行）；追加 `--run-install` 才从 CRAN 下载安装 10 个包。完整清单见 `references/cli_examples.md` → *R 包安装* 及 `references/r_packages_zh.md`。
 
 ---
 
@@ -252,4 +200,4 @@ python scripts/samplesize_power.py --test ttest_ind --side one --sd 0.8 --effect
 
 ---
 
-**Version**: v3.3.8 | **Updated**: 2026-07-17 | **License**: MIT
+**Version**: v3.3.9 | **Updated**: 2026-07-17 | **License**: MIT
