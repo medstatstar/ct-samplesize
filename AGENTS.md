@@ -1,4 +1,4 @@
-# AGENTS.md — ct-samplesize v3.4.5
+# AGENTS.md — ct-samplesize v3.4.6
 
 ## Overview / 技能概述
 
@@ -56,7 +56,7 @@ Every analysis includes:
 - Assumptions & limitations
 - **Default = SAFE PREVIEW (code shown, NOT executed)**; use `--yes`/`-y` to execute & compute, `--show-code` to display the code (no execution), or `--dry-run` to preview only
 - R code is generated and shown by default but NOT run unless `--yes` is given; `-y`/`--yes` explicitly executes and computes
-- **Exception — `--test adaptive_simulate`**: the adaptive-trial Monte-Carlo simulator (`scripts/adaptive_simulator.py`) is pure Python (no R/shell/eval, no injection surface), so it runs directly and prints a JSON result — the R SAFE-PREVIEW gate does not apply. See `references/adaptive_simulator.md`. / 例外——`--test adaptive_simulate`：自适应试验蒙特卡洛仿真器为纯 Python（无 R/shell/eval、无注入面），直接运行并输出 JSON 结果，不适用 R 安全预览门控。详见 `references/adaptive_simulator.md`。
+- **`--test adaptive_simulate`**: primary engine is the pure base-R Monte-Carlo simulator (`scripts/r_templates/r_adaptive_simulate.py`), shown in SAFE PREVIEW and run with `--yes` like all other tests (base R only, no extra packages). When R is unavailable, the skill automatically falls back to the equivalent pure-Python module `scripts/adaptive_simulator.py`. See `references/adaptive_simulator.md`. / `--test adaptive_simulate`：主引擎为纯 base-R 蒙特卡洛仿真器（`scripts/r_templates/r_adaptive_simulate.py`），与其余检验一致默认安全预览、`--yes` 执行（仅需 base R）；未装 R 时自动回退至等价的纯 Python 模块 `scripts/adaptive_simulator.py`。详见 `references/adaptive_simulator.md`。
 
 ### 5. Language Detection / 语言检测
 - **Default English / 默认英文**: All user-facing prompt content defaults to English. / 所有面向用户的提示内容默认使用英文。

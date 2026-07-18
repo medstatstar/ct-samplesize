@@ -171,6 +171,116 @@ def run_r(code, confirmed=False):
         except OSError:
             pass
 
+def build_adaptive_sim_r_code(args):
+    """Build the Monte-Carlo adaptive-trial R code (base-R) from CLI args.
+
+    Pure base-R engine (no extra packages) ported from adaptive_simulator.py.
+    User strings are validated upstream before reaching this function, so the
+    generated code is safe to display and (with --yes) execute.
+    """
+    def _num(v):
+        f = float(v)
+        if f == int(f):
+            return str(int(f))
+        return repr(f)
+
+    if args.effect_sizes:
+        effects = ", ".join(_num(float(x)) for x in args.effect_sizes.split(",") if x.strip())
+    else:
+        effects = _num(args.effect_size)
+    n_arms = (len([x for x in args.effect_sizes.split(",") if x.strip()])
+              if args.effect_sizes else args.n_arms)
+
+    code = R_ADAPTIVE_SIMULATE
+    # NOTE: __EFFECTS__ must be replaced before __EFFECT__ (it is a substring).
+    repl = {
+        "__EFFECTS__": effects,
+        "__EFFECT__": _num(args.effect_size),
+        "__DESIGN__": args.sim_design,
+        "__N_SIM__": _num(args.n_simulations),
+        "__N_PER_ARM__": _num(args.sim_n),
+        "__N_LOOKS__": _num(args.interim_looks),
+        "__SPENDING__": args.spending_function,
+        "__RHO__": _num(args.rho),
+        "__FUTILITY__": "TRUE" if args.futility else "FALSE",
+        "__BETA__": _num(args.beta),
+        "__REEST__": args.reestimate_method,
+        "__INTERIM_FRAC__": _num(args.interim_fraction),
+        "__TARGET_CP__": _num(args.target_cp),
+        "__MAX_INFL__": _num(args.max_inflation),
+        "__N_ARMS__": _num(n_arms),
+        "__N_MIN__": _num(args.n_min),
+        "__N_MAX__": _num(args.n_max),
+        "__SEL_FRAC__": _num(args.selection_fraction),
+        "__CORRECTION__": args.correction,
+        "__ALPHA__": _num(args.alpha),
+        "__OPTIMIZE__": "TRUE" if args.optimize else "FALSE",
+        "__TARGET_POWER__": _num(args.power),
+        "__VISUALIZE__": "TRUE" if args.visualize else "FALSE",
+        "__SEED__": "NULL" if args.sim_seed is None else _num(args.sim_seed),
+        "__OUT_PNG__": (args.out or "").replace("\\", "/"),
+        "__OUT_JSON__": (args.sim_output or "").replace("\\", "/"),
+    }
+    for k, v in repl.items():
+        code = code.replace(k, v)
+    return code
+
+
+def _fallback_adaptive_sim_python(args):
+    """Run the pure-Python Monte-Carlo engine when R is unavailable.
+
+    Mirrors the R path's design dispatch so the user still gets results.
+    """
+    try:
+        import adaptive_simulator as _sim
+    except ImportError:
+        _here = os.path.dirname(os.path.abspath(__file__))
+        if _here not in sys.path:
+            sys.path.insert(0, _here)
+        import adaptive_simulator as _sim
+    try:
+        if args.optimize:
+            res = _sim.optimize_power(
+                args.effect_size, target_power=args.power, alpha=args.alpha,
+                interim_looks=args.interim_looks, spending=args.spending_function,
+                rho=args.rho, futility=args.futility, n_min=args.n_min,
+                n_max=args.n_max, n_simulations=max(args.n_simulations // 2, 1000),
+                seed=args.sim_seed)
+        elif args.sim_design == "group_sequential":
+            res = _sim.simulate_group_sequential(
+                args.effect_size, args.sim_n, interim_looks=args.interim_looks,
+                alpha=args.alpha, spending=args.spending_function, rho=args.rho,
+                futility=args.futility, beta=args.beta,
+                n_simulations=args.n_simulations, seed=args.sim_seed)
+        elif args.sim_design == "adaptive_reestimate":
+            res = _sim.simulate_adaptive_reestimate(
+                args.effect_size, args.sim_n, alpha=args.alpha,
+                interim_fraction=args.interim_fraction, target_cp=args.target_cp,
+                max_inflation=args.max_inflation, n_simulations=args.n_simulations,
+                reestimate_method=args.reestimate_method, seed=args.sim_seed)
+        else:  # drop_the_loser
+            if args.effect_sizes:
+                _effs = [float(x) for x in args.effect_sizes.split(",") if x.strip()]
+            else:
+                _effs = args.effect_size
+            res = _sim.simulate_drop_the_loser(
+                _effs, args.sim_n, n_arms=args.n_arms, alpha=args.alpha,
+                selection_fraction=args.selection_fraction, correction=args.correction,
+                n_simulations=args.n_simulations, seed=args.sim_seed)
+    except (ValueError, KeyError) as e:
+        print("ERROR: %s" % e)
+        sys.exit(1)
+    print(_sim._fmt_result(res))
+    if args.sim_output:
+        with open(args.sim_output, "w", encoding="utf-8") as f:
+            json.dump(res, f, indent=2, ensure_ascii=False)
+        print("Result JSON saved to: %s" % args.sim_output)
+    if args.visualize:
+        _png = args.out or os.path.join(tempfile.gettempdir(),
+                                        "adaptive_sim_%s.png" % res.get("design", "sim"))
+        print(_sim.visualize(res, _png))
+
+
 def parse_seq_to_r(s):
     """Parse a sequence spec into an R vector expression.
 
@@ -521,6 +631,18 @@ def main():
         _validate_token("--design", args.design)
         _validate_token("--spending_func", args.spending_func)
         _validate_token("--effect_name", args.effect_name)
+        if args.test == "adaptive_simulate":
+            _validate_token("--sim_design", args.sim_design)
+            _validate_token("--spending_function", args.spending_function)
+            _validate_token("--reestimate_method", args.reestimate_method)
+            _validate_token("--correction", args.correction)
+            if args.effect_sizes is not None:
+                if not re.match(r'^[0-9.,\- ]+$', args.effect_sizes):
+                    raise ValueError(
+                        "Invalid --effect_sizes %r: only digits, dots, commas, "
+                        "minus and spaces are allowed." % args.effect_sizes)
+            if args.sim_output is not None:
+                _safe_r_path_literal(args.sim_output)
         if args.out is not None:
             _safe_r_path_literal(args.out)  # raises ValueError if unsafe
     except ValueError as e:
@@ -628,58 +750,38 @@ def main():
     if not args.test:
         p.error("--test is required (unless using --install-all-packages)")
 
-    # ══ Adaptive Monte-Carlo simulator (pure Python; no R / shell / eval) ══
-    # This path is a self-contained numeric simulation with no code-injection
-    # surface, so it runs directly without the R SAFE-PREVIEW gate.
+    # ══ Adaptive Monte-Carlo simulator (test=adaptive_simulate) ══
+    # PRIMARY: generate & show the R code; execute only with --yes (SAFE PREVIEW,
+    #   consistent with every other test type in this skill).
+    # FALLBACK: if R is not installed, run the pure-Python engine
+    #   (scripts/adaptive_simulator.py) so the user still gets results.
+    #   -- Python 代码仅在没有 R 时作为备用。
     if args.test == "adaptive_simulate":
-        try:
-            import adaptive_simulator as _sim
-        except ImportError:
-            _here = os.path.dirname(os.path.abspath(__file__))
-            if _here not in sys.path:
-                sys.path.insert(0, _here)
-            import adaptive_simulator as _sim
-        try:
-            if args.optimize:
-                res = _sim.optimize_power(
-                    args.effect_size, target_power=args.power, alpha=args.alpha,
-                    interim_looks=args.interim_looks, spending=args.spending_function,
-                    rho=args.rho, futility=args.futility, n_min=args.n_min,
-                    n_max=args.n_max, n_simulations=max(args.n_simulations // 2, 1000),
-                    seed=args.sim_seed)
-            elif args.sim_design == "group_sequential":
-                res = _sim.simulate_group_sequential(
-                    args.effect_size, args.sim_n, interim_looks=args.interim_looks,
-                    alpha=args.alpha, spending=args.spending_function, rho=args.rho,
-                    futility=args.futility, beta=args.beta,
-                    n_simulations=args.n_simulations, seed=args.sim_seed)
-            elif args.sim_design == "adaptive_reestimate":
-                res = _sim.simulate_adaptive_reestimate(
-                    args.effect_size, args.sim_n, alpha=args.alpha,
-                    interim_fraction=args.interim_fraction, target_cp=args.target_cp,
-                    max_inflation=args.max_inflation, n_simulations=args.n_simulations,
-                    reestimate_method=args.reestimate_method, seed=args.sim_seed)
-            else:  # drop_the_loser
-                if args.effect_sizes:
-                    _effs = [float(x) for x in args.effect_sizes.split(",") if x.strip()]
-                else:
-                    _effs = args.effect_size
-                res = _sim.simulate_drop_the_loser(
-                    _effs, args.sim_n, n_arms=args.n_arms, alpha=args.alpha,
-                    selection_fraction=args.selection_fraction, correction=args.correction,
-                    n_simulations=args.n_simulations, seed=args.sim_seed)
-        except (ValueError, KeyError) as e:
-            print("ERROR: %s" % e); sys.exit(1)
+        rscript = find_rscript()
+        if rscript is None:
+            # ── No R available -> pure-Python fallback ──
+            print("[INFO] R not detected -> using built-in pure-Python Monte-Carlo "
+                  "fallback (scripts/adaptive_simulator.py).")
+            _fallback_adaptive_sim_python(args)
+            return
 
-        print(_sim._fmt_result(res))
-        if args.sim_output:
-            with open(args.sim_output, "w", encoding="utf-8") as f:
-                json.dump(res, f, indent=2, ensure_ascii=False)
-            print("Result JSON saved to: %s" % args.sim_output)
-        if args.visualize:
-            _png = args.out or os.path.join(tempfile.gettempdir(),
-                                            "adaptive_sim_%s.png" % res.get("design", "sim"))
-            print(_sim.visualize(res, _png))
+        # ── Primary: R code (shown by default, run only with --yes) ──
+        r_code = build_adaptive_sim_r_code(args)
+        r_code = r_code.lstrip("\n")
+        if args.show_code or args.dry_run or not confirmed:
+            print("=" * 60)
+            print("[R CODE — generated for this analysis]")
+            print("=" * 60)
+            print(r_code)
+            print("=" * 60)
+        if not confirmed:
+            print("[SAFE PREVIEW] R code was NOT executed. Re-run with --yes to compute the result.")
+            return
+        print("[EXECUTING R CODE...]")
+        sys.stdout.flush()
+        output = run_r(r_code, confirmed=True)
+        print(output)
+        print("=" * 60)
         return
 
     # ══ Curve mode (power / sample-size curves) ══

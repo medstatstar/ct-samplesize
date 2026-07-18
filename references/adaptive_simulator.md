@@ -1,10 +1,16 @@
 # Adaptive-Trial Monte-Carlo Simulator / 自适应试验蒙特卡洛仿真器
 
-Module: `scripts/adaptive_simulator.py` — exposed via the main CLI as
-`--test adaptive_simulate`. Ported from the ClawHub skill
+Module: `--test adaptive_simulate` in the main CLI. **Primary engine: pure
+base-R code** (`scripts/r_templates/r_adaptive_simulate.py`, no extra R packages)
+— generated and shown in SAFE PREVIEW like all other tests, executed with
+`--yes`. **Fallback engine: pure Python** (`scripts/adaptive_simulator.py`) runs
+automatically only when R is not installed. Ported from the ClawHub skill
 `adaptive-trial-simulator` (aipoch-ai) and re-implemented to fit ct-samplesize.
-/ 模块 `scripts/adaptive_simulator.py`，经主 CLI `--test adaptive_simulate` 调用。
-移植自 ClawHub 技能 `adaptive-trial-simulator`（aipoch-ai）并按本技能规范重写。
+/ 经主 CLI `--test adaptive_simulate` 调用。**主引擎：纯 base-R 代码**
+（`scripts/r_templates/r_adaptive_simulate.py`，无需额外 R 包）——与其余检验一致
+默认安全预览展示、`--yes` 执行。**备用引擎：纯 Python**（`scripts/adaptive_simulator.py`）
+仅在本机未安装 R 时自动启用。移植自 ClawHub 技能 `adaptive-trial-simulator`（aipoch-ai）
+并按本技能规范重写。
 
 ## When to use / 何时使用
 
@@ -17,10 +23,13 @@ complementary. / 当你想用蒙特卡洛**验证**一个自适应/成组序贯�
 经验 I 类错误、期望样本量、早停概率）时使用本仿真器；若需**解析法**样本量
 （rpact/gsDesign），改用 `--test group_sequential` 或 `--test adaptive`。二者互补。
 
-> Pure Python, fully offline: no R, no shell, no `eval`, no code-injection
-> surface — runs directly (no `--yes` SAFE-PREVIEW gate). Needs numpy + scipy;
-> `--visualize` also needs matplotlib. / 纯 Python、完全离线：无 R/shell/eval、
-> 无注入面，直接运行（无需 `--yes` 安全预览）。依赖 numpy+scipy；`--visualize` 需 matplotlib。
+> **R is the primary output / R 为主输出**: by default the skill generates and
+> shows the R code (SAFE PREVIEW). Re-run with `--yes` to execute it and compute
+> the result. It uses only base R (no extra packages). / 默认生成并展示 R 代码
+> （安全预览）；加 `--yes` 才执行并计算。仅需 base R，无需额外 R 包。
+> If R is not installed, the skill automatically falls back to the pure-Python
+> engine `scripts/adaptive_simulator.py` so you still get a result. / 若未安装 R，
+> 技能自动回退至纯 Python 引擎 `scripts/adaptive_simulator.py`，仍可出结果。
 
 ## Capabilities / 功能 (6)
 
@@ -70,43 +79,59 @@ Brownian (B-value) scale, reproducing gsDesign-style OBF/Pocock boundaries. /
 ## Examples / 示例
 
 ```bash
-# 1) Group-sequential, 3 looks, OBF spending, one-sided 0.025
+# Default = SAFE PREVIEW (shows the generated R code). Append -y / --yes to
+# execute the R code and compute the result. If R is absent, the Python
+# fallback runs automatically (also without --yes).
+# 默认=安全预览（展示生成的 R 代码）。追加 -y / --yes 才执行 R 代码并计算。
+# 若无 R，则自动改用 Python 备用引擎（也无需 --yes）。
+
+# 1) Group-sequential, 3 looks, OBF spending, one-sided 0.025  (preview)
 python samplesize_power.py --test adaptive_simulate --sim_design group_sequential \
   --effect_size 0.3 --sim_n 200 --interim_looks 3 --spending_function obrien_fleming \
   --alpha 0.025 --n_simulations 20000 --sim_seed 42
 
+# 1b) same, but execute (-y) -> runs the R code and prints power / type I error
+python samplesize_power.py --test adaptive_simulate --sim_design group_sequential \
+  --effect_size 0.3 --sim_n 200 --interim_looks 3 --spending_function obrien_fleming \
+  --alpha 0.025 --n_simulations 20000 --sim_seed 42 -y
+
 # 2) With non-binding futility (Pocock spending)
 python samplesize_power.py --test adaptive_simulate --sim_design group_sequential \
   --effect_size 0.3 --sim_n 200 --interim_looks 3 --spending_function pocock \
-  --futility --beta 0.2 --alpha 0.025
+  --futility --beta 0.2 --alpha 0.025 -y
 
 # 3) Sample-size re-estimation (promising zone, CHW statistic)
 python samplesize_power.py --test adaptive_simulate --sim_design adaptive_reestimate \
   --effect_size 0.3 --sim_n 200 --interim_fraction 0.5 --target_cp 0.9 \
-  --max_inflation 2.0 --alpha 0.025
+  --max_inflation 2.0 --alpha 0.025 -y
 
 # 4) Multi-arm drop-the-loser (3 arms) with Dunnett-style adjustment
 python samplesize_power.py --test adaptive_simulate --sim_design drop_the_loser \
   --effect_sizes "0.2,0.35,0.5" --sim_n 150 --selection_fraction 0.5 \
-  --correction dunnett --alpha 0.025
+  --correction dunnett --alpha 0.025 -y
 
 # 5) Power optimization: min per-arm N reaching 90% power, + PNG
 python samplesize_power.py --test adaptive_simulate --optimize \
   --effect_size 0.3 --power 0.9 --interim_looks 2 --alpha 0.025 \
-  --n_min 150 --n_max 400 --visualize
+  --n_min 150 --n_max 400 --visualize -y
 
-# The module can also be run standalone (hyphenated flags):
+# Standalone Python fallback (only needed when R is unavailable):
 python adaptive_simulator.py --design group_sequential --effect-size 0.3 \
   --sample-size 200 --interim-looks 3 --spending-function obrien_fleming --alpha 0.025
 ```
 
 ## Output / 输出
 
-A JSON block with (design-dependent): `power`, `type_i_error`,
-`expected_sample_size` (total & per-arm), `max_sample_size`,
+**R engine (primary):** a human-readable report (power, type I error, expected /
+max sample size, early-stop rates, Z boundaries, etc.) plus an optional JSON file
+when `--sim_output <path>` is given. / **R 引擎（主）**：可读报告（功效、I 类错误、
+期望/最大样本量、早停率、Z 边界等）；给定 `--sim_output <路径>` 时另写 JSON。
+
+**Python fallback (no R):** the same quantities as a JSON block with (design-dependent)
+`power`, `type_i_error`, `expected_sample_size` (total & per-arm), `max_sample_size`,
 `early_stop_rate {efficacy, futility}` (GS), `prob_sample_size_increase` (SSR),
-`power_correct_selection` / `prob_correct_selection` (multi-arm), and a
-`design_config` echoing all inputs plus the computed Z boundaries. / 输出 JSON：
+`power_correct_selection` / `prob_correct_selection` (multi-arm), and a `design_config`
+echoing all inputs plus the computed Z boundaries. / **Python 备用（无 R）**：JSON，
 含功效、I 类错误、期望/最大样本量、早停率、（SSR）扩样概率、（多臂）正确选臂概率，
 以及回显全部输入与计算所得 Z 边界的 `design_config`。
 

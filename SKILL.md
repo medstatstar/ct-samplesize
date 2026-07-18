@@ -3,7 +3,7 @@ slug: ct-samplesize
 displayName: Clinical Trial Sample Size & Power / 临床试验样本量与检验效能计算专家
 name: ct-samplesize
 cn_name: 临床试验样本量与检验效能计算专家
-version: 3.4.5
+version: 3.4.6
 required_commands: [Rscript, python]
 summary: Easy-to-use sample size & power calculator for clinical trial researchers. R backend + 20+ packages (rpact/gsDesign/TrialSize/PowerTOST). Natural language driven. 37 test types. Generates R code locally and runs in SAFE PREVIEW by default (code shown, NOT executed); use --yes to execute. Reproducible R code on request. English by default, auto-Chinese on Chinese-OS. / 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 37 种检验。本地生成 R 代码并默认运行于安全预览模式（展示代码、不执行），使用 --yes 才显式执行；可应要求提供可复现 R 代码；默认英文输出，中文操作系统自动切换中文。
 license: MIT
@@ -87,7 +87,7 @@ Beyond basic "solve n given target power", the skill offers three advanced capab
 
 ### Adaptive-trial Monte-Carlo simulator / 自适应试验蒙特卡洛仿真器
 
-Beyond the 37 analytic tests, `--test adaptive_simulate` runs a pure-Python Monte-Carlo simulator (`scripts/adaptive_simulator.py`) to **validate** adaptive / group-sequential designs empirically: power, type I error, expected sample size, early-stop probabilities. Designs: `group_sequential`, `adaptive_reestimate` (promising-zone SSR with Cui-Hung-Wang statistic), `drop_the_loser` (multi-arm). Spending: `obrien_fleming` / `pocock` / `power_family`. Also supports `--futility`, `--optimize` (min-N search) and `--visualize`. It is pure numeric computation (no R/shell/eval) and runs directly. Full guide: `references/adaptive_simulator.md`. / 除 37 种解析检验外，`--test adaptive_simulate` 运行纯 Python 蒙特卡洛仿真器（`scripts/adaptive_simulator.py`），用于**经验验证**自适应/成组序贯设计的功效、I 类错误、期望样本量与早停概率。设计含 `group_sequential`、`adaptive_reestimate`（promising-zone + CHW 统计量）、`drop_the_loser`（多臂）；消耗函数 `obrien_fleming`/`pocock`/`power_family`；支持 `--futility`、`--optimize`、`--visualize`。属纯数值计算（无 R/shell/eval），直接运行。完整说明见 `references/adaptive_simulator.md`。
+Beyond the 37 analytic tests, `--test adaptive_simulate` runs a Monte-Carlo simulator to **validate** adaptive / group-sequential designs empirically: power, type I error, expected sample size, early-stop probabilities. **Primary engine: pure base-R code** (`scripts/r_templates/r_adaptive_simulate.py`) — generated and shown in SAFE PREVIEW like every other test, executed with `--yes`; it uses only base R (no extra packages). **Fallback: when R is not installed**, the skill automatically runs the equivalent pure-Python module `scripts/adaptive_simulator.py` so the user still gets results. Designs: `group_sequential`, `adaptive_reestimate` (promising-zone SSR with Cui-Hung-Wang statistic), `drop_the_loser` (multi-arm). Spending: `obrien_fleming` / `pocock` / `power_family`. Also supports `--futility`, `--optimize` (min-N search) and `--visualize`. Full guide: `references/adaptive_simulator.md`. / 除 37 种解析检验外，`--test adaptive_simulate` 运行蒙特卡洛仿真器，经验验证自适应/成组序贯设计的功效、I 类错误、期望样本量与早停概率。**主引擎：纯 base-R 代码**（`scripts/r_templates/r_adaptive_simulate.py`），与其余检验一致默认以安全预览展示、用 `--yes` 执行，仅需 base R（无需额外 R 包）。**备用：当本机未安装 R 时**，技能自动改跑等价的纯 Python 模块 `scripts/adaptive_simulator.py`，保证仍能出结果。设计含 `group_sequential`、`adaptive_reestimate`（promising-zone + CHW 统计量）、`drop_the_loser`（多臂）；消耗函数 `obrien_fleming`/`pocock`/`power_family`；支持 `--futility`、`--optimize`、`--visualize`。完整说明见 `references/adaptive_simulator.md`。
 
 ---
 
@@ -96,7 +96,7 @@ Beyond the 37 analytic tests, `--test adaptive_simulate` runs a pure-Python Mont
 | Requirement 要求 | Details 详情 |
 |:---|:---|
 | **R** | ≥ 4.1.0 (install on demand, see `references/r_packages_zh.md`) / ≥ 4.1.0（按需安装，详见 `references/r_packages_zh.md`）|
-| **Python** | ≥ 3.8 + statsmodels≥0.14.2, numpy≥1.24.3, scipy≥1.11.4 (matplotlib≥3.4 only for `adaptive_simulate --visualize`) |
+| **Python** | ≥ 3.8 + statsmodels≥0.14.2, numpy≥1.24.3, scipy≥1.11.4. Used by the `adaptive_simulate` **no-R fallback** and `--visualize` (matplotlib≥3.4). R is the primary engine for `adaptive_simulate`. / 用于 `adaptive_simulate` 的**无 R 备用路径**与 `--visualize`（matplotlib≥3.4）。`adaptive_simulate` 的主引擎是 R。 |
 
 ---
 
