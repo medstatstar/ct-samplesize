@@ -1,3 +1,7 @@
-statsmodels==0.14.2
-numpy==1.24.3
-scipy==1.11.4
+# Minimum versions. The Python fallback (fixed designs) and the adaptive
+# Monte-Carlo simulator (scripts/adaptive_simulator.py) both work with these
+# or newer. matplotlib is only required for --visualize.
+statsmodels>=0.14.2
+numpy>=1.24.3
+scipy>=1.11.4
+matplotlib>=3.4.0

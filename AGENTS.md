@@ -1,4 +1,4 @@
-# AGENTS.md — ct-samplesize v3.4.4
+# AGENTS.md — ct-samplesize v3.4.5
 
 ## Overview / 技能概述
 
@@ -56,6 +56,7 @@ Every analysis includes:
 - Assumptions & limitations
 - **Default = SAFE PREVIEW (code shown, NOT executed)**; use `--yes`/`-y` to execute & compute, `--show-code` to display the code (no execution), or `--dry-run` to preview only
 - R code is generated and shown by default but NOT run unless `--yes` is given; `-y`/`--yes` explicitly executes and computes
+- **Exception — `--test adaptive_simulate`**: the adaptive-trial Monte-Carlo simulator (`scripts/adaptive_simulator.py`) is pure Python (no R/shell/eval, no injection surface), so it runs directly and prints a JSON result — the R SAFE-PREVIEW gate does not apply. See `references/adaptive_simulator.md`. / 例外——`--test adaptive_simulate`：自适应试验蒙特卡洛仿真器为纯 Python（无 R/shell/eval、无注入面），直接运行并输出 JSON 结果，不适用 R 安全预览门控。详见 `references/adaptive_simulator.md`。
 
 ### 5. Language Detection / 语言检测
 - **Default English / 默认英文**: All user-facing prompt content defaults to English. / 所有面向用户的提示内容默认使用英文。

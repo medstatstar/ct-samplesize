@@ -3,7 +3,7 @@ slug: ct-samplesize
 displayName: Clinical Trial Sample Size & Power / 临床试验样本量与检验效能计算专家
 name: ct-samplesize
 cn_name: 临床试验样本量与检验效能计算专家
-version: 3.4.4
+version: 3.4.5
 required_commands: [Rscript, python]
 summary: Easy-to-use sample size & power calculator for clinical trial researchers. R backend + 20+ packages (rpact/gsDesign/TrialSize/PowerTOST). Natural language driven. 37 test types. Generates R code locally and runs in SAFE PREVIEW by default (code shown, NOT executed); use --yes to execute. Reproducible R code on request. English by default, auto-Chinese on Chinese-OS. / 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 37 种检验。本地生成 R 代码并默认运行于安全预览模式（展示代码、不执行），使用 --yes 才显式执行；可应要求提供可复现 R 代码；默认英文输出，中文操作系统自动切换中文。
 license: MIT
@@ -53,7 +53,7 @@ permissions:
 
 - Applies the user-level "bilingual policy" (~/.workbuddy/MEMORY.md): this skill is a statistical-analysis skill published on ClawHub, so bilingual is required. / 本技能适用「双语语言策略」（用户级规范，见 `~/.workbuddy/MEMORY.md`）：属统计分析类且已发布 ClawHub，故需双语。
 - Common modules (EN+ZH): `ttest_*`, `anova`, `proportion_*`, `odds_ratio`, `risk_ratio`, `roc`, `poisson`, `non_inferiority`, `superiority_margin`, `be_tost`, `equivalence`, `survival`, `ni_survival`, `cluster`, `dunnett` + report template / quick menu / flag reference. / 常用模块（英/中双套）：上述常用检验类型 + 报告模板/快速菜单/参数速查。
-- Complex/rare modules (EN-only for now): `group_sequential`, `adaptive`, `mixed_model`, `bayesian`, `win_ratio`, `historical_controls`, `assurance`, `conditional_power`, `dose_escalation`, `vaccine_efficacy`, `mams`, `survival_exact`, `mediation` etc. / 复杂/少用模块（暂只英文）：上述复杂/少用检验类型。
+- Complex/rare modules (EN-only for now): `group_sequential`, `adaptive`, `adaptive_simulate`, `mixed_model`, `bayesian`, `win_ratio`, `historical_controls`, `assurance`, `conditional_power`, `dose_escalation`, `vaccine_efficacy`, `mams`, `survival_exact`, `mediation` etc. / 复杂/少用模块（暂只英文）：上述复杂/少用检验类型。
 
 ## Purpose / 技能目的
 
@@ -85,6 +85,10 @@ Beyond basic "solve n given target power", the skill offers three advanced capab
 
 > **How to choose / 如何选择:** 1️⃣ endpoint type 2️⃣ hypothesis direction 3️⃣ design complexity; if unsure, look up the table in that reference file. / 1️⃣ 终点类型 2️⃣ 假设方向 3️⃣ 设计复杂度；不确定时从该参考文件查表。
 
+### Adaptive-trial Monte-Carlo simulator / 自适应试验蒙特卡洛仿真器
+
+Beyond the 37 analytic tests, `--test adaptive_simulate` runs a pure-Python Monte-Carlo simulator (`scripts/adaptive_simulator.py`) to **validate** adaptive / group-sequential designs empirically: power, type I error, expected sample size, early-stop probabilities. Designs: `group_sequential`, `adaptive_reestimate` (promising-zone SSR with Cui-Hung-Wang statistic), `drop_the_loser` (multi-arm). Spending: `obrien_fleming` / `pocock` / `power_family`. Also supports `--futility`, `--optimize` (min-N search) and `--visualize`. It is pure numeric computation (no R/shell/eval) and runs directly. Full guide: `references/adaptive_simulator.md`. / 除 37 种解析检验外，`--test adaptive_simulate` 运行纯 Python 蒙特卡洛仿真器（`scripts/adaptive_simulator.py`），用于**经验验证**自适应/成组序贯设计的功效、I 类错误、期望样本量与早停概率。设计含 `group_sequential`、`adaptive_reestimate`（promising-zone + CHW 统计量）、`drop_the_loser`（多臂）；消耗函数 `obrien_fleming`/`pocock`/`power_family`；支持 `--futility`、`--optimize`、`--visualize`。属纯数值计算（无 R/shell/eval），直接运行。完整说明见 `references/adaptive_simulator.md`。
+
 ---
 
 ## Requirements / 要求
@@ -92,7 +96,7 @@ Beyond basic "solve n given target power", the skill offers three advanced capab
 | Requirement 要求 | Details 详情 |
 |:---|:---|
 | **R** | ≥ 4.1.0 (install on demand, see `references/r_packages_zh.md`) / ≥ 4.1.0（按需安装，详见 `references/r_packages_zh.md`）|
-| **Python** | ≥ 3.8 + statsmodels==0.14.2, numpy==1.24.3, scipy==1.11.4 |
+| **Python** | ≥ 3.8 + statsmodels≥0.14.2, numpy≥1.24.3, scipy≥1.11.4 (matplotlib≥3.4 only for `adaptive_simulate --visualize`) |
 
 ---
 

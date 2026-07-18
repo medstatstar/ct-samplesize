@@ -21,7 +21,7 @@ Test types (37 total):
         conditional_power, ni_survival, superiority_margin, assurance,
         dunnett, mediation, group_sequential, adaptive, survival_exact
 """
-import argparse, sys, os, textwrap, subprocess, tempfile, re
+import argparse, sys, os, textwrap, subprocess, tempfile, re, json
 from r_templates import *
 
 def find_rscript():
@@ -326,7 +326,8 @@ def main():
                  "vaccine_efficacy","multiple_endpoints","bayesian","dose_escalation",
                  "win_ratio","must_win","historical_controls","mams",
                  "conditional_power","ni_survival","superiority_margin","assurance",
-                 "dunnett","mediation","group_sequential","adaptive","survival_exact"])
+                 "dunnett","mediation","group_sequential","adaptive","survival_exact",
+                 "adaptive_simulate"])
     p.add_argument("--yes", "-y", action="store_true",
                    help="显式确认执行 R 代码（默认 dry-run 安全预览，仅展示代码、不执行）")
     p.add_argument("--dry-run", action="store_true",
@@ -462,6 +463,44 @@ def main():
     p.add_argument("--dropout_exact", type=float, default=0.05)
     p.add_argument("--event_rate_exact", type=float, default=0.3)
     p.add_argument("--n_stages_exact", type=int, default=1)
+    # ── Adaptive Monte-Carlo simulator (test=adaptive_simulate) ──
+    # 纯 Python 蒙特卡洛自适应/成组序贯仿真器 (无 R, 无 shell, 直接运行)
+    p.add_argument("--sim_design", type=str, default="group_sequential",
+                   choices=["group_sequential", "adaptive_reestimate", "drop_the_loser"],
+                   help="仿真设计类型 / simulation design")
+    p.add_argument("--n_simulations", type=int, default=10000,
+                   help="蒙特卡洛重复次数 / Monte-Carlo replications")
+    p.add_argument("--sim_n", type=int, default=100,
+                   help="每组样本量 (仿真用) / per-arm sample size for simulation")
+    p.add_argument("--effect_size", type=float, default=0.3,
+                   help="Cohen's d (仿真效应量)")
+    p.add_argument("--effect_sizes", type=str, default=None,
+                   help="drop_the_loser 各臂 d 逗号列表, 如 '0.2,0.35,0.5'")
+    p.add_argument("--interim_looks", type=int, default=2,
+                   help="分析次数 (含最终) / number of looks incl. final")
+    p.add_argument("--spending_function", type=str, default="obrien_fleming",
+                   choices=["obrien_fleming", "pocock", "power_family"],
+                   help="alpha 消耗函数 / alpha spending function")
+    p.add_argument("--rho", type=float, default=3.0, help="power_family 形状参数")
+    p.add_argument("--futility", action="store_true", help="加入非绑定 futility 边界")
+    p.add_argument("--beta", type=float, default=0.2, help="futility beta-spending")
+    p.add_argument("--reestimate_method", type=str, default="promising_zone",
+                   choices=["promising_zone"], help="样本量再估计方法")
+    p.add_argument("--interim_fraction", type=float, default=0.5,
+                   help="SSR/选臂 interim 信息比例")
+    p.add_argument("--target_cp", type=float, default=0.9, help="SSR 目标条件功效")
+    p.add_argument("--max_inflation", type=float, default=2.0, help="SSR 二阶段样本量上限倍数")
+    p.add_argument("--n_arms", type=int, default=3, help="drop_the_loser 处理臂数")
+    p.add_argument("--selection_fraction", type=float, default=0.5, help="选臂 interim 比例")
+    p.add_argument("--correction", type=str, default="dunnett",
+                   choices=["dunnett", "bonferroni"], help="多臂多重性校正")
+    p.add_argument("--optimize", action="store_true",
+                   help="网格搜索达到 --power 的最小每组样本量")
+    p.add_argument("--n_min", type=int, default=10, help="--optimize 样本量下界")
+    p.add_argument("--n_max", type=int, default=1000, help="--optimize 样本量上界")
+    p.add_argument("--visualize", action="store_true", help="生成仿真结果 PNG")
+    p.add_argument("--sim_output", type=str, default=None, help="仿真结果 JSON 输出路径")
+    p.add_argument("--sim_seed", type=int, default=None, help="随机种子")
     # ── Curve mode (power / sample-size curves) ──
     p.add_argument("--n_seq", type=str, default=None,
                    help="样本量序列: 显式 '20,40,200' 或自动 '20:20:200'(起:步:止) → 绘制 power 曲线")
@@ -588,6 +627,60 @@ def main():
 
     if not args.test:
         p.error("--test is required (unless using --install-all-packages)")
+
+    # ══ Adaptive Monte-Carlo simulator (pure Python; no R / shell / eval) ══
+    # This path is a self-contained numeric simulation with no code-injection
+    # surface, so it runs directly without the R SAFE-PREVIEW gate.
+    if args.test == "adaptive_simulate":
+        try:
+            import adaptive_simulator as _sim
+        except ImportError:
+            _here = os.path.dirname(os.path.abspath(__file__))
+            if _here not in sys.path:
+                sys.path.insert(0, _here)
+            import adaptive_simulator as _sim
+        try:
+            if args.optimize:
+                res = _sim.optimize_power(
+                    args.effect_size, target_power=args.power, alpha=args.alpha,
+                    interim_looks=args.interim_looks, spending=args.spending_function,
+                    rho=args.rho, futility=args.futility, n_min=args.n_min,
+                    n_max=args.n_max, n_simulations=max(args.n_simulations // 2, 1000),
+                    seed=args.sim_seed)
+            elif args.sim_design == "group_sequential":
+                res = _sim.simulate_group_sequential(
+                    args.effect_size, args.sim_n, interim_looks=args.interim_looks,
+                    alpha=args.alpha, spending=args.spending_function, rho=args.rho,
+                    futility=args.futility, beta=args.beta,
+                    n_simulations=args.n_simulations, seed=args.sim_seed)
+            elif args.sim_design == "adaptive_reestimate":
+                res = _sim.simulate_adaptive_reestimate(
+                    args.effect_size, args.sim_n, alpha=args.alpha,
+                    interim_fraction=args.interim_fraction, target_cp=args.target_cp,
+                    max_inflation=args.max_inflation, n_simulations=args.n_simulations,
+                    reestimate_method=args.reestimate_method, seed=args.sim_seed)
+            else:  # drop_the_loser
+                if args.effect_sizes:
+                    _effs = [float(x) for x in args.effect_sizes.split(",") if x.strip()]
+                else:
+                    _effs = args.effect_size
+                res = _sim.simulate_drop_the_loser(
+                    _effs, args.sim_n, n_arms=args.n_arms, alpha=args.alpha,
+                    selection_fraction=args.selection_fraction, correction=args.correction,
+                    n_simulations=args.n_simulations, seed=args.sim_seed)
+        except (ValueError, KeyError) as e:
+            print("ERROR: %s" % e); sys.exit(1)
+
+        print(_sim._fmt_result(res))
+        if args.sim_output:
+            with open(args.sim_output, "w", encoding="utf-8") as f:
+                json.dump(res, f, indent=2, ensure_ascii=False)
+            print("Result JSON saved to: %s" % args.sim_output)
+        if args.visualize:
+            _png = args.out or os.path.join(tempfile.gettempdir(),
+                                            "adaptive_sim_%s.png" % res.get("design", "sim"))
+            print(_sim.visualize(res, _png))
+        return
 
     # ══ Curve mode (power / sample-size curves) ══
     if args.n_seq or args.power_seq:
