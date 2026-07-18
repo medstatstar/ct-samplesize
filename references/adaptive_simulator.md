@@ -1,16 +1,43 @@
 # Adaptive-Trial Monte-Carlo Simulator / 自适应试验蒙特卡洛仿真器
 
-Module: `--test adaptive_simulate` in the main CLI. **Primary engine: pure
-base-R code** (`scripts/r_templates/r_adaptive_simulate.py`, no extra R packages)
-— generated and shown in SAFE PREVIEW like all other tests, executed with
-`--yes`. **Fallback engine: pure Python** (`scripts/adaptive_simulator.py`) runs
+Module: `--test adaptive_simulate` in the main CLI. **Primary engine: a
+standby, `source()`-able pure base-R function library** `scripts/adaptive_sim.R`
+(no extra R packages) — the CLI sources it and calls `run_adaptive_sim()` (SAFE
+PREVIEW, `--yes` to run). You can also `source("scripts/adaptive_sim.R")` in R
+yourself and call `run_adaptive_sim()` or the individual `simulate_*()` functions
+directly. **Fallback engine: pure Python** (`scripts/adaptive_simulator.py`) runs
 automatically only when R is not installed. Ported from the ClawHub skill
 `adaptive-trial-simulator` (aipoch-ai) and re-implemented to fit ct-samplesize.
-/ 经主 CLI `--test adaptive_simulate` 调用。**主引擎：纯 base-R 代码**
-（`scripts/r_templates/r_adaptive_simulate.py`，无需额外 R 包）——与其余检验一致
-默认安全预览展示、`--yes` 执行。**备用引擎：纯 Python**（`scripts/adaptive_simulator.py`）
+/ 经主 CLI `--test adaptive_simulate` 调用。**主引擎：独立、可直接 `source()` 的
+纯 base-R 函数库** `scripts/adaptive_sim.R`（无需额外 R 包）——CLI 通过 `source()`
+它并调用 `run_adaptive_sim()`（安全预览、`--yes` 执行）。你也可在 R 中自行
+`source("scripts/adaptive_sim.R")` 后直接调用 `run_adaptive_sim()` 或各底层
+`simulate_*()` 函数。**备用引擎：纯 Python**（`scripts/adaptive_simulator.py`）
 仅在本机未安装 R 时自动启用。移植自 ClawHub 技能 `adaptive-trial-simulator`（aipoch-ai）
 并按本技能规范重写。
+
+## Call it directly from R / 在 R 中直接调用
+
+The engine is a normal R source file — no Python needed:
+
+```r
+# 1. Source once
+source("scripts/adaptive_sim.R")   # adjust the path to where the skill lives
+
+# 2a. One-shot dispatcher (prints a report; optional PNG / JSON)
+run_adaptive_sim(design = "group_sequential", effect_size = 0.3, n_per_arm = 200,
+                 interim_looks = 3, spending_function = "obrien_fleming",
+                 alpha = 0.025, n_simulations = 20000, seed = 42)
+
+# 2b. Or call a specific design function and keep the returned list
+res <- simulate_group_sequential(effect_size = 0.3, n_per_arm = 200,
+                                 interim_looks = 3, spending = "obrien_fleming",
+                                 alpha = 0.025, n_sim = 20000, seed = 42)
+res$power; res$type_i_error; res$design_config
+
+# Other functions: simulate_adaptive_reestimate(), simulate_drop_the_loser(),
+#                  optimize_power()  — all return structured lists.
+```
 
 ## When to use / 何时使用
 

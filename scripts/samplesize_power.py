@@ -172,11 +172,13 @@ def run_r(code, confirmed=False):
             pass
 
 def build_adaptive_sim_r_code(args):
-    """Build the Monte-Carlo adaptive-trial R code (base-R) from CLI args.
+    """Build the short R snippet for the Monte-Carlo adaptive-trial simulator.
 
-    Pure base-R engine (no extra packages) ported from adaptive_simulator.py.
-    User strings are validated upstream before reaching this function, so the
-    generated code is safe to display and (with --yes) execute.
+    Sources the standalone engine scripts/adaptive_sim.R (a pure base-R function
+    library the user can `source()` directly) and calls run_adaptive_sim(...) with
+    the CLI args. Categorical CLI strings (design, spending_function,
+    reestimate_method, correction) are allowlist-validated in main() before this
+    runs, so the generated code has no RCE surface.
     """
     def _num(v):
         f = float(v)
@@ -186,44 +188,46 @@ def build_adaptive_sim_r_code(args):
 
     if args.effect_sizes:
         effects = ", ".join(_num(float(x)) for x in args.effect_sizes.split(",") if x.strip())
+        n_arms = str(len([x for x in args.effect_sizes.split(",") if x.strip()]))
+        eff_arg = "effect_sizes = c(%s)" % effects
     else:
-        effects = _num(args.effect_size)
-    n_arms = (len([x for x in args.effect_sizes.split(",") if x.strip()])
-              if args.effect_sizes else args.n_arms)
+        eff_arg = "effect_size = %s" % _num(args.effect_size)
+        n_arms = str(args.n_arms)
 
-    code = R_ADAPTIVE_SIMULATE
-    # NOTE: __EFFECTS__ must be replaced before __EFFECT__ (it is a substring).
-    repl = {
-        "__EFFECTS__": effects,
-        "__EFFECT__": _num(args.effect_size),
-        "__DESIGN__": args.sim_design,
-        "__N_SIM__": _num(args.n_simulations),
-        "__N_PER_ARM__": _num(args.sim_n),
-        "__N_LOOKS__": _num(args.interim_looks),
-        "__SPENDING__": args.spending_function,
-        "__RHO__": _num(args.rho),
-        "__FUTILITY__": "TRUE" if args.futility else "FALSE",
-        "__BETA__": _num(args.beta),
-        "__REEST__": args.reestimate_method,
-        "__INTERIM_FRAC__": _num(args.interim_fraction),
-        "__TARGET_CP__": _num(args.target_cp),
-        "__MAX_INFL__": _num(args.max_inflation),
-        "__N_ARMS__": _num(n_arms),
-        "__N_MIN__": _num(args.n_min),
-        "__N_MAX__": _num(args.n_max),
-        "__SEL_FRAC__": _num(args.selection_fraction),
-        "__CORRECTION__": args.correction,
-        "__ALPHA__": _num(args.alpha),
-        "__OPTIMIZE__": "TRUE" if args.optimize else "FALSE",
-        "__TARGET_POWER__": _num(args.power),
-        "__VISUALIZE__": "TRUE" if args.visualize else "FALSE",
-        "__SEED__": "NULL" if args.sim_seed is None else _num(args.sim_seed),
-        "__OUT_PNG__": (args.out or "").replace("\\", "/"),
-        "__OUT_JSON__": (args.sim_output or "").replace("\\", "/"),
-    }
-    for k, v in repl.items():
-        code = code.replace(k, v)
-    return code
+    r_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adaptive_sim.R")
+    r_file = r_file.replace("\\", "/")
+
+    parts = [
+        'source("%s")' % r_file,
+        "run_adaptive_sim(",
+        '  design = "%s",' % args.sim_design,
+        "  %s," % eff_arg,
+        "  n_per_arm = %s," % _num(args.sim_n),
+        "  interim_looks = %s," % _num(args.interim_looks),
+        '  spending_function = "%s",' % args.spending_function,
+        "  rho = %s," % _num(args.rho),
+        "  futility = %s," % ("TRUE" if args.futility else "FALSE"),
+        "  beta = %s," % _num(args.beta),
+        "  alpha = %s," % _num(args.alpha),
+        '  reestimate_method = "%s",' % args.reestimate_method,
+        "  interim_fraction = %s," % _num(args.interim_fraction),
+        "  target_cp = %s," % _num(args.target_cp),
+        "  max_inflation = %s," % _num(args.max_inflation),
+        "  n_arms = %s," % n_arms,
+        "  selection_fraction = %s," % _num(args.selection_fraction),
+        '  correction = "%s",' % args.correction,
+        "  optimize = %s," % ("TRUE" if args.optimize else "FALSE"),
+        "  target_power = %s," % _num(args.power),
+        "  n_min = %s," % _num(args.n_min),
+        "  n_max = %s," % _num(args.n_max),
+        "  n_simulations = %s," % _num(args.n_simulations),
+        "  seed = %s," % ("NULL" if args.sim_seed is None else _num(args.sim_seed)),
+        "  visualize = %s," % ("TRUE" if args.visualize else "FALSE"),
+        '  out_png = "%s",' % (args.out or "").replace("\\", "/"),
+        '  out_json = "%s"' % (args.sim_output or "").replace("\\", "/"),
+        ")",
+    ]
+    return "\n".join(parts)
 
 
 def _fallback_adaptive_sim_python(args):

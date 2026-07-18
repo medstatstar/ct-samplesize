@@ -1,4 +1,4 @@
-# AGENTS.md — ct-samplesize v3.4.6
+# AGENTS.md — ct-samplesize v3.4.7
 
 ## Overview / 技能概述
 
@@ -56,7 +56,7 @@ Every analysis includes:
 - Assumptions & limitations
 - **Default = SAFE PREVIEW (code shown, NOT executed)**; use `--yes`/`-y` to execute & compute, `--show-code` to display the code (no execution), or `--dry-run` to preview only
 - R code is generated and shown by default but NOT run unless `--yes` is given; `-y`/`--yes` explicitly executes and computes
-- **`--test adaptive_simulate`**: primary engine is the pure base-R Monte-Carlo simulator (`scripts/r_templates/r_adaptive_simulate.py`), shown in SAFE PREVIEW and run with `--yes` like all other tests (base R only, no extra packages). When R is unavailable, the skill automatically falls back to the equivalent pure-Python module `scripts/adaptive_simulator.py`. See `references/adaptive_simulator.md`. / `--test adaptive_simulate`：主引擎为纯 base-R 蒙特卡洛仿真器（`scripts/r_templates/r_adaptive_simulate.py`），与其余检验一致默认安全预览、`--yes` 执行（仅需 base R）；未装 R 时自动回退至等价的纯 Python 模块 `scripts/adaptive_simulator.py`。详见 `references/adaptive_simulator.md`。
+- **`--test adaptive_simulate`**: primary engine is the standalone pure base-R function library `scripts/adaptive_sim.R` — the CLI sources it and calls `run_adaptive_sim()` (SAFE PREVIEW, `--yes` to run, base R only, no extra packages). You can also `source("scripts/adaptive_sim.R")` in R yourself and call `run_adaptive_sim()` / `simulate_*()` directly. When R is unavailable, the skill automatically falls back to the equivalent pure-Python module `scripts/adaptive_simulator.py`. See `references/adaptive_simulator.md`. / `--test adaptive_simulate`：主引擎为独立纯 base-R 函数库 `scripts/adaptive_sim.R`——CLI 通过 `source()` 它并调用 `run_adaptive_sim()`（安全预览默认、`--yes` 执行，仅需 base R）；你也可在 R 中自行 `source("scripts/adaptive_sim.R")` 后直接调用 `run_adaptive_sim()`/`simulate_*()`。未装 R 时自动回退至等价的纯 Python 模块 `scripts/adaptive_simulator.py`。详见 `references/adaptive_simulator.md`。
 
 ### 5. Language Detection / 语言检测
 - **Default English / 默认英文**: All user-facing prompt content defaults to English. / 所有面向用户的提示内容默认使用英文。

@@ -10,7 +10,6 @@ from .r_equivalence import *
 from .r_design_special import *
 from .r_mixed_model import *
 from .r_curve import *
-from .r_adaptive_simulate import *
 
 __all__ = [
     "R_T_TESTS",
@@ -40,7 +39,7 @@ __all__ = [
     "R_DUNNETT",
     "R_MEDIATION",
     "R_GROUP_SEQUENTIAL",
-    "R_ADAPTIVE_SIMULATE",
+    "R_ADAPTIVE",
     "R_MIXED_MODEL",
     "CURVE_SOLVERS",
     "_CURVE_POWER_SINGLE",

@@ -1,20 +1,32 @@
-# r_adaptive_simulate.py -- R Monte-Carlo template for adaptive / group-sequential
-# trial designs. Pure base-R implementation (no extra packages) ported from the
-# Python engine in scripts/adaptive_simulator.py so the generated R code is fully
-# self-contained and runnable anywhere R is installed.
+# =============================================================================
+# adaptive_sim.R -- Adaptive / group-sequential trial Monte-Carlo simulator
+#                   (pure base R; no extra packages required)
 #
-# Parameters are injected with __SENTINEL__ tokens (no str.format brace escaping
-# needed); every user string that reaches the code is validated upstream in
-# samplesize_power.py before substitution, so no RCE surface exists.
-
-R_ADAPTIVE_SIMULATE = r'''# ============================================================
-# Adaptive Trial Monte-Carlo Simulator (pure R, base packages only)
-# Ported from ct-samplesize scripts/adaptive_simulator.py.
-# Reproduces 6 capabilities: design simulation, sample-size
-# re-estimation (promising zone + Cui-Hung-Wang statistic),
-# early stopping (efficacy/futility via alpha-spending), Type I
-# error control, multi-arm drop-the-loser, power optimization.
-# ============================================================
+# Ported from ct-samplesize scripts/adaptive_simulator.py so it runs anywhere
+# R is installed, independently of the Python CLI.
+#
+# ----------------------------------------------------------------------------
+# How to use in R  /  在 R 中如何使用
+# ----------------------------------------------------------------------------
+#   # 1. Source this file once
+#   source("path/to/adaptive_sim.R")
+#
+#   # 2a. Call a specific design function directly (returns a list you can reuse)
+#   res <- simulate_group_sequential(effect_size = 0.3, n_per_arm = 200,
+#                                     interim_looks = 3, spending = "obrien_fleming",
+#                                     alpha = 0.025, n_sim = 20000, seed = 42)
+#   res$power                 # empirical power
+#   res$type_i_error          # empirical Type I error
+#   res$design_config         # echoes inputs + computed Z boundaries
+#
+#   # 2b. Or use the one-shot dispatcher (prints a report; optional PNG / JSON)
+#   run_adaptive_sim(design = "group_sequential", effect_size = 0.3,
+#                    n_per_arm = 200, interim_looks = 3, alpha = 0.025,
+#                    n_simulations = 20000, seed = 42, visualize = TRUE)
+#
+# Designs : "group_sequential", "adaptive_reestimate", "drop_the_loser"
+# Spending: "obrien_fleming", "pocock", "power_family"
+# =============================================================================
 
 cumulative_spend <- function(t, total, func, rho = 3.0) {
   t <- max(min(t, 1.0), 1e-9)
@@ -35,7 +47,7 @@ incremental <- function(times, total, func, rho) {
   pmax(inc, 1e-12)
 }
 
-efficacy_boundaries <- function(times, alpha, func = "obrien_fleming", rho = 3.0, ngrid = 1000) {
+efficacy_boundaries <- function(times, alpha, func = "obrien_fleming", rho = 3.0, ngrid = 1200) {
   times <- as.numeric(times)
   K <- length(times)
   inc <- incremental(times, alpha, func, rho)
@@ -66,7 +78,7 @@ efficacy_boundaries <- function(times, alpha, func = "obrien_fleming", rho = 3.0
   bounds
 }
 
-futility_boundaries <- function(times, beta, drift, func = "power_family", rho = 2.0, ngrid = 1000) {
+futility_boundaries <- function(times, beta, drift, func = "power_family", rho = 2.0, ngrid = 1200) {
   times <- as.numeric(times)
   K <- length(times)
   inc <- incremental(times, beta, func, rho)
@@ -303,6 +315,7 @@ to_json <- function(x, indent = "") {
   return("null")
 }
 
+# ---- human-readable report ----
 cat_report <- function(RES) {
   dc <- RES$design_config
   cat("============================================================\n")
@@ -345,82 +358,71 @@ cat_report <- function(RES) {
   cat("n simulations     :", dc$n_simulations, "\n")
 }
 
-# ===================== Parameters (auto-injected) =====================
-DESIGN <- "__DESIGN__"
-N_SIM <- __N_SIM__
-N_PER_ARM <- __N_PER_ARM__
-EFFECT <- __EFFECT__
-EFFECTS <- c(__EFFECTS__)
-N_LOOKS <- __N_LOOKS__
-SPENDING <- "__SPENDING__"
-RHO <- __RHO__
-FUTILITY <- __FUTILITY__
-BETA <- __BETA__
-REEST <- "__REEST__"
-INTERIM_FRAC <- __INTERIM_FRAC__
-TARGET_CP <- __TARGET_CP__
-MAX_INFL <- __MAX_INFL__
-N_ARMS <- __N_ARMS__
-N_MIN <- __N_MIN__
-N_MAX <- __N_MAX__
-SEL_FRAC <- __SEL_FRAC__
-CORRECTION <- "__CORRECTION__"
-ALPHA <- __ALPHA__
-OPTIMIZE <- __OPTIMIZE__
-TARGET_POWER <- __TARGET_POWER__
-VISUALIZE <- __VISUALIZE__
-SEED <- __SEED__
-OUT_PNG <- "__OUT_PNG__"
-OUT_JSON <- "__OUT_JSON__"
-
-# ===================== Driver =====================
-if (OPTIMIZE) {
-  RES <- optimize_power(EFFECT, target_power = TARGET_POWER, alpha = ALPHA,
-    interim_looks = N_LOOKS, spending = SPENDING, rho = RHO, futility = FUTILITY,
-    n_min = N_MIN, n_max = N_MAX, n_sim = N_SIM, seed = SEED)
-} else if (DESIGN == "group_sequential") {
-  RES <- simulate_group_sequential(EFFECT, N_PER_ARM, interim_looks = N_LOOKS,
-    alpha = ALPHA, spending = SPENDING, rho = RHO, futility = FUTILITY, beta = BETA, n_sim = N_SIM)
-} else if (DESIGN == "adaptive_reestimate") {
-  RES <- simulate_adaptive_reestimate(EFFECT, N_PER_ARM, alpha = ALPHA,
-    interim_fraction = INTERIM_FRAC, target_cp = TARGET_CP, max_inflation = MAX_INFL,
-    n_sim = N_SIM, reestimate_method = REEST)
-} else if (DESIGN == "drop_the_loser") {
-  RES <- simulate_drop_the_loser(EFFECTS, n_per_arm = N_PER_ARM, n_arms = N_ARMS, alpha = ALPHA,
-    selection_fraction = SEL_FRAC, n_sim = N_SIM, correction = CORRECTION)
-} else {
-  stop("unknown design: ", DESIGN)
-}
-
-cat_report(RES)
-
-if (VISUALIZE) {
-  p <- if (nzchar(OUT_PNG)) OUT_PNG else file.path(tempdir(), paste0("adaptive_sim_", RES$design, ".png"))
-  png(p, width = 800, height = 500)
-  if (RES$design == "power_optimization") {
-    ns <- sapply(RES$scan, function(q) q$n_per_arm)
-    pw <- sapply(RES$scan, function(q) q$power)
-    plot(ns, pw, type = "o", col = "red", xlab = "Sample size per arm",
-         ylab = "Power", main = "Power vs sample size (group sequential)")
-    abline(h = RES$target_power, lty = 2, col = "gray")
+# ---- one-shot dispatcher (convenience wrapper) ----
+# Mirrors the CLI argument set; safe to call from R or from the Python wrapper.
+run_adaptive_sim <- function(design = "group_sequential",
+                             effect_size = 0.3, effect_sizes = NULL,
+                             n_per_arm = 200, interim_looks = 2,
+                             spending_function = "obrien_fleming", rho = 3.0,
+                             futility = FALSE, beta = 0.2, alpha = 0.025,
+                             reestimate_method = "promising_zone",
+                             interim_fraction = 0.5, target_cp = 0.9,
+                             max_inflation = 2.0, n_arms = 3,
+                             selection_fraction = 0.5, correction = "dunnett",
+                             optimize = FALSE, target_power = 0.9,
+                             n_min = 10, n_max = 1000, n_simulations = 10000,
+                             seed = NULL, visualize = FALSE,
+                             out_png = "", out_json = "") {
+  if (isTRUE(optimize)) {
+    RES <- optimize_power(effect_size, target_power = target_power, alpha = alpha,
+      interim_looks = interim_looks, spending = spending_function, rho = rho,
+      futility = futility, n_min = n_min, n_max = n_max,
+      n_sim = n_simulations, seed = seed)
+  } else if (design == "group_sequential") {
+    RES <- simulate_group_sequential(effect_size, n_per_arm, interim_looks = interim_looks,
+      alpha = alpha, spending = spending_function, rho = rho, futility = futility,
+      beta = beta, n_sim = n_simulations, seed = seed)
+  } else if (design == "adaptive_reestimate") {
+    RES <- simulate_adaptive_reestimate(effect_size, n_per_arm, alpha = alpha,
+      interim_fraction = interim_fraction, target_cp = target_cp,
+      max_inflation = max_inflation, n_sim = n_simulations,
+      reestimate_method = reestimate_method, seed = seed)
+  } else if (design == "drop_the_loser") {
+    effs <- if (is.null(effect_sizes)) effect_size else effect_sizes
+    RES <- simulate_drop_the_loser(effs, n_per_arm = n_per_arm, n_arms = n_arms,
+      alpha = alpha, selection_fraction = selection_fraction,
+      n_sim = n_simulations, correction = correction, seed = seed)
   } else {
-    eb <- RES$design_config$efficacy_boundaries_Z
-    if (!is.null(eb)) {
-      looks <- 1:length(eb)
-      plot(looks, eb, type = "b", col = "red", xlab = "Interim look",
-           ylab = "Z boundary", main = "Group-sequential stopping boundaries")
-      fb <- RES$design_config$futility_boundaries_Z
-      if (!is.null(fb)) lines(looks[-length(looks)], fb[-length(fb)], type = "b", col = "blue", lty = 2)
-    } else {
-      plot(0, 0, type = "n", xlab = "", ylab = "", main = "No boundary data to plot")
-    }
+    stop("unknown design: ", design)
   }
-  dev.off()
-  cat("PNG saved to:", p, "\n")
+  cat_report(RES)
+  if (isTRUE(visualize)) {
+    p <- if (nzchar(out_png)) out_png else file.path(tempdir(), paste0("adaptive_sim_", RES$design, ".png"))
+    png(p, width = 800, height = 500)
+    if (RES$design == "power_optimization") {
+      ns <- sapply(RES$scan, function(q) q$n_per_arm)
+      pw <- sapply(RES$scan, function(q) q$power)
+      plot(ns, pw, type = "o", col = "red", xlab = "Sample size per arm",
+           ylab = "Power", main = "Power vs sample size (group sequential)")
+      abline(h = RES$target_power, lty = 2, col = "gray")
+    } else {
+      eb <- RES$design_config$efficacy_boundaries_Z
+      if (!is.null(eb)) {
+        looks <- 1:length(eb)
+        plot(looks, eb, type = "b", col = "red", xlab = "Interim look",
+             ylab = "Z boundary", main = "Group-sequential stopping boundaries")
+        fb <- RES$design_config$futility_boundaries_Z
+        if (!is.null(fb)) lines(looks[-length(looks)], fb[-length(looks)], type = "b", col = "blue", lty = 2)
+      } else {
+        plot(0, 0, type = "n", xlab = "", ylab = "", main = "No boundary data to plot")
+      }
+    }
+    dev.off()
+    cat("PNG saved to:", p, "\n")
+  }
+  if (nzchar(out_json)) {
+    writeLines(to_json(RES), out_json)
+    cat("JSON saved to:", out_json, "\n")
+  }
+  invisible(RES)
 }
-
-if (nzchar(OUT_JSON)) {
-  writeLines(to_json(RES), OUT_JSON)
-  cat("JSON saved to:", OUT_JSON, "\n")
-}
-'''
