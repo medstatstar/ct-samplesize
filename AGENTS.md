@@ -1,8 +1,8 @@
-# AGENTS.md — ct-samplesize v3.4.3
+# AGENTS.md — ct-samplesize v3.4.4
 
 ## Overview / 技能概述
 
-`ct-samplesize`: An easy-to-use sample size & power tool for clinical trial practitioners. Powered by R + 20+ packages (rpact/gsDesign/TrialSize/PowerTOST etc.), it performs 37 complex calculations via natural-language prompts (English by default, auto-Chinese on Chinese-OS). Reproducible R code available on request (hidden by default) for verification, submission, or re-run. / ct-samplesize：面向临床试验从业者的易用型样本量与检验效能计算工具。后台以 R 软件及 rpact/gsDesign/TrialSize/PowerTOST 等 20+ R工具包为依托，用户只需使用自然语言对话方式的提示词，即可完成（默认英文输出，OS 中文环境时自动切换中文）37 种复杂专业的样本量与检验效能计算工作。可应要求提供可复现 R 代码（默认不展示），供用户核查、递交代码或修改后重跑。
+`ct-samplesize`: An easy-to-use sample size & power tool for clinical trial practitioners. Powered by R + 20+ packages (rpact/gsDesign/TrialSize/PowerTOST etc.), it performs 37 complex calculations via natural-language prompts (English by default, auto-Chinese on Chinese-OS). The generated R code is shown in SAFE PREVIEW (not executed unless --yes) and can be provided in full on request for verification, submission, or re-run. / ct-samplesize：面向临床试验从业者的易用型样本量与检验效能计算工具。后台以 R 软件及 rpact/gsDesign/TrialSize/PowerTOST 等 20+ R工具包为依托，用户只需使用自然语言对话方式的提示词，即可完成（默认英文输出，OS 中文环境时自动切换中文）37 种复杂专业的样本量与检验效能计算工作。生成的 R 代码默认以安全预览展示（不执行，除非加 --yes），也可应要求完整提供，供用户核查、递交代码或修改后重跑。
 
 ---
 
@@ -47,7 +47,7 @@
 - **Default: dry-run mode.** R code is displayed; execution requires `-y`/`--yes`
 - Temp R files written to system temp dir (`tempfile.gettempdir()`), auto-cleaned after run
 
-### 4. Result Output / 结果输出标准 (v3.4.3)
+### 4. Result Output / 结果输出标准 (v3.4.4)
 
 Every analysis includes:
 - Input parameters + defaults used

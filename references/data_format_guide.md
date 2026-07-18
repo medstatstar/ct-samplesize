@@ -11,7 +11,7 @@
 |:-----|:-----|:-----|:---------|
 | `α` (alpha) | Significance level, two-sided / 显著性水平，双侧 | 0.05 | 0.05 |
 | `Power` | Test power / 检验效能 | 0.8 | 0.8 / 0.85 / 0.9 |
-| `--show-code` | Execute & show R code / 执行并展示 R 代码 | Execute only by default, code hidden / 默认仅执行不展示 | Hidden by default; add `--show-code` to show / 默认隐藏代码，加 `--show-code` 才展示 |
+| `--show-code` | Show generated R code (no execution) / 展示生成的 R 代码（不执行） | SAFE PREVIEW by default: code shown, not executed / 默认安全预览：展示代码、不执行 | Reveals the code; `--yes` executes / 展示代码，`--yes` 才执行 |
 
 ---
 

@@ -2,6 +2,13 @@
 
 > This file records ct-samplesize's key architecture & security changes for maintainer auditing (user-facing usage: `SKILL.md` & `references/`). / 本文件记录 ct-samplesize 的关键架构与安全变更，供维护者审计参考（用户面向的使用说明见 `SKILL.md` 与 `references/`）。
 
+## v3.4.4 — Doc consistency fix (ClawHub `clawscan` still `suspicious`) / 文档一致性再修正（ClawHub clawscan 仍判 suspicious）
+
+`clawscan` (LLM review) still returned `verdict: suspicious` on v3.4.3 with the summary: *"documentation disagrees about when generated R code executes while the skill can run local R code and optionally install CRAN packages."* The static layer (`static-analysis`) was already clean and `skillspector` was `null`, but residual doc phrasing still implied R executes by default or that `--show-code` executes.
+
+- **Unified execution-timing docs (resolves `clawscan` `suspicious`) / 统一执行时机文档（消除 clawscan 的 suspicious）**: `README.md`, `README_ZH.md`, `references/data_format_guide.md`, `AGENTS.md`, `SKILL.md` previously stated "hidden by default / `--show-code` executes & shows / 默认执行并返回结果 / 默认仅执行不展示", contradicting the SAFE PREVIEW model. All now state: **by default the skill runs in SAFE PREVIEW — generated R code is shown but NOT executed; `--yes` is the explicit opt-in to execute and compute; `--show-code` only reveals the code.** / 此前 `README.md`、`README_ZH.md`、`references/data_format_guide.md`、`AGENTS.md`、`SKILL.md` 写"默认不展示 / `--show-code` 执行并展示 / 默认执行并返回结果 / 默认仅执行不展示"，与安全预览模型矛盾。现统一为：**默认运行于安全预览模式——展示代码但不执行；`--yes` 才显式执行并计算；`--show-code` 仅展示代码。**
+- No behavioral change; v3.4.3 deny-list removal (clears `static-analysis` critical) retained. / 无行为变更；保留 v3.4.3 的黑名单移除（清除 static-analysis critical 误报）。
+
 ## v3.4.3 — Remove R deny-list literals (ClawHub static-analysis `critical` false positive) / 移除 R 黑名单字面量（ClawHub 静态分析 critical 误报）
 
 ClawHub's deterministic `static-analysis` scanner returned `suspicious.dynamic_code_execution` (severity critical) on v3.4.2: the source contained a deny-list tuple with the literal tokens `system(`, `eval(`, `source(`, `download.file(`, `shell(`, and the scanner pattern-matched those substrings and mis-classified the refuse-on-match check as dynamic code execution.
