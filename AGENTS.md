@@ -1,4 +1,4 @@
-# AGENTS.md — ct-samplesize v3.4.2
+# AGENTS.md — ct-samplesize v3.4.3
 
 ## Overview / 技能概述
 
@@ -47,7 +47,7 @@
 - **Default: dry-run mode.** R code is displayed; execution requires `-y`/`--yes`
 - Temp R files written to system temp dir (`tempfile.gettempdir()`), auto-cleaned after run
 
-### 4. Result Output / 结果输出标准 (v3.4.2)
+### 4. Result Output / 结果输出标准 (v3.4.3)
 
 Every analysis includes:
 - Input parameters + defaults used

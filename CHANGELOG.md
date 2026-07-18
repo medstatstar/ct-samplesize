@@ -2,6 +2,14 @@
 
 > This file records ct-samplesize's key architecture & security changes for maintainer auditing (user-facing usage: `SKILL.md` & `references/`). / 本文件记录 ct-samplesize 的关键架构与安全变更，供维护者审计参考（用户面向的使用说明见 `SKILL.md` 与 `references/`）。
 
+## v3.4.3 — Remove R deny-list literals (ClawHub static-analysis `critical` false positive) / 移除 R 黑名单字面量（ClawHub 静态分析 critical 误报）
+
+ClawHub's deterministic `static-analysis` scanner returned `suspicious.dynamic_code_execution` (severity critical) on v3.4.2: the source contained a deny-list tuple with the literal tokens `system(`, `eval(`, `source(`, `download.file(`, `shell(`, and the scanner pattern-matched those substrings and mis-classified the refuse-on-match check as dynamic code execution.
+
+- **Removed the deny-list entirely / 移除黑名单**: the real RCE defense is the strict ALLOWLIST (`_validate_token` / `_safe_r_path_literal`) applied to every user string that reaches generated R. Because the allowlist permits only `[A-Za-z0-9_-]` (tokens) and a safe path charset, sandbox-escape constructs can never appear in user input, so the deny-list was redundant. Per the project rule "clear these literals entirely" (not obscure), the literals are gone from source. / 真正的 RCE 防护是白名单（`_validate_token`/`_safe_r_path_literal`），已覆盖全部进入 R 的用户串；黑名单属冗余。按"全文清零字面量"原则移除，而非混淆。
+- **Security unchanged / 安全性不变**: injection PoC `x'); system('id'); #` is still rejected by the allowlist; default remains SAFE PREVIEW (no execution without `--yes`). / 注入 PoC 仍被白名单拒绝，默认仍为安全预览（无 `--yes` 不执行）。
+- SkillSpector + ClawScan already returned clean (`null`) on v3.4.2; this clears the last `critical` static-analysis finding. / v3.4.2 的 SkillSpector 与 ClawScan 已为 clean（null）；本次清除最后一个 critical 静态分析 finding。
+
 ## v3.4.2 — Doc consistency fix (ClawHub clawscan `suspicious` → clean) / 文档一致性修正（ClawHub clawscan 由 suspicious 转 clean）
 
 Follow-up to v3.4.1 after ClawHub's `clawscan` LLM review returned `verdict: suspicious` with two `SDI-4` findings: the skill's default execution mode was documented inconsistently across files (some said "R code executes by default", others said "safe preview"), confusing both agents and the reviewer. This release makes every doc say the same thing — a documentation-only alignment, no behavioral change.

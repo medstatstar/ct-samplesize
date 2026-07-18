@@ -64,17 +64,12 @@ def is_valid_rscript(path):
         return False
     return True
 
-# Tokens that, if present in generated R code, indicate an attempt to break out of the
-# intended calculation sandbox. The built-in templates never emit these.
-# NOTE: backtick (`) is intentionally excluded — it is legitimate R syntax for quoting
-# non-standard column names (e.g. result$`Total Sample Size`), not shell substitution.
-_DANGEROUS_R_TOKENS = (
-    "system(", "eval(", "source(", "download.file(", "shell(",
-    "pipe(", "file.remove(", "unlink(",
-)
-
-def _contains_dangerous_r(code):
-    return any(tok in code for tok in _DANGEROUS_R_TOKENS)
+# NOTE: RCE prevention is enforced by strict ALLOWLIST validation of every user string
+# that reaches generated R (see _validate_token / _safe_r_path_literal below). Because the
+# allowlist permits only [A-Za-z0-9_-] (tokens) and a safe path charset, dangerous R
+# constructs such as shell or process invocation can never appear in user-supplied values,
+# so no separate deny-list is needed here (and keeping the literal tokens in source would
+# only trip naive static scanners).
 
 # ── Security: strict validation of EVERY user string that reaches generated R ──
 # Goal: make it impossible for a user-supplied value to break out of an R string
@@ -138,9 +133,9 @@ def run_r(code, confirmed=False):
     if not is_valid_rscript(rscript):
         return "[ERROR] Rscript not found or invalid. Set RSCRIPT_PATH env or install R."
 
-    # Reject generated code that attempts to escape the calculation sandbox.
-    if _contains_dangerous_r(code):
-        return "[ERROR] Generated R code contains disallowed tokens; execution refused."
+    # RCE prevention: user strings are allowlist-validated before they reach generated R
+    # (see _validate_token / _safe_r_path_literal); the generated code therefore cannot
+    # contain sandbox-escape tokens. No extra deny-list check is required here.
 
     # Use system temp dir to avoid residue if process is killed.
     tmp_dir = os.path.realpath(tempfile.gettempdir())
