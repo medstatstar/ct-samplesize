@@ -2,6 +2,13 @@
 
 > This file records ct-samplesize's key architecture & security changes for maintainer auditing (user-facing usage: `SKILL.md` & `references/`). / 本文件记录 ct-samplesize 的关键架构与安全变更，供维护者审计参考（用户面向的使用说明见 `SKILL.md` 与 `references/`）。
 
+## v3.4.2 — Doc consistency fix (ClawHub clawscan `suspicious` → clean) / 文档一致性修正（ClawHub clawscan 由 suspicious 转 clean）
+
+Follow-up to v3.4.1 after ClawHub's `clawscan` LLM review returned `verdict: suspicious` with two `SDI-4` findings: the skill's default execution mode was documented inconsistently across files (some said "R code executes by default", others said "safe preview"), confusing both agents and the reviewer. This release makes every doc say the same thing — a documentation-only alignment, no behavioral change.
+
+- **Unified default-execution documentation (SDI-4) / 统一默认执行文档（SDI-4）**: `references/cli_examples.md`, `references/examples.md`, `references/r_usage.md`, and `AGENTS.md` previously stated "R code executes by default" / "default already executes", contradicting `SKILL.md`'s SAFE PREVIEW model. All now state: **by default the skill runs in SAFE PREVIEW — generated code is shown but NOT executed; `--yes`/`-y` is the explicit opt-in to execute and compute.** This resolves the scanner's "conflicting dry-run vs default-execute instructions are artifact-backed and material" concern. / `references/cli_examples.md`、`references/examples.md`、`references/r_usage.md`、`AGENTS.md` 此前写"R 代码默认执行 / 默认即执行"，与 `SKILL.md` 的安全预览模型矛盾。现统一为：**默认运行于安全预览模式——展示代码但不执行；`--yes`/`-y` 才显式执行并计算**。此举消除扫描器"dry-run 与默认执行指令相互矛盾"的疑虑。
+- **R-code-injection hardening retained / 保留 R 代码注入防护**: the v3.4.1 allowlist validation of `--out` / `--design` / `--adaptive_type` / `--spending_func` / `--effect_name` remains in place, which is what removes the `suspicious` "unescaped `--out` can inject R code in curve mode" concern. / v3.4.1 对 `--out`/design/adaptive_type/spending_func/effect_name 的白名单校验保持不变，正是它消除了扫描器对"未转义 `--out` 可注入 R 代码"的疑虑。
+
 ## v3.4.1 — Security fixes (ClawHub DO_NOT_INSTALL root causes) / 安全修复（ClawHub DO_NOT_INSTALL 根因）
 
 Addresses the real reasons prior versions were blocked/deleted by ClawHub's automated security review (skillSpector + clawscan):

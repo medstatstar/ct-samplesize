@@ -1,6 +1,6 @@
 # Examples / 使用示例
 
-> R code is **hidden by default**. Use `--show-code` to display (execute + show), or `--dry-run` to preview only.
+> By default the skill runs in SAFE PREVIEW: generated R code is shown but NOT executed. Use `--yes` to execute & compute, `--show-code` to display the code (no execution), or `--dry-run` to preview only. / 默认运行于**安全预览模式**：展示生成的 R 代码但**不执行**。使用 `--yes` 执行并计算，`--show-code` 仅展示代码（不执行），`--dry-run` 仅预览。
 
 ---
 

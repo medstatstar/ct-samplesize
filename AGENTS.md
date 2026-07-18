@@ -1,4 +1,4 @@
-# AGENTS.md — ct-samplesize v3.4.1
+# AGENTS.md — ct-samplesize v3.4.2
 
 ## Overview / 技能概述
 
@@ -47,15 +47,15 @@
 - **Default: dry-run mode.** R code is displayed; execution requires `-y`/`--yes`
 - Temp R files written to system temp dir (`tempfile.gettempdir()`), auto-cleaned after run
 
-### 4. Result Output / 结果输出标准 (v3.4.1)
+### 4. Result Output / 结果输出标准 (v3.4.2)
 
 Every analysis includes:
 - Input parameters + defaults used
 - Calculation result (sample size / power / effect size)
 - Dropout adjustment (if applicable)
 - Assumptions & limitations
-- **Generated R code hidden by default**; shown via `--show-code` (execute + show) or `--dry-run` (preview only)
-- Default = execute & return result (no code shown); `-y`/`--yes` kept for backward compatibility
+- **Default = SAFE PREVIEW (code shown, NOT executed)**; use `--yes`/`-y` to execute & compute, `--show-code` to display the code (no execution), or `--dry-run` to preview only
+- R code is generated and shown by default but NOT run unless `--yes` is given; `-y`/`--yes` explicitly executes and computes
 
 ### 5. Language Detection / 语言检测
 - **Default English / 默认英文**: All user-facing prompt content defaults to English. / 所有面向用户的提示内容默认使用英文。

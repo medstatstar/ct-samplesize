@@ -1,7 +1,7 @@
 # Command-Line Examples / CLI 命令示例
 
 > This file collects all common CLI examples for `scripts/samplesize_power.py`, referenced by `SKILL.md`. / 本文件集中收录 `scripts/samplesize_power.py` 的全部常用命令行示例，供 `SKILL.md` 引用。
-> R code executes by default and returns results, but is hidden by default. Add `--show-code` to execute & show, or `--dry-run` to preview only. `-y/--yes` is kept for backward compatibility (default already executes). / R 代码默认执行并返回结果，但默认不展示代码。添加 `--show-code` 执行并展示代码；`--dry-run` 仅预览代码、不执行。`-y/--yes` 保留以兼容旧命令（默认即执行）。
+> By default the skill runs in SAFE PREVIEW: generated R/Python code is shown but NOT executed. Pass `--yes`/`-y` to actually execute and compute; `--show-code` displays the code (no execution); `--dry-run` is the default preview mode (code shown, not run). / 默认运行于**安全预览模式**：展示生成的 R/Python 代码但**不执行**。追加 `--yes`/`-y` 才真正执行并计算；`--show-code` 仅展示代码（不执行）；`--dry-run` 为默认预览模式（展示代码、不执行）。
 > Sequences support two formats: comma list `"20,40,200"` or auto-generated `"20:20:200"` (start:step:stop). / 序列支持两种格式：逗号显式 `"20,40,200"` 或 自动生成 `"20:20:200"`（起:步:止）。
 
 ---
@@ -55,7 +55,7 @@
 | `--power_seq "0.6:0.05:0.95"` | Power sequence → sample-size curve (x=power, y=n) / 效能序列 → 绘制 **样本量曲线**（x=效能, y=样本量） |
 | `--plot_effects "0.3,0.5,0.8"` | Overlay multiple effect-size curves (sensitivity; some types) / 多效应量叠加多条曲线（敏感性分析，仅部分类型支持） |
 | `--out path.png` | Curve PNG output path (default: system temp) / 曲线 PNG 输出路径（默认写入系统临时目录） |
-| `-y/--yes` | Explicitly execute R code (default already executes; kept for compatibility) / 显式执行 R 代码（默认即执行，保留以兼容旧命令） |
+| `-y/--yes` | Explicitly execute R code and compute the result (default is SAFE PREVIEW, no execution) / 显式执行 R 代码并计算（默认为安全预览、不执行） |
 | `--dry-run` | Show generated R code only, no execution (safe preview) / 仅展示生成的 R 代码、不执行（安全预览） |
 
 ---
