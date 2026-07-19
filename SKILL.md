@@ -3,7 +3,7 @@ slug: ct-samplesize
 displayName: 临床试验样本量与检验效能计算专家 / Clinical Trial Sample Size & Power
 name: ct-samplesize
 cn_name: 临床试验样本量与检验效能计算专家
-version: 3.4.7
+version: 3.4.8
 required_commands: [Rscript, python]
 summary: 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 37 种检验。可应要求提供可复现 R 代码；默认英文输出，中文操作系统自动切换中文。
 license: MIT

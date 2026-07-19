@@ -1,4 +1,4 @@
-# AGENTS.md — ct-samplesize v3.4.7
+# AGENTS.md — ct-samplesize v3.4.8
 
 ## Overview / 技能概述
 
