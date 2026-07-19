@@ -11,6 +11,9 @@ __all__ = [
 ]
 
 R_DOSE_ESCALATION = """
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Dose escalation (3+3 / CRM): heuristic design, not a power-based sample size.
 ss_dose <- function(n_doses, target_dlt) {{
   lo <- n_doses * 4
@@ -19,19 +22,22 @@ ss_dose <- function(n_doses, target_dlt) {{
 }}
 rng <- ss_dose(n_doses={n_doses}, target_dlt={target_dlt})
 if ({solve_for_power}) {{
-  cat("\\n========== Dose Escalation (3+3 / CRM) ==========\\n")
-  cat("Note: Dose-escalation is a heuristic design, not a power-based sample size.\\n")
-  cat("Dose levels:", {n_doses}, "Target DLT:", "{target_dlt}", "\\n")
-  cat("Given total N =", {nobs}, "approx total (3+3):", rng[1], "-", rng[2], "\\n")
-  cat("A power calculation does not apply to this design.\\n")
+  cat(t("header.dose_escalation"), "\\n")
+  cat(t("label.power_not_applicable"), "\\n")
+  cat(t("label.dose_levels"), {n_doses}, t("label.target_dlt"), "{target_dlt}", "\\n")
+  cat(t("label.approx_total_3_3"), {nobs}, "approx total (3+3):", rng[1], "-", rng[2], "\\n")
+  cat(t("label.power_not_applicable"), "\\n")
 }} else {{
-  cat("\\n========== Dose Escalation (3+3 / CRM) ==========\\n")
-  cat("Dose levels:", {n_doses}, "Target DLT:", "{target_dlt}", "\\n")
-  cat("Approximate total (3+3):", rng[1], "-", rng[2], "\\n")
+  cat(t("header.dose_escalation"), "\\n")
+  cat(t("label.dose_levels"), {n_doses}, t("label.target_dlt"), "{target_dlt}", "\\n")
+  cat(t("label.approx_total_3_3"), rng[1], "-", rng[2], "\\n")
 }}
 """
 
 R_WIN_RATIO = """
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Win-Ratio (composite endpoint): closed-form log(WR) normal approximation.
 ss_win_ratio <- function(win_ratio_theta, se_approx, alpha, power=NULL, n=NULL) {{
   log_wr <- log(win_ratio_theta)
@@ -46,25 +52,27 @@ ss_win_ratio <- function(win_ratio_theta, se_approx, alpha, power=NULL, n=NULL) 
 if ({solve_for_power}) {{
   pwr <- ss_win_ratio(win_ratio_theta={win_ratio_theta}, se_approx={se_approx},
                       alpha={alpha}, n={nobs})
-  cat("\\n========== Win-Ratio (Power given N) ==========\\n")
-  cat("Expected Win-Ratio:", {win_ratio_theta}, "\\n")
-  cat("N per group:", {nobs}, "\\n")
-  cat("Achieved power:", pwr, "\\n")
+  cat(t("header.win_ratio_power"), "\\n")
+  cat(t("label.expected_win_ratio"), {win_ratio_theta}, "\\n")
+  cat(t("label.n_per_group"), {nobs}, "\\n")
+  cat(t("label.achieved_power"), pwr, "\\n")
 }} else {{
   n_val <- ss_win_ratio(win_ratio_theta={win_ratio_theta}, se_approx={se_approx},
                         alpha={alpha}, power={power})
-  cat("\\n========== Win-Ratio Composite Endpoint ==========\\n")
-  cat("Method: closed-form log(WR) normal approximation\\n")
-  cat("Expected Win-Ratio:", {win_ratio_theta}, "\\n")
-  cat("SE approximation:", {se_approx}, "\\n")
-  cat("Alpha:", {alpha}, "Power:", {power}, "\\n")
-  cat("N per group:", n_val, "Total:", 2 * n_val, "\\n")
-  cat("\\nNote: This is an approximation. For a precise design use\\n")
-  cat("      BuyseTest::powerBuyseTest() with actual event-time data.\\n")
+  cat(t("header.win_ratio_n"), "\\n")
+  cat(t("label.method"), "\\n")
+  cat(t("label.expected_win_ratio"), {win_ratio_theta}, "\\n")
+  cat(t("label.se_approx"), {se_approx}, "\\n")
+  cat(t("label.alpha"), {alpha}, t("label.power"), {power}, "\\n")
+  cat(t("label.n_per_group"), n_val, t("label.total_n"), 2 * n_val, "\\n")
+  cat(t("label.win_ratio_note"), "\\n")
 }}
 """
 
 R_MUST_WIN = """
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Must-Win / Co-Primary Endpoints (all must be significant).
 ss_must_win <- function(n_endpoints, corr, effect, alpha, power=NULL, n=NULL) {{
   if (!is.null(power)) {{
@@ -83,25 +91,28 @@ ss_must_win <- function(n_endpoints, corr, effect, alpha, power=NULL, n=NULL) {{
 if ({solve_for_power}) {{
   pwr <- ss_must_win(n_endpoints={n_endpoints_must}, corr={correlation_must},
                      effect={effect_must}, alpha={alpha}, n={nobs})
-  cat("\\n========== Must-Win / Co-Primary (Power given N) ==========\\n")
-  cat("Number of co-primary endpoints:", {n_endpoints_must}, "\\n")
-  cat("Assumed correlation:", {correlation_must}, "\\n")
-  cat("Effect size per endpoint:", {effect_must}, "\\n")
-  cat("N per group (total):", {nobs}, "\\n")
-  cat("Overall power:", pwr, "\\n")
+  cat(t("header.must_win_power"), "\\n")
+  cat(t("label.n_co_primary"), {n_endpoints_must}, "\\n")
+  cat(t("label.assumed_correlation"), {correlation_must}, "\\n")
+  cat(t("label.effect_per_endpoint"), {effect_must}, "\\n")
+  cat(t("label.n_per_group"), "(total):", {nobs}, "\\n")
+  cat(t("label.overall_power"), pwr, "\\n")
 }} else {{
   n_val <- ss_must_win(n_endpoints={n_endpoints_must}, corr={correlation_must},
                        effect={effect_must}, alpha={alpha}, power={power})
-  cat("\\n========== Must-Win / Co-Primary Endpoints ==========\\n")
-  cat("Number of co-primary endpoints:", {n_endpoints_must}, "\\n")
-  cat("Assumed correlation:", {correlation_must}, "\\n")
-  cat("Effect size per endpoint:", {effect_must}, "\\n")
-  cat("Overall alpha:", {alpha}, "Overall power:", {power}, "\\n")
-  cat("N per group (inflated):", n_val, "\\n")
+  cat(t("header.must_win_n"), "\\n")
+  cat(t("label.n_co_primary"), {n_endpoints_must}, "\\n")
+  cat(t("label.assumed_correlation"), {correlation_must}, "\\n")
+  cat(t("label.effect_per_endpoint"), {effect_must}, "\\n")
+  cat(t("label.overall_alpha"), {alpha}, t("label.overall_power"), {power}, "\\n")
+  cat(t("label.n_inflated"), n_val, "\\n")
 }}
 """
 
 R_DUNNETT = """
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Dunnett comparisons (multiple treatments vs single control).
 ss_dunnett <- function(k, n_control, eff, alpha, power=NULL, n=NULL) {{
   z_alpha <- qnorm(1 - alpha/2)
@@ -119,23 +130,26 @@ ss_dunnett <- function(k, n_control, eff, alpha, power=NULL, n=NULL) {{
 if ({solve_for_power}) {{
   pwr <- ss_dunnett(k={n_groups_dunnett}, n_control={n_control_dunnett},
                    eff={effect_dunnett}, alpha={alpha}, n={nobs})
-  cat("\\n========== Dunnett (Power given N) ==========\\n")
-  cat("N per treatment arm:", round(({nobs}-{n_control_dunnett})/{n_groups_dunnett}, 1), "\\n")
-  cat("Total N:", {nobs}, "\\n")
-  cat("Achieved power:", pwr, "\\n")
+  cat(t("header.dunnett_power"), "\\n")
+  cat(t("label.n_treatment_arm"), round(({nobs}-{n_control_dunnett})/{n_groups_dunnett}, 1), "\\n")
+  cat(t("label.total_n"), {nobs}, "\\n")
+  cat(t("label.achieved_power"), pwr, "\\n")
 }} else {{
   total_n <- ss_dunnett(k={n_groups_dunnett}, n_control={n_control_dunnett},
                         eff={effect_dunnett}, alpha={alpha}, power={power})
-  cat("\\n========== Dunnett Comparisons ==========\\n")
-  cat("Number of treatment arms:", {n_groups_dunnett}, "\\n")
-  cat("Control group N:", {n_control_dunnett}, "\\n")
-  cat("Effect size:", {effect_dunnett}, "\\n")
-  cat("Alpha:", {alpha}, "Power:", {power}, "\\n")
-  cat("Total N:", total_n, "\\n")
+  cat(t("header.dunnett_n"), "\\n")
+  cat(t("label.n_groups"), {n_groups_dunnett}, "\\n")
+  cat(t("label.control_n"), {n_control_dunnett}, "\\n")
+  cat(t("label.effect_size"), {effect_dunnett}, "\\n")
+  cat(t("label.alpha"), {alpha}, t("label.power"), {power}, "\\n")
+  cat(t("label.total_n"), total_n, "\\n")
 }}
 """
 
 R_MEDIATION = """
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Mediation effects (Sobel-test closed-form approximation).
 ss_mediation <- function(a, b, sigma2_m, sigma2_y, alpha, power=NULL, n=NULL) {{
   indirect <- a * b
@@ -150,25 +164,28 @@ ss_mediation <- function(a, b, sigma2_m, sigma2_y, alpha, power=NULL, n=NULL) {{
 if ({solve_for_power}) {{
   pwr <- ss_mediation(a={a_path}, b={b_path}, sigma2_m={sigma2_m},
                       sigma2_y={sigma2_y}, alpha={alpha}, n={nobs})
-  cat("\\n========== Mediation (Power given N) ==========\\n")
-  cat("Indirect effect (a*b):", round({a_path}*{b_path}, 4), "\\n")
-  cat("Sobel SE:", round(sqrt({a_path}^2*({sigma2_y}/{b_path}^2)+{b_path}^2*{sigma2_m}), 4), "\\n")
-  cat("N:", {nobs}, "\\n")
-  cat("Achieved power:", pwr, "\\n")
+  cat(t("header.mediation_power"), "\\n")
+  cat(t("label.indirect_effect"), round({a_path}*{b_path}, 4), "\\n")
+  cat(t("label.sobel_se"), round(sqrt({a_path}^2*({sigma2_y}/{b_path}^2)+{b_path}^2*{sigma2_m}), 4), "\\n")
+  cat(t("label.n"), {nobs}, "\\n")
+  cat(t("label.achieved_power"), pwr, "\\n")
 }} else {{
   n_val <- ss_mediation(a={a_path}, b={b_path}, sigma2_m={sigma2_m},
                         sigma2_y={sigma2_y}, alpha={alpha}, power={power})
-  cat("\\n========== Mediation Effects ==========\\n")
-  cat("a-path (treatment -> mediator):", {a_path}, "\\n")
-  cat("b-path (mediator -> outcome):", {b_path}, "\\n")
-  cat("Indirect effect (a*b):", round({a_path}*{b_path}, 4), "\\n")
-  cat("Sobel SE:", round(sqrt({a_path}^2*({sigma2_y}/{b_path}^2)+{b_path}^2*{sigma2_m}), 4), "\\n")
-  cat("Alpha:", {alpha}, "Power:", {power}, "\\n")
-  cat("N (Sobel approximation):", n_val, "\\n")
+  cat(t("header.mediation_n"), "\\n")
+  cat(t("label.a_path"), {a_path}, "\\n")
+  cat(t("label.b_path"), {b_path}, "\\n")
+  cat(t("label.indirect_effect"), round({a_path}*{b_path}, 4), "\\n")
+  cat(t("label.sobel_se"), round(sqrt({a_path}^2*({sigma2_y}/{b_path}^2)+{b_path}^2*{sigma2_m}), 4), "\\n")
+  cat(t("label.alpha"), {alpha}, t("label.power"), {power}, "\\n")
+  cat(t("label.n_sobel"), n_val, "\\n")
 }}
 """
 
 R_GROUP_SEQUENTIAL = """
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Group Sequential Design (O'Brien-Fleming / Pocock) -- closed-form approximation.
 # OF: final critical value ~ z_{{1-alpha/2}} (sample size ~ fixed). Pocock: mild inflation.
 ss_group_seq <- function(n_interim, effect_gs, spending, alpha, power=NULL, n=NULL) {{
@@ -176,11 +193,9 @@ ss_group_seq <- function(n_interim, effect_gs, spending, alpha, power=NULL, n=NU
   z_a <- qnorm(1 - alpha/2)
   if (!is.null(power)) {{
     n_fixed <- ((z_a + qnorm(power))^2 * 2) / effect_gs^2
-    # GS sample-size inflation relative to a fixed (single-stage) design
     infl <- if (spending == "Pocock") (1 + 0.03*(k-1)) else 1.0
     return(ceiling(n_fixed * infl))
   }} else {{
-    # Reverse: power given n per group (OF critical value approximation)
     z_b <- effect_gs * sqrt(n/2) - z_a
     return(round(pnorm(z_b), 4))
   }}
@@ -188,20 +203,20 @@ ss_group_seq <- function(n_interim, effect_gs, spending, alpha, power=NULL, n=NU
 if ({solve_for_power}) {{
   pwr <- ss_group_seq(n_interim={n_interim}, effect_gs={effect_gs},
                       spending="{spending_func}", alpha={alpha}, n={nobs})
-  cat("\\n========== Group Sequential (Power given N) ==========\\n")
-  cat("Number of looks:", {n_interim} + 1, "(", {n_interim}, "interim)\\n")
-  cat("Spending function:", "{spending_func}", "\\n")
-  cat("Effect size:", {effect_gs}, "\\n")
-  cat("N per group:", {nobs}, "\\n")
-  cat("Achieved power (approx):", pwr, "\\n")
+  cat(t("header.group_sequential_power"), "\\n")
+  cat(t("label.n_looks"), {n_interim} + 1, "(", {n_interim}, t("label.interim"), "\\n")
+  cat(t("label.spending_function"), "{spending_func}", "\\n")
+  cat(t("label.effect_size"), {effect_gs}, "\\n")
+  cat(t("label.n_per_group"), {nobs}, "\\n")
+  cat(t("label.achieved_power"), pwr, "\\n")
 }} else {{
   n_val <- ss_group_seq(n_interim={n_interim}, effect_gs={effect_gs},
                         spending="{spending_func}", alpha={alpha}, power={power})
-  cat("\\n========== Group Sequential Design ==========\\n")
-  cat("Number of looks:", {n_interim} + 1, "(", {n_interim}, "interim)\\n")
-  cat("Spending function:", "{spending_func}", "\\n")
-  cat("Effect size:", {effect_gs}, "\\n")
-  cat("Alpha:", {alpha}, "Power:", {power}, "\\n")
-  cat("N per group (at final look, approx):", n_val, "\\n")
+  cat(t("header.group_sequential_n"), "\\n")
+  cat(t("label.n_looks"), {n_interim} + 1, "(", {n_interim}, t("label.interim"), "\\n")
+  cat(t("label.spending_function"), "{spending_func}", "\\n")
+  cat(t("label.effect_size"), {effect_gs}, "\\n")
+  cat(t("label.alpha"), {alpha}, t("label.power"), {power}, "\\n")
+  cat(t("label.n_per_group_final"), n_val, "\\n")
 }}
 """

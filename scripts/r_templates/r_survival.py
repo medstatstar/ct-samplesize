@@ -8,12 +8,15 @@ __all__ = [
 
 R_NI_SURVIVAL = """
 library(powerSurvEpi)
+
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Non-inferiority survival design. Forward via powerAnsi (fallback closed-form log-rank);
 # reverse uses approx log-rank power formula.
 ss_ni_survival <- function(ni_margin, hr_expected, accrual, followup, dropout,
                            event_rate, alpha, power=NULL, n=NULL) {{
   if (!is.null(power)) {{
-    # Forward: given target power -> required N (per group)
     result <- tryCatch(powerAnsi(ratio=1, alpha=alpha, power=power, p=event_rate,
                         q=event_rate*hr_expected, delta=ni_margin,
                         T=accrual+followup, Ta=accrual, f=followup,
@@ -21,13 +24,10 @@ ss_ni_survival <- function(ni_margin, hr_expected, accrual, followup, dropout,
     if (!is.null(result) && !is.null(result$n) && is.finite(result$n) && result$n > 0) {{
       return(ceiling(result$n))
     }}
-    # Closed-form log-rank approximation for NI margin (total events D):
-    #   D = (z_{{1-alpha/2}} + z_{{1-beta}})^2 / (log(HR_NI))^2
     D <- (qnorm(1 - alpha/2) + qnorm(power))^2 / (log(ni_margin))^2
     ev_rate <- if (event_rate > 0) event_rate else 1
     return(ceiling((D/2) / ev_rate))
   }} else {{
-    # Reverse: given N -> approximate achieved power
     events_per_group <- n/2 * event_rate
     d <- 2 * events_per_group
     z_b <- sqrt(d) * abs(log(ni_margin)) - qnorm(1-alpha/2)
@@ -38,11 +38,11 @@ if ({solve_for_power}) {{
   pwr <- ss_ni_survival(ni_margin={ni_margin_surv}, hr_expected={hr_expected},
                         accrual={accrual_time}, followup={followup_time}, dropout={dropout_rate},
                         event_rate={event_rate}, alpha={alpha}, n={nobs})
-  cat("\\n========== NI Survival (Power given N, approx) ==========\\n")
-  cat("NI margin (HR):", {ni_margin_surv}, "\\n")
-  cat("Total N:", {nobs}, "\\n")
-  cat("Approx events per group:", round({nobs}/2*{event_rate}, 1), "\\n")
-  cat("Achieved power (approx):", pwr, "\\n")
+  cat(t("header.ni_survival_power"), "\\n")
+  cat(t("label.ni_margin_hr"), {ni_margin_surv}, "\\n")
+  cat(t("label.total_n"), {nobs}, "\\n")
+  cat(t("label.approx_events"), round({nobs}/2*{event_rate}, 1), "\\n")
+  cat(t("label.achieved_power"), pwr, "\\n")
 }} else {{
   n_val <- ss_ni_survival(ni_margin={ni_margin_surv}, hr_expected={hr_expected},
                           accrual={accrual_time}, followup={followup_time}, dropout={dropout_rate},
@@ -51,21 +51,25 @@ if ({solve_for_power}) {{
                         q={event_rate}*{hr_expected}, delta={ni_margin_surv},
                         T={accrual_time}+{followup_time}, Ta={accrual_time}, f={followup_time},
                         gam={dropout_rate}, TiO={ni_margin_surv})$nEvents, error=function(e) NULL)
-  cat("\\n========== Non-Inferiority Survival ==========\\n")
-  cat("NI margin (HR):", {ni_margin_surv}, "\\n")
-  cat("Expected HR:", {hr_expected}, "\\n")
-  cat("Accrual (months):", {accrual_time}, "\\n")
-  cat("Follow-up (months):", {followup_time}, "\\n")
-  cat("Event rate (control):", {event_rate}, "\\n")
-  cat("Alpha:", {alpha}, "Power:", {power}, "\\n")
-  if (!is.null(ev) && is.finite(ev)) cat("Events required:", ceiling(ev), "\\n")
-  cat("N per group:", n_val, "\\n")
-  cat("Total N:", 2 * n_val, "\\n")
+  cat(t("header.ni_survival_n"), "\\n")
+  cat(t("label.ni_margin_hr"), {ni_margin_surv}, "\\n")
+  cat(t("label.expected_hr"), {hr_expected}, "\\n")
+  cat(t("label.accrual"), {accrual_time}, "\\n")
+  cat(t("label.followup"), {followup_time}, "\\n")
+  cat(t("label.event_rate"), {event_rate}, "\\n")
+  cat(t("label.alpha"), {alpha}, t("label.power"), {power}, "\\n")
+  if (!is.null(ev) && is.finite(ev)) cat(t("label.events_required"), ceiling(ev), "\\n")
+  cat(t("label.n_per_group"), n_val, "\\n")
+  cat(t("label.total_n"), 2 * n_val, "\\n")
 }}
 """
 
 R_SURVIVAL_EXACT = """
 library(rpact)
+
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Exact survival design via rpact. Forward getSampleSizeSurvival (fallback Schoenfeld);
 # reverse getPowerSurvival (fallback Schoenfeld log-rank).
 ss_survival_exact <- function(hr, accrual, followup, dropout, event_rate, n_stages,
@@ -101,22 +105,22 @@ if ({solve_for_power}) {{
   pwr <- ss_survival_exact(hr={hr_exact}, accrual={accrual_exact}, followup={followup_exact},
                            dropout={dropout_exact}, event_rate={event_rate_exact},
                            n_stages={n_stages_exact}, alpha={alpha_exact}, n={nobs})
-  cat("\\n========== Survival Design (Exact, Power given N) ==========\\n")
-  cat("Hazard ratio:", {hr_exact}, "\\n")
-  cat("N per group:", {nobs}, "\\n")
-  cat("Achieved power:", pwr, "\\n")
+  cat(t("header.survival_exact_power"), "\\n")
+  cat(t("label.hazard_ratio"), {hr_exact}, "\\n")
+  cat(t("label.n_per_group"), {nobs}, "\\n")
+  cat(t("label.achieved_power"), pwr, "\\n")
 }} else {{
   n_val <- ss_survival_exact(hr={hr_exact}, accrual={accrual_exact}, followup={followup_exact},
                              dropout={dropout_exact}, event_rate={event_rate_exact},
                              n_stages={n_stages_exact}, alpha={alpha_exact}, power={power_exact})
-  cat("\\n========== Survival Design (Exact, rpact) ==========\\n")
-  cat("Hazard ratio:", {hr_exact}, "\\n")
-  cat("Event rate (control):", {event_rate_exact}, "\\n")
-  cat("Accrual (months):", {accrual_exact}, "\\n")
-  cat("Follow-up (months):", {followup_exact}, "\\n")
-  cat("Dropout (annual):", {dropout_exact}, "\\n")
-  cat("Alpha:", {alpha_exact}, "Power:", {power_exact}, "\\n")
-  cat("N per group:", n_val, "\\n")
-  cat("Total N:", 2 * n_val, "\\n")
+  cat(t("header.survival_exact_n"), "\\n")
+  cat(t("label.hazard_ratio"), {hr_exact}, "\\n")
+  cat(t("label.event_rate"), {event_rate_exact}, "\\n")
+  cat(t("label.accrual"), {accrual_exact}, "\\n")
+  cat(t("label.followup"), {followup_exact}, "\\n")
+  cat(t("label.dropout"), {dropout_exact}, "\\n")
+  cat(t("label.alpha"), {alpha_exact}, t("label.power"), {power_exact}, "\\n")
+  cat(t("label.n_per_group"), n_val, "\\n")
+  cat(t("label.total_n"), 2 * n_val, "\\n")
 }}
 """

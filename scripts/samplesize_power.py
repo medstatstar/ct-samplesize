@@ -23,6 +23,27 @@ Test types (37 total):
 """
 import argparse, sys, os, textwrap, subprocess, tempfile, re, json
 from r_templates import *
+from i18n import t
+from r_libs import I18N_R, ADAPTIVE_SIM_R
+
+
+def _qt(key, **kwargs):
+    """Translate a key and return an R string literal (with escapes).
+    
+    Escape order matters: backslash first, then double-quote, then newlines.
+    This ensures e.g. a literal newline in the source becomes R's \\n.
+    """
+    s = t(key, **kwargs)
+    # 1. Escape literal backslash → \\ (must be first!)
+    s = s.replace('\\', '\\\\')
+    # 2. Escape double-quote → \"
+    s = s.replace('"', '\\"')
+    # 3. Escape actual control characters → R escape sequences
+    s = s.replace('\n', '\\n')
+    s = s.replace('\r', '\\r')
+    s = s.replace('\t', '\\t')
+    return f'"{s}"'
+
 
 def find_rscript():
     """Locate Rscript executable."""
@@ -128,21 +149,25 @@ def sanitize_output(raw, max_lines=200, max_col=200):
 def run_r(code, confirmed=False):
     """Execute R code or return dry-run message."""
     if not confirmed:
-        return "[DRY RUN — code not executed. Remove --dry-run to execute.]"
+        return t("dry_run.not_executed")
     rscript = find_rscript()
     if not is_valid_rscript(rscript):
-        return "[ERROR] Rscript not found or invalid. Set RSCRIPT_PATH env or install R."
+        return t("error.rscript_not_found")
 
     # RCE prevention: user strings are allowlist-validated before they reach generated R
     # (see _validate_token / _safe_r_path_literal); the generated code therefore cannot
     # contain sandbox-escape tokens. No extra deny-list check is required here.
+
+    # Inline i18n.R (bilingual localization) — publishes strip .R files, so the
+    # source() calls must resolve against the inline string, not disk.
+    code = code.replace('source(file.path("{scriptdir}", "i18n.R"))', '# i18n.R inlined')
 
     # Use system temp dir to avoid residue if process is killed.
     tmp_dir = os.path.realpath(tempfile.gettempdir())
     with tempfile.NamedTemporaryFile(
         suffix='.R', mode='w', delete=False, encoding='utf-8', dir=tmp_dir
     ) as f:
-        f.write("options(echo = FALSE)\n" + code)
+        f.write("options(echo = FALSE)\n" + I18N_R + "\n" + code)
         tmp = f.name
 
     # Containment: the script must live inside the system temp dir and resolve cleanly.
@@ -151,7 +176,7 @@ def run_r(code, confirmed=False):
             os.unlink(tmp)
         except OSError:
             pass
-        return "[ERROR] Invalid temp path; execution refused."
+        return t("error.invalid_temp_path")
 
     # NOTE: invoked as a list (no shell), so no command/shell injection is possible.
     try:
@@ -162,9 +187,9 @@ def run_r(code, confirmed=False):
         raw = (proc.stdout or '') + (proc.stderr or '')
         return sanitize_output(raw)
     except subprocess.TimeoutExpired:
-        return "[ERROR] R execution timed out (300s limit)"
+        return t("error.r_timeout")
     except Exception as e:
-        return f"[ERROR] Execution failed: {type(e).__name__}"
+        return t("error.exec_failed", name=type(e).__name__)
     finally:
         try:
             os.unlink(tmp)
@@ -172,13 +197,12 @@ def run_r(code, confirmed=False):
             pass
 
 def build_adaptive_sim_r_code(args):
-    """Build the short R snippet for the Monte-Carlo adaptive-trial simulator.
+    """Build the R snippet for the adaptive-trial Monte-Carlo simulator.
 
-    Sources the standalone engine scripts/adaptive_sim.R (a pure base-R function
-    library the user can `source()` directly) and calls run_adaptive_sim(...) with
-    the CLI args. Categorical CLI strings (design, spending_function,
-    reestimate_method, correction) are allowlist-validated in main() before this
-    runs, so the generated code has no RCE surface.
+    The R engine (scripts/adaptive_sim.R) is inlined into Python publishing
+    strips .R files. We write it to a temp .R file and source() that temp
+    file. Categorical CLI strings are allowlist-validated (see main()) before
+    this runs, so the generated code has no RCE surface.
     """
     def _num(v):
         f = float(v)
@@ -194,11 +218,16 @@ def build_adaptive_sim_r_code(args):
         eff_arg = "effect_size = %s" % _num(args.effect_size)
         n_arms = str(args.n_arms)
 
-    r_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adaptive_sim.R")
-    r_file = r_file.replace("\\", "/")
+    # Write inline ADAPTIVE_SIM_R to a temp file (publishing strips .R files)
+    tmp_dir = os.path.realpath(tempfile.gettempdir())
+    with tempfile.NamedTemporaryFile(
+        suffix='_adaptive_sim.R', mode='w', delete=False, encoding='utf-8', dir=tmp_dir
+    ) as f:
+        f.write(ADAPTIVE_SIM_R)
+        r_file = f.name
 
     parts = [
-        'source("%s")' % r_file,
+        'source("%s")' % r_file.replace("\\", "/"),
         "run_adaptive_sim(",
         '  design = "%s",' % args.sim_design,
         "  %s," % eff_arg,
@@ -226,6 +255,8 @@ def build_adaptive_sim_r_code(args):
         '  out_png = "%s",' % (args.out or "").replace("\\", "/"),
         '  out_json = "%s"' % (args.sim_output or "").replace("\\", "/"),
         ")",
+        # Clean up the temp .R file after sourcing
+        'file.remove("%s")' % r_file.replace("\\", "/"),
     ]
     return "\n".join(parts)
 
@@ -272,13 +303,13 @@ def _fallback_adaptive_sim_python(args):
                 selection_fraction=args.selection_fraction, correction=args.correction,
                 n_simulations=args.n_simulations, seed=args.sim_seed)
     except (ValueError, KeyError) as e:
-        print("ERROR: %s" % e)
+        print(t("error.val_err", msg=e))
         sys.exit(1)
     print(_sim._fmt_result(res))
     if args.sim_output:
         with open(args.sim_output, "w", encoding="utf-8") as f:
             json.dump(res, f, indent=2, ensure_ascii=False)
-        print("Result JSON saved to: %s" % args.sim_output)
+        print(t("info.result_saved", path=args.sim_output))
     if args.visualize:
         _png = args.out or os.path.join(tempfile.gettempdir(),
                                         "adaptive_sim_%s.png" % res.get("design", "sim"))
@@ -299,10 +330,10 @@ def parse_seq_to_r(s):
     if ':' in s:
         parts = s.split(':')
         if len(parts) != 3:
-            raise ValueError("auto sequence needs start:step:stop, got %r" % s)
+            raise ValueError(t("error.seq_format", spec=s))
         start, step, stop = (float(x) for x in parts)
         if step == 0:
-            raise ValueError("step must be non-zero in auto sequence")
+            raise ValueError(t("error.seq_step_nonzero"))
         vals = []
         x = start
         while x <= stop + abs(step) * 1e-9:
@@ -315,7 +346,7 @@ def parse_seq_to_r(s):
     else:
         vals = [float(s)]
     if not vals:
-        raise ValueError("empty sequence: %r" % s)
+        raise ValueError(t("error.seq_empty", spec=s))
     return "c(" + ", ".join(repr(float(v)) for v in vals) + ")"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -361,8 +392,8 @@ def build_curve_code(args):
     """Build R code for a power/sample-size curve. Returns R string or None."""
     test = args.test
     if test not in CURVE_SOLVERS:
-        print("ERROR: curve mode (--n_seq / --power_seq) is not yet supported for --test '%s'." % test)
-        print("Supported test types for curves:")
+        print(t("error.curve_not_supported", test=test))
+        print(t("error.curve_supported_types"))
         print("  " + ", ".join(sorted(CURVE_SOLVERS.keys())))
         return None
     spec = CURVE_SOLVERS[test]
@@ -370,7 +401,7 @@ def build_curve_code(args):
     try:
         params = spec["params"].format(**ctx)
     except (KeyError, ValueError, IndexError) as e:
-        print("ERROR: parameter missing/invalid for curve of '%s': %s" % (test, e))
+        print(t("error.curve_param_missing", test=test, err=e))
         return None
     # Auto-inject required R packages (curve templates use base R graphics, no ggplot2)
     _LIB_MAP = {
@@ -400,7 +431,7 @@ def build_curve_code(args):
             xlabel = "Power (target)"
             ylabel = spec.get("n_label", "N")
         else:
-            print("ERROR: curve mode requires --n_seq or --power_seq")
+            print(t("error.curve_requires_seq"))
             return None
     except ValueError as e:
         print("ERROR: invalid sequence spec: %s" % e)
@@ -410,7 +441,7 @@ def build_curve_code(args):
         try:
             effects_r = parse_seq_to_r(args.plot_effects)
         except ValueError as e:
-            print("ERROR: invalid --plot_effects: %s" % e)
+            print(t("error.invalid_plot_effects", err=e))
             return None
     if mode == "power":
         tpl = _CURVE_POWER_MULTI if effects_r else _CURVE_POWER_SINGLE
@@ -643,8 +674,7 @@ def main():
             if args.effect_sizes is not None:
                 if not re.match(r'^[0-9.,\- ]+$', args.effect_sizes):
                     raise ValueError(
-                        "Invalid --effect_sizes %r: only digits, dots, commas, "
-                        "minus and spaces are allowed." % args.effect_sizes)
+                        t("error.effect_sizes_invalid", value=args.effect_sizes))
             if args.sim_output is not None:
                 _safe_r_path_literal(args.sim_output)
         if args.out is not None:
@@ -684,11 +714,11 @@ def main():
         if val is None:
             continue
         if lo is not None and val <= lo:
-            _range_errors.append(f"--{label} must be > {lo} (got {val})")
+            _range_errors.append(t("validation.range_error_gt", label=label, bound=lo, val=val))
         if hi is not None and val >= hi:
-            _range_errors.append(f"--{label} must be < {hi} (got {val})")
+            _range_errors.append(t("validation.range_error_lt", label=label, bound=hi, val=val))
     if _range_errors:
-        print("Parameter validation failed:")
+        print(t("validation.failed"))
         for e in _range_errors:
             print(f"  ✗ {e}")
         sys.exit(1)
@@ -713,31 +743,30 @@ def main():
         if not args.run_install:
             # 默认安全模式：只打印命令，不联网安装
             print("=" * 60)
-            print("[R 包安装命令 — 仅供审阅，未执行]")
+            print(t("install.cmd_header"))
             print("=" * 60)
             print(r_cmd)
             print("=" * 60)
-            print("此命令会**从 CRAN 联网下载并安装** %d 个 R 包（即本技能唯一会触网的操作）。" % len(pkgs))
-            print("如确认无误，请重新运行并追加 --run-install 才会真正联网安装：")
+            print(t("install.cran_warning", n=len(pkgs)))
+            print(t("install.confirm_prompt"))
             print("  python samplesize_power.py --install-all-packages --run-install")
-            print("或在 R 控制台中手动粘贴上述命令自行安装。")
+            print(t("install.manual_alt"))
             return
         # 显式二次确认后才执行 —— 且执行前完整打印将要运行的 R 代码（透明审计）
         print("=" * 60)
-        print("⚠️  NETWORK INSTALL: the following R code will download packages from CRAN")
-        print("⚠️  联网安装：以下 R 代码将从 CRAN 下载并安装 R 包（供应链风险由你知情触发）")
+        print(t("install.network_warning_en"))
         print("=" * 60)
         script_dir = os.path.dirname(os.path.abspath(__file__))
         r_script = r_cmd + 'cat("\\nDone. Installed", length(pkgs), "packages.\\n")\n'
         r_file = os.path.join(script_dir, "_install_packages.R")
-        print("[R CODE — will be executed by Rscript]")
+        print(t("install.code_header"))
         print(r_script)
         print("=" * 60)
         with open(r_file, "w") as f:
             f.write(r_script)
         # Containment: r_file must live inside the skill script dir.
         if os.path.dirname(os.path.realpath(r_file)) != os.path.realpath(script_dir):
-            print("[ERROR] Invalid install script path; execution refused.")
+            print(t("error.invalid_install_path"))
             return
         rscript = find_rscript()
         if is_valid_rscript(rscript):
@@ -748,11 +777,11 @@ def main():
             if result.stderr:
                 print(sanitize_output(result.stderr))
         else:
-            print("[ERROR] Rscript not found or invalid. Is R installed?")
+            print(t("error.rscript_not_found_install"))
         return
 
     if not args.test:
-        p.error("--test is required (unless using --install-all-packages)")
+        p.error(t("error.test_required"))
 
     # ══ Adaptive Monte-Carlo simulator (test=adaptive_simulate) ══
     # PRIMARY: generate & show the R code; execute only with --yes (SAFE PREVIEW,
@@ -764,8 +793,7 @@ def main():
         rscript = find_rscript()
         if rscript is None:
             # ── No R available -> pure-Python fallback ──
-            print("[INFO] R not detected -> using built-in pure-Python Monte-Carlo "
-                  "fallback (scripts/adaptive_simulator.py).")
+            print(t("info.r_not_detected_python_fallback"))
             _fallback_adaptive_sim_python(args)
             return
 
@@ -774,14 +802,14 @@ def main():
         r_code = r_code.lstrip("\n")
         if args.show_code or args.dry_run or not confirmed:
             print("=" * 60)
-            print("[R CODE — generated for this analysis]")
+            print(t("header.r_code"))
             print("=" * 60)
             print(r_code)
             print("=" * 60)
         if not confirmed:
-            print("[SAFE PREVIEW] R code was NOT executed. Re-run with --yes to compute the result.")
+            print(t("safe_preview.not_executed"))
             return
-        print("[EXECUTING R CODE...]")
+        print(t("exec.running"))
         sys.stdout.flush()
         output = run_r(r_code, confirmed=True)
         print(output)
@@ -798,14 +826,14 @@ def main():
         # (the safe default); in execute mode show it only with --show-code.
         if args.show_code or args.dry_run or not confirmed:
             print("=" * 60)
-            print("[R CODE — generated for this analysis]")
+            print(t("header.r_code"))
             print("=" * 60)
             print(r_code)
             print("=" * 60)
         if not confirmed:
-            print("[SAFE PREVIEW] R code was NOT executed. Re-run with --yes to compute and save the curve.")
+            print(t("safe_preview.not_executed_curve"))
             return
-        print("[EXECUTING R CODE...]")
+        print(t("exec.running"))
         sys.stdout.flush()
         output = run_r(r_code, confirmed=True)
         print(output)
@@ -816,7 +844,7 @@ def main():
         else:
             _t = tempfile.gettempdir()
         _out = args.out or os.path.join(_t, "ct_curve_%s.png" % args.test)
-        print("PNG saved to: %s" % _out)
+        print(t("info.png_saved", path=_out))
         print("=" * 60)
         return
 
@@ -826,10 +854,10 @@ def main():
 
     if args.test == "mixed_model":
         if not args.effect_name:
-            print("ERROR: --effect_name required"); sys.exit(1)
+            print(t("error.effect_name_required")); sys.exit(1)
         # Validate effect_name: only alphanumeric + underscore
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', args.effect_name):
-            print("ERROR: --effect_name must be a valid R identifier"); sys.exit(1)
+            print(t("error.effect_name_invalid")); sys.exit(1)
         eff = args.effect or 0.5
         r_code = R_MIXED_MODEL.format(
             eff=eff, eff_half=eff/2, varcorr=args.varcorr, sigma=args.sigma,
@@ -840,58 +868,58 @@ def main():
     elif args.test == "roc":
         auc0 = args.auc0
         if not args.auc1 and not args.effect:
-            print("ERROR: --auc1 or --effect required"); sys.exit(1)
+            print(t("error.auc1_or_effect_required")); sys.exit(1)
         auc1 = args.auc1 or min(auc0 + args.effect, 0.99)
         if solve_for_power:
             r_code = R_ROC + f"""
-cat("\\n========== ROC Sample Size (Power given N) ==========\\n")
-cat("H0 AUC:", {auc0}, "H1 AUC:", {auc1}, "\\n")
-cat("Alpha:", {args.alpha}, "\\n")
-cat("Sample size:", {args.nobs}, "\\n")
-cat("Achieved power:", ss_roc(auc0={auc0}, auc1={auc1}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat({_qt("r_header.roc_power")})
+cat({_qt("label.h0_auc")}, {auc0}, {_qt("label.h1_auc")}, {auc1}, "\\n")
+cat({_qt("label.alpha")}, {args.alpha}, "\\n")
+cat({_qt("label.sample_size")}, {args.nobs}, "\\n")
+cat({_qt("label.achieved_power")}, ss_roc(auc0={auc0}, auc1={auc1}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
             r_code = R_ROC + f"""
-cat("\\n========== ROC Sample Size ==========\\n")
-cat("H0 AUC:", {auc0}, "H1 AUC:", {auc1}, "\\n")
-cat("Alpha:", {args.alpha}, "Power:", {args.power}, "\\n")
-cat("Sample size:", ss_roc(auc0={auc0}, auc1={auc1}, alpha={args.alpha}, power={args.power}), "\\n")
+cat({_qt("r_header.roc_n")})
+cat({_qt("label.h0_auc")}, {auc0}, {_qt("label.h1_auc")}, {auc1}, "\\n")
+cat({_qt("label.alpha")}, {args.alpha}, {_qt("label.power")}, {args.power}, "\\n")
+cat({_qt("label.sample_size")}, ss_roc(auc0={auc0}, auc1={auc1}, alpha={args.alpha}, power={args.power}), "\\n")
 """
 
     elif args.test == "poisson":
         if solve_for_power:
             r_code = R_POISSON + f"""
 cat("\\n========== Poisson Rate Comparison (Power given N) ==========\\n")
-cat("Rate Ratio:", round({args.lambda1}/{args.lambda2}, 3), "\\n")
-cat("Sample size per group:", {args.nobs}, "\\n")
-cat("Achieved power:", ss_poisson(lambda1={args.lambda1}, lambda2={args.lambda2}, t1={args.t1}, t2={args.t2}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat(_qt("label.rate_ratio"), round({args.lambda1}/{args.lambda2}, 3), "\\n")
+cat(_qt("label.sample_size_per_group"), {args.nobs}, "\\n")
+cat(_qt("label.achieved_power"), ss_poisson(lambda1={args.lambda1}, lambda2={args.lambda2}, t1={args.t1}, t2={args.t2}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
             r_code = R_POISSON + f"""
 cat("\\n========== Poisson Rate Comparison ==========\\n")
-cat("Rate Ratio:", round({args.lambda1}/{args.lambda2}, 3), "\\n")
-cat("Sample size per group:", ss_poisson(lambda1={args.lambda1}, lambda2={args.lambda2}, t1={args.t1}, t2={args.t2}, alpha={args.alpha}, power={args.power}), "\\n")
+cat(_qt("label.rate_ratio"), round({args.lambda1}/{args.lambda2}, 3), "\\n")
+cat(_qt("label.sample_size_per_group"), ss_poisson(lambda1={args.lambda1}, lambda2={args.lambda2}, t1={args.t1}, t2={args.t2}, alpha={args.alpha}, power={args.power}), "\\n")
 """
 
     elif args.test == "cluster":
         if solve_for_power:
             r_code = R_CLUSTER + f"""
 cat("\\n========== Cluster-RCT (Power given N) ==========\\n")
-cat("Design effect (DEFF):", round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
-cat("Cluster size m:", {args.m}, "ICC:", {args.icc}, "\\n")
-cat("Total sample size:", {args.nobs}, "\\n")
+cat(_qt("label.deff"), round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
+cat(_qt("label.cluster_size_m"), {args.m}, _qt("label.icc"), {args.icc}, "\\n")
+cat(_qt("label.total_sample_size"), {args.nobs}, "\\n")
 res <- ss_cluster(m={args.m}, icc={args.icc}, n_total={args.nobs})
-cat("Effective individual n per group (n_total/2/DEFF):", res$n_indiv_eff, "\\n")
-cat("Implied n clusters per group:", res$n_clusters, "\\n")
+cat(_qt("label.effective_n_per_group"), res$n_indiv_eff, "\\n")
+cat(_qt("label.implied_n_clusters"), res$n_clusters, "\\n")
 """
         else:
             r_code = R_CLUSTER + f"""
 cat("\\n========== Cluster-Randomized Design ==========\\n")
-cat("DEFF:", round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
+cat(_qt("label.deff"), round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
 res <- ss_cluster(m={args.m}, icc={args.icc}, n_indiv={args.n_indiv})
-cat("Adjusted n per group:", res$n_adj, "\\n")
-cat("Clusters per group:", res$n_clusters, "Total:", res$total_clusters, "\\n")
-cat("Total sample size:", res$total, "\\n")
+cat(_qt("label.adjusted_n_per_group"), res$n_adj, "\\n")
+cat(_qt("label.clusters_per_group"), res$n_clusters, _qt("label.total_clusters"), res$total_clusters, "\\n")
+cat(_qt("label.total_sample_size"), res$total, "\\n")
 """
 
     elif args.test == "bland_altman":
@@ -910,7 +938,7 @@ cat("Total sample size:", res$total, "\\n")
         # Validate design against allowlist to prevent R code injection
         _allowed_designs = ["2x2", "2x4", "3x3", "2x2x2", "2x2x3", "2x2x4"]
         if args.design not in _allowed_designs:
-            print("ERROR: --design must be one of:", ", ".join(_allowed_designs))
+            print(t("error.design_must_be_one_of", options=", ".join(_allowed_designs)))
             sys.exit(1)
         r_code = R_BE_TOST.format(
             theta0=args.theta0, cv=args.cv, design=args.design,
@@ -921,31 +949,31 @@ cat("Total sample size:", res$total, "\\n")
         if solve_for_power:
             r_code = R_VACCINE_EFFICACY + f"""
 cat("\\n========== Vaccine Efficacy (Power given N) ==========\\n")
-cat("VE:", round(({args.ve_control}-{args.ve_treatment})/{args.ve_control}*100, 1), "%\\n")
-cat("n per group:", {args.nobs}, "\\n")
-cat("Achieved power:", ss_vaccine(vc={args.ve_control}, vt={args.ve_treatment}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat(_qt("label.ve"), round(({args.ve_control}-{args.ve_treatment})/{args.ve_control}*100, 1), "%\\n")
+cat(_qt("label.n_per_group_total"), {args.nobs}, "\\n")
+cat(_qt("label.achieved_power"), ss_vaccine(vc={args.ve_control}, vt={args.ve_treatment}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
             r_code = R_VACCINE_EFFICACY + f"""
 cat("\\n========== Vaccine Efficacy ==========\\n")
-cat("VE:", round(({args.ve_control}-{args.ve_treatment})/{args.ve_control}*100, 1), "%\\n")
-cat("n per group:", ss_vaccine(vc={args.ve_control}, vt={args.ve_treatment}, alpha={args.alpha}, power={args.power}), "\\n")
+cat(_qt("label.ve"), round(({args.ve_control}-{args.ve_treatment})/{args.ve_control}*100, 1), "%\\n")
+cat(_qt("label.n_per_group_total"), ss_vaccine(vc={args.ve_control}, vt={args.ve_treatment}, alpha={args.alpha}, power={args.power}), "\\n")
 """
 
     elif args.test == "multiple_endpoints":
         if solve_for_power:
             r_code = R_MULTIPLE_ENDPOINTS + f"""
 cat("\\n========== Multiple Endpoints (Power given N) ==========\\n")
-cat("Correlation:", {args.correlation}, "\\n")
-cat("Adjusted n:", {args.nobs}, "\\n")
-cat("Achieved power:", ss_multiple(rho={args.correlation}, effect={args.effect or 0.3}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat(_qt("label.correlation"), {args.correlation}, "\\n")
+cat(_qt("label.adjusted_n"), {args.nobs}, "\\n")
+cat(_qt("label.achieved_power"), ss_multiple(rho={args.correlation}, effect={args.effect or 0.3}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
             r_code = R_MULTIPLE_ENDPOINTS + f"""
 cat("\\n========== Multiple Endpoints ==========\\n")
-cat("Correlation:", {args.correlation}, "\\n")
+cat(_qt("label.correlation"), {args.correlation}, "\\n")
 res <- ss_multiple(rho={args.correlation}, effect={args.effect or 0.3}, alpha={args.alpha}, power={args.power})
-cat("Single endpoint n:", res$n_single, "Adjusted:", res$n_adj, "\\n")
+cat(_qt("label.single_endpoint_n"), res$n_single, _qt("label.adjusted_total"), res$n_adj, "\\n")
 """
 
     elif args.test == "bayesian":
@@ -963,64 +991,64 @@ cat("Single endpoint n:", res$n_single, "Adjusted:", res$n_adj, "\\n")
         if solve_for_power:
             r_code = R_T_TESTS + f"""
 cat("\\n========== Two-Sample T-Test (Power given N) ==========\\n")
-cat("Cohen's d:", {d_val}, "\\n")
-cat("n per group:", {args.nobs}, "\\n")
-cat("Achieved power:", ss_ttest("two.sample", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
+cat(_qt("label.cohens_d"), {d_val}, "\\n")
+cat(_qt("label.n_per_group_total"), {args.nobs}, "\\n")
+cat(_qt("label.achieved_power"), ss_ttest("two.sample", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
 """
         else:
             r_code = R_T_TESTS + f"""
 cat("\\n========== Two-Sample T-Test ==========\\n")
-cat("Cohen's d:", {d_val}, "\\n")
+cat(_qt("label.cohens_d"), {d_val}, "\\n")
 n_pg <- ss_ttest("two.sample", d={d_val}, alpha={args.alpha}, power={args.power}, alt="{alt}")
-cat("n per group:", n_pg, "\\n")
+cat(_qt("label.n_per_group"), n_pg, "\\n")
 """
 
     elif args.test == "ttest_paired":
         if solve_for_power:
             r_code = R_T_TESTS + f"""
 cat("\\n========== Paired T-Test (Power given N) ==========\\n")
-cat("Cohen's d:", {d_val}, "\\n")
-cat("n (pairs):", {args.nobs}, "\\n")
-cat("Achieved power:", ss_ttest("paired", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
+cat(_qt("label.cohens_d"), {d_val}, "\\n")
+cat(_qt("label.n_pairs"), {args.nobs}, "\\n")
+cat(_qt("label.achieved_power"), ss_ttest("paired", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
 """
         else:
             r_code = R_T_TESTS + f"""
 cat("\\n========== Paired T-Test ==========\\n")
-cat("Cohen's d:", {d_val}, "\\n")
+cat(_qt("label.cohens_d"), {d_val}, "\\n")
 n_pg <- ss_ttest("paired", d={d_val}, alpha={args.alpha}, power={args.power}, alt="{alt}")
-cat("n (pairs):", n_pg, "\\n")
+cat(_qt("label.n_pairs"), n_pg, "\\n")
 """
 
     elif args.test == "ttest_one":
         if solve_for_power:
             r_code = R_T_TESTS + f"""
 cat("\\n========== One-Sample T-Test (Power given N) ==========\\n")
-cat("Cohen's d:", {d_val}, "\\n")
-cat("n:", {args.nobs}, "\\n")
-cat("Achieved power:", ss_ttest("one.sample", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
+cat(_qt("label.cohens_d"), {d_val}, "\\n")
+cat(_qt("label.n_total"), {args.nobs}, "\\n")
+cat(_qt("label.achieved_power"), ss_ttest("one.sample", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
 """
         else:
             r_code = R_T_TESTS + f"""
 cat("\\n========== One-Sample T-Test ==========\\n")
-cat("Cohen's d:", {d_val}, "\\n")
+cat(_qt("label.cohens_d"), {d_val}, "\\n")
 n_pg <- ss_ttest("one.sample", d={d_val}, alpha={args.alpha}, power={args.power}, alt="{alt}")
-cat("n:", n_pg, "\\n")
+cat(_qt("label.n_total"), n_pg, "\\n")
 """
 
     elif args.test == "anova":
         if solve_for_power:
             r_code = R_T_TESTS + f"""
 cat("\\n========== One-Way ANOVA (Power given N) ==========\\n")
-cat("k groups:", {args.k_groups}, "f:", {args.effect or 0.25}, "\\n")
-cat("n per group:", {args.nobs}, "\\n")
-cat("Achieved power:", ss_anova(k={args.k_groups}, f={args.effect or 0.25}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat(_qt("label.k_groups"), {args.k_groups}, _qt("label.f_effect"), {args.effect or 0.25}, "\\n")
+cat(_qt("label.n_per_group_total"), {args.nobs}, "\\n")
+cat(_qt("label.achieved_power"), ss_anova(k={args.k_groups}, f={args.effect or 0.25}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
             r_code = R_T_TESTS + f"""
 cat("\\n========== One-Way ANOVA ==========\\n")
-cat("k groups:", {args.k_groups}, "f:", {args.effect or 0.25}, "\\n")
+cat(_qt("label.k_groups"), {args.k_groups}, _qt("label.f_effect"), {args.effect or 0.25}, "\\n")
 n_pg <- ss_anova(k={args.k_groups}, f={args.effect or 0.25}, alpha={args.alpha}, power={args.power})
-cat("n per group:", n_pg, "\\n")
+cat(_qt("label.n_per_group"), n_pg, "\\n")
 """
 
     elif args.test == "proportion_one":
@@ -1030,20 +1058,20 @@ cat("n per group:", n_pg, "\\n")
         if solve_for_power:
             r_code = R_PROP_FUNCS + f"""
 cat("\\n========== One-Sample Proportion Test (Power given N) ==========\\n")
-cat("H0 proportion (p0):", {p0}, "\\n")
-cat("H1 proportion (p1):", {p1}, "\\n")
-cat("Side:", "{alt_r}", "\\n")
-cat("Given n:", {args.nobs}, "\\n")
-cat("Achieved power:", ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, n={args.nobs}, alt="{alt_r}"), "\\n")
+cat(_qt("label.h0_proportion"), {p0}, "\\n")
+cat(_qt("label.h1_proportion"), {p1}, "\\n")
+cat(_qt("label.side"), "{alt_r}", "\\n")
+cat(_qt("label.given_n"), {args.nobs}, "\\n")
+cat(_qt("label.achieved_power"), ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, n={args.nobs}, alt="{alt_r}"), "\\n")
 """
         else:
             r_code = R_PROP_FUNCS + f"""
 cat("\\n========== One-Sample Proportion Test ==========\\n")
-cat("H0 proportion (p0):", {p0}, "\\n")
-cat("H1 proportion (p1):", {p1}, "\\n")
-cat("Side:", "{alt_r}", "\\n")
-cat("Target power:", {args.power}, "\\n")
-cat("n (total):", ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, power={args.power}, alt="{alt_r}"), "\\n")
+cat(_qt("label.h0_proportion"), {p0}, "\\n")
+cat(_qt("label.h1_proportion"), {p1}, "\\n")
+cat(_qt("label.side"), "{alt_r}", "\\n")
+cat(_qt("label.target_power"), {args.power}, "\\n")
+cat(_qt("label.n_total_result"), ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, power={args.power}, alt="{alt_r}"), "\\n")
 """
 
     elif args.test in ("proportion_two", "proportion_paired", "odds_ratio", "risk_ratio"):
@@ -1060,22 +1088,22 @@ cat("n (total):", ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, power={args.
         if solve_for_power:
             r_code = R_PROP_FUNCS + f"""
 cat("\\n========== {label} (Power given N) ==========\\n")
-cat("Control / H0 (p1):", {p1}, "\\n")
-cat("Treatment / H1 (p2):", {p2}, "\\n")
-cat("Side:", "{alt_r}", "\\n")
-cat("Given n per group:", {args.nobs}, "\\n")
-cat("Achieved power:", {fn}(p1={p1}, p2={p2}, alpha={args.alpha}, n={args.nobs}, alt="{alt_r}"), "\\n")
+cat(_qt("label.control_h0"), {p1}, "\\n")
+cat(_qt("label.treatment_h1"), {p2}, "\\n")
+cat(_qt("label.side"), "{alt_r}", "\\n")
+cat(_qt("label.given_n_per_group"), {args.nobs}, "\\n")
+cat(_qt("label.achieved_power"), {fn}(p1={p1}, p2={p2}, alpha={args.alpha}, n={args.nobs}, alt="{alt_r}"), "\\n")
 """
         else:
             r_code = R_PROP_FUNCS + f"""
 cat("\\n========== {label} ==========\\n")
-cat("Control / H0 (p1):", {p1}, "\\n")
-cat("Treatment / H1 (p2):", {p2}, "\\n")
-cat("Side:", "{alt_r}", "\\n")
-cat("Target power:", {args.power}, "\\n")
+cat(_qt("label.control_h0"), {p1}, "\\n")
+cat(_qt("label.treatment_h1"), {p2}, "\\n")
+cat(_qt("label.side"), "{alt_r}", "\\n")
+cat(_qt("label.target_power"), {args.power}, "\\n")
 n_pg <- {fn}(p1={p1}, p2={p2}, alpha={args.alpha}, power={args.power}, alt="{alt_r}")
-cat("n per group:", n_pg, "\\n")
-cat("Total N:", 2 * n_pg, "\\n")
+cat(_qt("label.n_per_group"), n_pg, "\\n")
+cat(_qt("label.total_n"), 2 * n_pg, "\\n")
 """
 
     elif args.test == "non_inferiority":
@@ -1085,25 +1113,25 @@ cat("Total N:", 2 * n_pg, "\\n")
         if solve_for_power:
             r_code = R_NON_INFERIORITY + f"""
 cat("\\n========== Non-Inferiority (Proportions, Power given N) ==========\\n")
-cat("对照组有效率 p1:", {p1}, "\\n")
-cat("试验组有效率 p2:", {p2}, "\\n")
-cat("非劣效界值 delta:", {margin}, "\\n")
-cat("总样本量 N:", {args.nobs}, "每组:", {args.nobs}/2, "\\n")
-cat("Achieved power:", ss_noninf_prop(p1={p1}, p2={p2}, margin={margin}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat(_qt("label.control_rate_ni"), {p1}, "\\n")
+cat(_qt("label.treatment_rate_ni"), {p2}, "\\n")
+cat(_qt("label.ni_margin"), {margin}, "\\n")
+cat(_qt("label.total_n_ni"), {args.nobs}, _qt("label.each_group"), {args.nobs}/2, "\\n")
+cat(_qt("label.achieved_power"), ss_noninf_prop(p1={p1}, p2={p2}, margin={margin}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
             r_code = R_NON_INFERIORITY + f"""
 cat("\\n========== Non-Inferiority (Proportions) ==========\\n")
-cat("对照组有效率 p1: {p1}\\n")
-cat("试验组有效率 p2: {p2}\\n")
-cat("假设真实差异 |p1-p2|: ", abs({p1} - {p2}), "\\n")
-cat("非劣效界值 delta: {margin}\\n")
-cat("单侧 α: {args.alpha}, 把握度: {args.power}, 1:1 分配\\n\\n")
+cat(_qt("label.control_rate_ni_short", p1=p1))
+cat(_qt("label.treatment_rate_ni_short", p2=p2))
+cat(_qt("label.assumed_diff"), abs({p1} - {p2}), "\\n")
+cat(_qt("label.ni_margin_short", margin=margin))
+cat(_qt("label.one_sided_alpha", alpha=args.alpha, power=args.power))
 res <- ss_noninf_prop(p1={p1}, p2={p2}, margin={margin}, alpha={args.alpha}, power={args.power})
-cat("--- 结果 ---\\n")
-cat("每组样本量 n1:", res$n_arm, "\\n")
-cat("总样本量 N:", res$total, "\\n")
-cat("含 10% 脱落率:", ceiling(res$total * 1.1), "\\n")
+cat(_qt("label.result_header"))
+cat(_qt("label.n_per_arm"), res$n_arm, "\\n")
+cat(_qt("label.total_sample_size_result"), res$total, "\\n")
+cat(_qt("label.with_dropout"), ceiling(res$total * 1.1), "\\n")
 """
 
     elif args.test == "survival":
@@ -1111,26 +1139,26 @@ cat("含 10% 脱落率:", ceiling(res$total * 1.1), "\\n")
         if solve_for_power:
             r_code = R_SURVIVAL_SIMPLE + f"""
 cat("\\n========== Survival (Log-Rank, Power given N) ==========\\n")
-cat("Hazard ratio:", {hr}, "\\n")
-cat("Total events:", {args.nobs}, "\\n")
-cat("Achieved power:", ss_survival_logrank(hr={hr}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat(_qt("label.hazard_ratio_surv"), {hr}, "\\n")
+cat(_qt("label.total_events"), {args.nobs}, "\\n")
+cat(_qt("label.achieved_power"), ss_survival_logrank(hr={hr}, alpha={args.alpha}, n={args.nobs}), "\\n")
 if ({args.event_rate} > 0 && {args.followup_time} > 0) {{
   n_per_group <- ceiling({args.nobs} / (2 * {args.event_rate}))
-  cat("Approx n per group (event_rate={args.event_rate}):", n_per_group, "\\n")
+  cat(_qt("label.approx_n_per_group_surv", event_rate=args.event_rate), n_per_group, "\\n")
 }}
 """
         else:
             r_code = R_SURVIVAL_SIMPLE + f"""
 cat("\\n========== Survival (Log-Rank Test) ==========\\n")
-cat("Hazard ratio: {hr}\\n")
+cat(_qt("label.hr_format", hr=hr))
 res <- ss_survival_logrank(hr={hr}, alpha={args.alpha}, power={args.power},
                            event_rate={args.event_rate}, accrual_time={args.accrual_time}, followup_time={args.followup_time})
-cat("Total events needed (Schoenfeld):", res$d, "\\n")
+cat(_qt("label.total_events_needed"), res$d, "\\n")
 if (!is.na(res$n_per_group)) {{
-  cat("Each group n:", res$n_per_group, "Total N:", res$total, "\\n")
-  if (!is.na(res$n_with_dropout)) cat("含10%脱落率:", res$n_with_dropout, "\\n")
+  cat(_qt("label.each_group_n"), res$n_per_group, _qt("label.total_n_surv"), res$total, "\\n")
+  if (!is.na(res$n_with_dropout)) cat(_qt("label.dropout_note_inline"), res$n_with_dropout, "\\n")
 }} else {{
-  cat("\\n注意: 当前仅计算所需事件数。如需样本量请提供参数\\n")
+  cat(_qt("label.survival_note"))
 }}
 """
 
@@ -1234,7 +1262,7 @@ if (!is.na(res$n_per_group)) {{
         # Validate spending function against allowlist
         _allowed_spending = ["OF", "Pocock", "WT"]
         if args.spending_func not in _allowed_spending:
-            print("ERROR: --spending_func must be one of:", ", ".join(_allowed_spending))
+            print(t("error.spending_func_must_be_one_of", options=", ".join(_allowed_spending)))
             sys.exit(1)
         r_code = R_GROUP_SEQUENTIAL.format(
             alpha=args.alpha, power=args.power, nobs=args.nobs,
@@ -1246,7 +1274,7 @@ if (!is.na(res$n_per_group)) {{
         # Validate adaptive type against allowlist
         _allowed_adaptive = ["SSR", "Population", "Combination"]
         if args.adaptive_type not in _allowed_adaptive:
-            print("ERROR: --adaptive_type must be one of:", ", ".join(_allowed_adaptive))
+            print(t("error.adaptive_type_must_be_one_of", options=", ".join(_allowed_adaptive)))
             sys.exit(1)
         r_code = R_ADAPTIVE.format(
             alpha=args.alpha, power=args.power, nobs=args.nobs,
@@ -1263,7 +1291,7 @@ if (!is.na(res$n_per_group)) {{
             solve_for_power=str(solve_for_power).upper())
 
     else:
-        print("ERROR: Unknown test type"); sys.exit(1)
+        print(t("error.unknown_test")); sys.exit(1)
 
     r_code = r_code.lstrip('\n')
 
@@ -1271,21 +1299,21 @@ if (!is.na(res$n_per_group)) {{
     # in execute mode shown only with --show-code.
     if args.show_code or args.dry_run or not confirmed:
         print("=" * 60)
-        print("[R CODE — generated for this analysis]")
+        print(t("header.r_code"))
         print("=" * 60)
         print(r_code)
         print("=" * 60)
 
     if not confirmed:
-        print("[SAFE PREVIEW] R code was NOT executed. Re-run with --yes to compute the result.")
+        print(t("safe_preview.not_executed"))
         return
 
-    print("[EXECUTING R CODE...]")
+    print(t("exec.running"))
     sys.stdout.flush()
     output = run_r(r_code, confirmed=True)
     print(output)
     if not args.show_code:
-        print("[INFO] R code is shown by default in preview mode. Re-run with --show-code while using --yes to also display it during execution.")
+        print(t("info.r_code_shown_default"))
     print("=" * 60)
 
 if __name__ == "__main__":

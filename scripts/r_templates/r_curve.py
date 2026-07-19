@@ -156,7 +156,8 @@ CURVE_SOLVERS = {
     },
 }
 
-_CURVE_POWER_SINGLE = """\
+_CURVE_POWER_SINGLE = r"""\
+source(file.path("{scriptdir}", "i18n.R"))
 __PARAMS__
 power_given_n <- function(n) { __POWER_FN__ }
 n_seq <- __SEQ__
@@ -164,16 +165,17 @@ pw <- sapply(n_seq, power_given_n)
 df <- data.frame(n = n_seq, power = pw)
 png('__OUT__', width = 700, height = 500)
 plot(n_seq, pw, type = 'b', col = '#2c7fb8', lwd = 1.3, pch = 19,
-     xlab = '__XLABEL__', ylab = 'Power',
-     main = 'Power vs Sample Size (__TEST__)', ylim = c(0, 1))
+     xlab = '___N_LABEL__', ylab = ___YLABEL__,
+     main = ___MAIN_TITLE__, ylim = c(0, 1))
 abline(h = __TARGET__, lty = 2, col = 'red')
 grid()
 dev.off()
 print(df)
-cat('PNG saved to __OUT__', '\\n')
+cat(t("label.png_saved"), '___OUT__', '\n')
 """
 
-_CURVE_POWER_MULTI = """\
+_CURVE_POWER_MULTI = r"""\
+source(file.path("{scriptdir}", "i18n.R"))
 __PARAMS__
 effects <- __EFFECTS__
 __EFFECT_VAR__ <- effects[1]
@@ -188,8 +190,8 @@ png('__OUT__', width = 700, height = 500)
 cols <- rainbow(length(effects))
 first <- res[res$effect == effects[1], ]
 plot(first$n, first$power, type = 'b', col = cols[1], lwd = 1.1, pch = 19,
-     xlab = '__XLABEL__', ylab = 'Power',
-     main = 'Power vs Sample Size (__TEST__, by effect)', ylim = c(0, 1))
+     xlab = '___N_LABEL__', ylab = ___YLABEL__,
+     main = ___MAIN_TITLE__, ylim = c(0, 1))
 for (i in seq_along(effects)) {
   sub <- res[res$effect == effects[i], ]
   lines(sub$n, sub$power, col = cols[i], lwd = 1.1)
@@ -200,10 +202,11 @@ legend('bottomright', legend = as.character(effects), col = cols, lty = 1, pch =
 grid()
 dev.off()
 print(res)
-cat('PNG saved to __OUT__', '\\n')
+cat(t("label.png_saved"), '___OUT__', '\n')
 """
 
-_CURVE_N_SINGLE = """\
+_CURVE_N_SINGLE = r"""\
+source(file.path("{scriptdir}", "i18n.R"))
 __PARAMS__
 n_given_power <- function(p) { __NFN__ }
 pw_seq <- __SEQ__
@@ -211,16 +214,17 @@ ns <- sapply(pw_seq, n_given_power)
 df <- data.frame(power = pw_seq, n = ns)
 png('__OUT__', width = 700, height = 500)
 plot(pw_seq, ns, type = 'b', col = '#d95f0e', lwd = 1.3, pch = 19,
-     xlab = 'Power (target)', ylab = '__YLABEL__',
-     main = 'Sample Size vs Power (__TEST__)')
+     xlab = ___XLABEL__, ylab = ___YLABEL__,
+     main = ___MAIN_TITLE__)
 abline(v = __TARGET__, lty = 2, col = 'red')
 grid()
 dev.off()
 print(df)
-cat('PNG saved to __OUT__', '\\n')
+cat(t("label.png_saved"), '___OUT__', '\n')
 """
 
-_CURVE_N_MULTI = """\
+_CURVE_N_MULTI = r"""\
+source(file.path("{scriptdir}", "i18n.R"))
 __PARAMS__
 effects <- __EFFECTS__
 __EFFECT_VAR__ <- effects[1]
@@ -235,8 +239,8 @@ png('__OUT__', width = 700, height = 500)
 cols <- rainbow(length(effects))
 first <- res[res$effect == effects[1], ]
 plot(first$power, first$n, type = 'b', col = cols[1], lwd = 1.1, pch = 19,
-     xlab = 'Power (target)', ylab = '__YLABEL__',
-     main = 'Sample Size vs Power (__TEST__, by effect)')
+     xlab = ___XLABEL__, ylab = ___YLABEL__,
+     main = ___MAIN_TITLE__)
 for (i in seq_along(effects)) {
   sub <- res[res$effect == effects[i], ]
   lines(sub$power, sub$n, col = cols[i], lwd = 1.1)
@@ -247,6 +251,5 @@ legend('bottomright', legend = as.character(effects), col = cols, lty = 1, pch =
 grid()
 dev.off()
 print(res)
-cat('PNG saved to __OUT__', '\\n')
+cat(t("label.png_saved"), '___OUT__', '\n')
 """
-

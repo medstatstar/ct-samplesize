@@ -1,13 +1,13 @@
 ---
 slug: ct-samplesize
-displayName: Clinical Trial Sample Size & Power / 临床试验样本量与检验效能计算专家
+displayName: 临床试验样本量与检验效能计算专家 / Clinical Trial Sample Size & Power
 name: ct-samplesize
 cn_name: 临床试验样本量与检验效能计算专家
 version: 3.4.7
 required_commands: [Rscript, python]
-summary: Easy-to-use sample size & power calculator for clinical trial researchers. R backend + 20+ packages (rpact/gsDesign/TrialSize/PowerTOST). Natural language driven. 37 test types. Generates R code locally and runs in SAFE PREVIEW by default (code shown, NOT executed); use --yes to execute. Reproducible R code on request. English by default, auto-Chinese on Chinese-OS. / 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 37 种检验。本地生成 R 代码并默认运行于安全预览模式（展示代码、不执行），使用 --yes 才显式执行；可应要求提供可复现 R 代码；默认英文输出，中文操作系统自动切换中文。
+summary: 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 37 种检验。可应要求提供可复现 R 代码；默认英文输出，中文操作系统自动切换中文。
 license: MIT
-description: "Clinical trial sample size & power calculator. R backend + 20+ packages. 37 test types, natural-language driven, English by default / auto-Chinese on Chinese-OS. Generates R code locally and runs in SAFE PREVIEW by default (code shown, NOT executed); use --yes to execute. Optional --run-install fetches R packages from CRAN (network, opt-in). / 临床试验样本量与检验效能计算器。R 后台 + 20+ 专业 R 包。37 种检验类型，自然语言驱动，默认英文、OS 中文环境自动切换中文。本地生成 R 代码并默认运行于安全预览模式（展示代码、不执行），使用 --yes 才显式执行；可选的 --run-install 可从 CRAN 联网安装 R 包（联网、须显式触发）。"
+description: "为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 37 种检验。可应要求提供可复现 R 代码；默认英文输出，中文操作系统自动切换中文。 / Easy-to-use sample size and power calculation tool for clinical trial practitioners. Backed by R + 20+ professional R packages including rpact/gsDesign/TrialSize/PowerTOST, natural language driven, supporting 37 test types. Reproducible R code available on request; default English output with auto-switch to Chinese on Chinese OS."
 triggers:
   - "clinical trial sample size"
   - "样本量计算"
@@ -57,7 +57,7 @@ permissions:
 
 ## Purpose / 技能目的
 
-**English / 中文**: This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. Powered by R and 20+ professional R packages (rpact, gsDesign, TrialSize, PowerTOST, etc.), users can perform 37 complex calculations through natural language prompts — English by default, auto-Chinese on Chinese-OS (locale zh/CN). It generates R code locally and, by default, runs in a SAFE PREVIEW mode (code shown, not executed); use `--yes` to explicitly execute and compute. Reproducible code is available on request: R code when R is available, Python (statsmodels/scipy) code when R is not. An optional `--run-install` can fetch R packages from CRAN (network, opt-in). / 本技能为临床试验从业人员提供一整套简单易用的样本量与检验效能计算工具。后台以 R 软件及 rpact/gsDesign/TrialSize/PowerTOST 等 20+ R 工具包为依托，用户只需使用自然语言对话方式的提示词，即可完成（默认英文输出，OS 中文环境时自动切换中文）37 种复杂专业的样本量与检验效能计算工作。技能在本地生成 R 代码，并默认运行于**安全预览模式**（展示代码、不执行），使用 `--yes` 才显式执行并计算；可复现代码按需提供（无 R 时附 Python 代码）。可选的 `--run-install` 可从 CRAN 联网安装 R 包（联网、须显式触发）。
+This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. Powered by R and 20+ professional R packages (rpact, gsDesign, TrialSize, PowerTOST, etc.), users can perform 37 complex calculations through natural language prompts — English by default, auto-Chinese on Chinese-OS (locale zh/CN). Reproducible R code is available on request. / 本技能为临床试验从业人员提供一整套简单易用的样本量与检验效能计算工具。后台以 R 软件及 rpact/gsDesign/TrialSize/PowerTOST 等 20+ R 工具包为依托，用户只需使用自然语言对话方式的提示词，即可完成（默认英文输出，OS 中文环境时自动切换中文）37 种复杂专业的样本量与检验效能计算工作。可复现代码按需提供（无 R 时附 Python 代码）。
 
 ---
 

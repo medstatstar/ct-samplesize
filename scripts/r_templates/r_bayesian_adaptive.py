@@ -15,6 +15,9 @@ __all__ = [
 ]
 
 R_BAYESIAN = """
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Prior-informed sample size (CLOSED-FORM FREQUENTIST APPROXIMATION).
 # NOTE: This is NOT a full Bayesian computation. The prior (a0) is informational
 # only and is NOT incorporated into the sample-size formula below, which is the
@@ -32,21 +35,24 @@ ss_prior_informed <- function(pC, pT, alpha, power=NULL, n=NULL) {{
 }}
 if ({solve_for_power}) {{
   pwr <- ss_prior_informed(pC={pC}, pT={pT}, alpha={alpha}, n={nobs})
-  cat("\\n========== Prior-informed Sample Size (Power given N) ==========\\n")
-  cat("Method: closed-form frequentist approximation (prior a0 is informational only)\\n")
-  cat("Prior a0 (informational, not used in calc):", {a0}, "\\n")
-  cat("Effective n per group:", {nobs}, "\\n")
-  cat("Achieved power:", pwr, "\\n")
+  cat(t("header.prior_power"), "\\n")
+  cat(t("label.method"), "\\n")
+  cat(t("label.prior_a0"), {a0}, "\\n")
+  cat(t("label.effective_n"), {nobs}, "\\n")
+  cat(t("label.achieved_power"), pwr, "\\n")
 }} else {{
   n_val <- ss_prior_informed(pC={pC}, pT={pT}, alpha={alpha}, power={power})
-  cat("\\n========== Prior-informed Sample Size ==========\\n")
-  cat("Method: closed-form frequentist approximation (prior a0 is informational only)\\n")
-  cat("Prior a0 (informational, not used in calc):", {a0}, "\\n")
-  cat("Effective n per group:", n_val, "\\n")
+  cat(t("header.prior_n"), "\\n")
+  cat(t("label.method"), "\\n")
+  cat(t("label.prior_a0"), {a0}, "\\n")
+  cat(t("label.effective_n"), n_val, "\\n")
 }}
 """
 
 R_MAMS = """
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Multi-Arm Multi-Stage (MAMS) — Bonferroni-adjusted closed form.
 ss_mams <- function(n_arms, delta, alpha, power=NULL, n=NULL) {{
   if (!is.null(power)) {{
@@ -58,23 +64,26 @@ ss_mams <- function(n_arms, delta, alpha, power=NULL, n=NULL) {{
 }}
 if ({solve_for_power}) {{
   pwr <- ss_mams(n_arms={n_arms_mams}, delta={delta_effect}, alpha={alpha}, n={nobs})
-  cat("\\n========== MAMS (Power given N) ==========\\n")
-  cat("N per group:", {nobs}, "\\n")
-  cat("Alpha adjusted (Bonferroni):", round({alpha}/(2*{n_arms_mams}), 5), "\\n")
-  cat("Achieved power:", pwr, "\\n")
+  cat(t("header.mams_power"), "\\n")
+  cat(t("label.n_per_group"), {nobs}, "\\n")
+  cat(t("label.alpha_adjusted"), round({alpha}/(2*{n_arms_mams}), 5), "\\n")
+  cat(t("label.achieved_power"), pwr, "\\n")
 }} else {{
   n_val <- ss_mams(n_arms={n_arms_mams}, delta={delta_effect}, alpha={alpha}, power={power})
-  cat("\\n========== Multi-Arm Multi-Stage (MAMS) ==========\\n")
-  cat("Number of treatment arms:", {n_arms_mams}, "\\n")
-  cat("Number of stages:", {n_stages_mams}, "\\n")
-  cat("Effect size per arm:", {delta_effect}, "\\n")
-  cat("Alpha adjusted (Bonferroni):", round({alpha}/(2*{n_arms_mams}), 5), "\\n")
-  cat("N per group:", n_val, "\\n")
-  cat("(Use rpact::getDesignMAMS for exact calculations with selection rules)\\n")
+  cat(t("header.mams_n"), "\\n")
+  cat(t("label.n_arms_mams"), {n_arms_mams}, "\\n")
+  cat(t("label.n_stages_mams"), {n_stages_mams}, "\\n")
+  cat(t("label.effect_size"), {delta_effect}, "\\n")
+  cat(t("label.alpha_adjusted"), round({alpha}/(2*{n_arms_mams}), 5), "\\n")
+  cat(t("label.n_per_group"), n_val, "\\n")
+  cat(t("label.rpact_note"), "\\n")
 }}
 """
 
 R_HISTORICAL_CONTROLS = """
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Historical control borrowing via MAP prior (RBesT).
 ss_hist_controls <- function(p_control_cur, p_treatment, historical_response,
                              historical_n, a0_borrowing, alpha, power=NULL, n=NULL) {{
@@ -94,22 +103,25 @@ if ({solve_for_power}) {{
   pwr <- ss_hist_controls(p_control_cur={p_control_current}, p_treatment={prob_treatment},
                           historical_response={historical_response}, historical_n={historical_n},
                           a0_borrowing={a0_borrowing}, alpha={alpha}, n={nobs})
-  cat("\\n========== Historical Controls (Power given N) ==========\\n")
-  cat("N with borrowing:", {nobs}, "\\n")
-  cat("Achieved power:", pwr, "\\n")
+  cat(t("header.historical_power"), "\\n")
+  cat(t("label.n_with_borrowing"), {nobs}, "\\n")
+  cat(t("label.achieved_power"), pwr, "\\n")
 }} else {{
   n_val <- ss_hist_controls(p_control_cur={p_control_current}, p_treatment={prob_treatment},
                             historical_response={historical_response}, historical_n={historical_n},
                             a0_borrowing={a0_borrowing}, alpha={alpha}, power={power})
-  cat("\\n========== Historical Controls (MAP Borrowing) ==========\\n")
-  cat("Historical response:", {historical_response}, "/", {historical_n}, "\\n")
-  cat("Current control rate:", {p_control_current}, "\\n")
-  cat("Expected treatment rate:", {prob_treatment}, "\\n")
-  cat("N with borrowing:", n_val, "\\n")
+  cat(t("header.historical_n"), "\\n")
+  cat(t("label.historical_response"), {historical_response}, "/", {historical_n}, "\\n")
+  cat(t("label.current_control_rate"), {p_control_current}, "\\n")
+  cat(t("label.expected_treatment_rate"), {prob_treatment}, "\\n")
+  cat(t("label.n_with_borrowing"), n_val, "\\n")
 }}
 """
 
 R_ADAPTIVE = """
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Adaptive design (SSR) -- closed-form approximation.
 # SSR target sample size ~ fixed-sample n (re-estimation preserves power at ~ fixed n).
 # Population / Combination: no simple closed-form inverse.
@@ -117,10 +129,8 @@ ss_adaptive <- function(n_stages, effect, adaptive_type, alpha, power=NULL, n=NU
   z_a <- qnorm(1 - alpha/2)
   if (adaptive_type == "SSR") {{
     if (!is.null(power)) {{
-      # Forward: target n per group
       return(ceiling(((z_a + qnorm(power))^2 * 2) / effect^2))
     }} else {{
-      # Reverse: power given n per group
       z_b <- effect * sqrt(n/2) - z_a
       return(round(pnorm(z_b), 4))
     }}
@@ -130,33 +140,36 @@ ss_adaptive <- function(n_stages, effect, adaptive_type, alpha, power=NULL, n=NU
 if ({solve_for_power}) {{
   pwr <- ss_adaptive(n_stages={n_stages_adapt}, effect={effect_adaptive},
                      adaptive_type="{adaptive_type}", alpha={alpha}, n={nobs})
-  cat("\\n========== Adaptive Design (Power given N) ==========\\n")
-  cat("Type:", "{adaptive_type}", "\\n")
-  cat("Stages:", {n_stages_adapt}, "\\n")
-  cat("Effect size:", {effect_adaptive}, "\\n")
-  cat("N per group:", {nobs}, "\\n")
+  cat(t("header.adaptive_power"), "\\n")
+  cat(t("label.adaptive_type"), "{adaptive_type}", "\\n")
+  cat(t("label.stages"), {n_stages_adapt}, "\\n")
+  cat(t("label.effect_size"), {effect_adaptive}, "\\n")
+  cat(t("label.n_per_group"), {nobs}, "\\n")
   if (is.na(pwr)) {{
-    cat("Power: use rpact::getSimulationMeans() for this adaptive type.\\n")
+    cat(t("label.use_rpact"), "\\n")
   }} else {{
-    cat("Achieved power (approx):", pwr, "\\n")
+    cat(t("label.achieved_power"), pwr, "\\n")
   }}
 }} else {{
   n_val <- ss_adaptive(n_stages={n_stages_adapt}, effect={effect_adaptive},
                        adaptive_type="{adaptive_type}", alpha={alpha}, power={power})
-  cat("\\n========== Adaptive Design ==========\\n")
-  cat("Type:", "{adaptive_type}", "\\n")
-  cat("Stages:", {n_stages_adapt}, "\\n")
-  cat("Effect size:", {effect_adaptive}, "\\n")
-  cat("Alpha:", {alpha}, "Power:", {power}, "\\n")
+  cat(t("header.adaptive_n"), "\\n")
+  cat(t("label.adaptive_type"), "{adaptive_type}", "\\n")
+  cat(t("label.stages"), {n_stages_adapt}, "\\n")
+  cat(t("label.effect_size"), {effect_adaptive}, "\\n")
+  cat(t("label.alpha"), {alpha}, t("label.power"), {power}, "\\n")
   if (is.na(n_val)) {{
-    cat("Use rpact::getDesignInverseNormal() / getSimulationMeans() for this type.\\n")
+    cat(t("label.use_rpact"), "\\n")
   }} else {{
-    cat("Max N (adaptive SSR, approx):", n_val, "per group\\n")
+    cat(t("label.max_n_ssr"), n_val, t("label.per_group"), "\\n")
   }}
 }}
 """
 
 R_ASSURANCE = """
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Bayesian Assurance (probability of successful trial)
 set.seed(42)
 alpha_val <- {alpha}; power_val <- {power}
@@ -180,17 +193,20 @@ for (i in 1:n_sim) {{
   }}
 }}
 assurance <- success_count / n_sim
-cat("\\n========== Bayesian Assurance ==========\\n")
-cat("Treatment prior: Beta(", shape1_trt, ",", shape2_trt, ")\\n")
-cat("Control prior: Beta(", shape1_ctrl, ",", shape2_ctrl, ")\\n")
-cat("N per group:", n_per_group, "\\n")
-cat("Success margin:", margin, "\\n")
-cat("Number of simulations:", n_sim, "\\n")
-cat("Assurance (P(success)):", round(assurance * 100, 1), "%\\n")
-cat("\\nNote: Search multiple N values to find target assurance (e.g., 80%).\\n")
+cat(t("header.bayesian_assurance"), "\\n")
+cat(t("label.treatment_prior"), shape1_trt, ",", shape2_trt, ")\\n")
+cat(t("label.control_prior"), shape1_ctrl, ",", shape2_ctrl, ")\\n")
+cat(t("label.n_per_group_assurance"), n_per_group, "\\n")
+cat(t("label.success_margin"), margin, "\\n")
+cat(t("label.n_simulations"), n_sim, "\\n")
+cat(t("label.assurance"), round(assurance * 100, 1), "%\\n")
+cat(t("label.assurance_note"), "\\n")
 """
 
 R_CONDITIONAL_POWER = """
+# Source i18n translations
+source(file.path("{scriptdir}", "i18n.R"))
+
 # Conditional Power & Sample Size Re-estimation (SSR) - analytic closed-form
 set.seed(42)
 alpha_val <- {alpha}; power_val <- {power}
@@ -206,16 +222,16 @@ cp <- 1 - pnorm((z_crit - sqrt(timing) * Z_obs - sqrt(1 - timing) * mu_future) /
 if (observed_effect > 0) {{
   ssr_factor <- (planned_effect / observed_effect)^2
   n_reestimated <- ceiling({n_planned} * ssr_factor)
-  cat("\\n========== Conditional Power / SSR ==========\\n")
-  cat("Planned effect:", planned_effect, "\\n")
-  cat("Observed effect at interim:", round(observed_effect, 3), "\\n")
-  cat("Interim timing:", timing * 100, "%\\n")
-  cat("Conditional power (H1):", round(cp * 100, 1), "%\\n")
-  cat("Planned N:", {n_planned}, "\\n")
-  cat("Re-estimated N:", n_reestimated, "\\n")
-  cat("SSR increase:", round((ssr_factor - 1)*100, 1), "%\\n")
+  cat(t("header.conditional_power"), "\\n")
+  cat(t("label.planned_effect"), planned_effect, "\\n")
+  cat(t("label.observed_effect"), round(observed_effect, 3), "\\n")
+  cat(t("label.interim_timing"), timing * 100, "%\\n")
+  cat(t("label.conditional_power_label"), round(cp * 100, 1), "%\\n")
+  cat(t("label.planned_n"), {n_planned}, "\\n")
+  cat(t("label.reestimated_n"), n_reestimated, "\\n")
+  cat(t("label.ssr_increase"), round((ssr_factor - 1)*100, 1), "%\\n")
 }} else {{
-  cat("\\nWarning: Observed effect is zero or negative - SSR not recommended.\\n")
-  cat("Conditional power: N/A (effect <= 0)\\n")
+  cat(t("label.ssr_warning"), "\\n")
+  cat(t("label.cp_na"), "\\n")
 }}
 """

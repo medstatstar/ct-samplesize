@@ -40,6 +40,8 @@ import argparse
 import numpy as np
 from scipy.stats import norm
 
+from i18n import t
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Alpha / beta spending functions  /  alpha、beta 消耗函数
@@ -460,7 +462,7 @@ def visualize(result, out_path):
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except Exception as e:   # noqa: BLE001
-        return "[WARN] matplotlib unavailable, skipped visualization: %s" % e
+        return t("error.matplotlib_unavailable", msg=e)
 
     design = result.get("design")
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -495,7 +497,7 @@ def visualize(result, out_path):
     fig.tight_layout()
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
-    return "PNG saved to: %s" % out_path
+    return t("info.png_saved", path=out_path)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -539,7 +541,7 @@ def run(config):
 
 
 def _fmt_result(res):
-    lines = ["=" * 60, "ADAPTIVE TRIAL SIMULATION / 自适应试验仿真", "=" * 60]
+    lines = ["=" * 60, t("header.adaptive_sim"), "=" * 60]
     lines.append(json.dumps(res, indent=2, ensure_ascii=False))
     lines.append("=" * 60)
     return "\n".join(lines)
@@ -620,7 +622,7 @@ def main(argv=None):
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:
             json.dump(res, f, indent=2, ensure_ascii=False)
-        print("Result JSON saved to: %s" % args.output)
+        print(t("info.result_saved", path=args.output))
 
     if args.visualize:
         import os
