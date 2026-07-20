@@ -33,6 +33,6 @@ If judged "Chinese environment", generate prompts in Chinese automatically; othe
 ## Doc language convention (for maintainers) / 文档语言约定（面向维护者）
 
 - `README.md`: English only (keep the top EN/CN switch menu). / 纯英文（顶部保留中英文切换菜单）。
-- `README_ZH.md`: Chinese only. / 纯中文。
+- `README_zh-CN.md`: Chinese only. / 纯中文。
 - `SKILL.md` / `AGENTS.md` / `report_template.md` / `cli_examples.md` etc.: EN/ZH bilingual, keep bilingual titles and bilingual menus. / 英/中双语共存，标题双语、菜单双语保留。
 - When editing docs, **existing Chinese content (bilingual titles / bilingual menus / Chinese reference tables) must be kept, never deleted**. / 编辑文档时，**已有中文内容（标题双语 / 菜单双语 / 中文对照表）一律保留，不删除**。

@@ -230,7 +230,7 @@ python scripts/samplesize_power.py --test ttest_ind --power_seq "0.6:0.05:0.95" 
 ct-samplesize/
 ├── SKILL.md              ← 技能定义（默认英文，OS 中文环境自动切换中文）
 ├── README.md             ← 英文版说明
-├── README_ZH.md          ← 中文版说明（当前）
+├── README_zh-CN.md          ← 中文版说明（当前）
 ├── AGENTS.md             ← 核心执行规则（默认英文，OS 中文环境自动切换中文）
 ├── assets/
 │   └── icon.svg          ← 技能图标 (104×104)

@@ -1,6 +1,6 @@
 # ct-samplesize
 
-[🇨🇳 中文 (Chinese)](./README_ZH.md) | [🇺🇸 English (Current)](#)
+[🇨🇳 中文 (Chinese)](./README_zh-CN.md) | [🇺🇸 English (Current)](#)
 
 > **Easy-to-use Clinical Sample Size & Power Calculator for Clinical Researchers**
 >
@@ -237,7 +237,7 @@ and `survival_exact` use fixed-design / Schoenfeld approximations (noted in outp
 ct-samplesize/
 ├── SKILL.md              ← Skill definition (English by default, auto-Chinese on Chinese OS)
 ├── README.md             ← This file (English)
-├── README_ZH.md          ← Chinese version
+├── README_zh-CN.md          ← Chinese version
 ├── AGENTS.md             ← Core execution rules (English by default, auto-Chinese on Chinese OS)
 ├── assets/
 │   └── icon.svg          ← Skill icon (104×104)
