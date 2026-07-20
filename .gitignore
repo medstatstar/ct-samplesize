@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# WorkBuddy internal
+.workbuddy/
+.learnings/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Test temp
+*.tmp
+*.bak
