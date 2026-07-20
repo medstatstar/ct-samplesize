@@ -45,6 +45,16 @@ def _qt(key, **kwargs):
     return f'"{s}"'
 
 
+def _r_cat(*args):
+    """Build an R cat() call string from arguments.
+
+    Moves _qt() calls out of f-string expression context to avoid a reported
+    parser edge-case on Anaconda Python 3.13.9 where a function-call expression
+    sharing a line with a literal backslash silently fails to evaluate.
+    """
+    return "cat(" + ", ".join(str(a) for a in args) + ")"
+
+
 def find_rscript():
     """Locate Rscript executable."""
     env_path = os.environ.get("RSCRIPT_PATH")
@@ -871,20 +881,20 @@ def main():
             print(t("error.auc1_or_effect_required")); sys.exit(1)
         auc1 = args.auc1 or min(auc0 + args.effect, 0.99)
         if solve_for_power:
-            r_code = R_ROC + f"""
-cat({_qt("r_header.roc_power")})
-cat({_qt("label.h0_auc")}, {auc0}, {_qt("label.h1_auc")}, {auc1}, "\\n")
-cat({_qt("label.alpha")}, {args.alpha}, "\\n")
-cat({_qt("label.sample_size")}, {args.nobs}, "\\n")
-cat({_qt("label.achieved_power")}, ss_roc(auc0={auc0}, auc1={auc1}, alpha={args.alpha}, n={args.nobs}), "\\n")
-"""
+            _lines = []
+            _lines.append(_r_cat(_qt("r_header.roc_power")))
+            _lines.append(_r_cat(_qt("label.h0_auc"), auc0, _qt("label.h1_auc"), auc1, "\\n"))
+            _lines.append(_r_cat(_qt("label.alpha"), args.alpha, "\\n"))
+            _lines.append(_r_cat(_qt("label.sample_size"), args.nobs, "\\n"))
+            _lines.append(_r_cat(_qt("label.achieved_power"), ss_roc(auc0=auc0, auc1=auc1, alpha=args.alpha, n=args.nobs), "\\n"))
+            r_code = R_ROC + "\n".join(_lines) + "\n"
         else:
-            r_code = R_ROC + f"""
-cat({_qt("r_header.roc_n")})
-cat({_qt("label.h0_auc")}, {auc0}, {_qt("label.h1_auc")}, {auc1}, "\\n")
-cat({_qt("label.alpha")}, {args.alpha}, {_qt("label.power")}, {args.power}, "\\n")
-cat({_qt("label.sample_size")}, ss_roc(auc0={auc0}, auc1={auc1}, alpha={args.alpha}, power={args.power}), "\\n")
-"""
+            _lines = []
+            _lines.append(_r_cat(_qt("r_header.roc_n")))
+            _lines.append(_r_cat(_qt("label.h0_auc"), auc0, _qt("label.h1_auc"), auc1, "\\n"))
+            _lines.append(_r_cat(_qt("label.alpha"), args.alpha, _qt("label.power"), args.power, "\\n"))
+            _lines.append(_r_cat(_qt("label.sample_size"), ss_roc(auc0=auc0, auc1=auc1, alpha=args.alpha, power=args.power), "\\n"))
+            r_code = R_ROC + "\n".join(_lines) + "\n"
 
     elif args.test == "poisson":
         if solve_for_power:
