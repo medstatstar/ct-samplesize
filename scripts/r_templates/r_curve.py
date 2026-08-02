@@ -157,7 +157,7 @@ CURVE_SOLVERS = {
 }
 
 _CURVE_POWER_SINGLE = r"""\
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 __PARAMS__
 power_given_n <- function(n) { __POWER_FN__ }
 n_seq <- __SEQ__
@@ -175,7 +175,7 @@ cat(t("label.png_saved"), '___OUT__', '\n')
 """
 
 _CURVE_POWER_MULTI = r"""\
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 __PARAMS__
 effects <- __EFFECTS__
 __EFFECT_VAR__ <- effects[1]
@@ -206,7 +206,7 @@ cat(t("label.png_saved"), '___OUT__', '\n')
 """
 
 _CURVE_N_SINGLE = r"""\
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 __PARAMS__
 n_given_power <- function(p) { __NFN__ }
 pw_seq <- __SEQ__
@@ -224,7 +224,7 @@ cat(t("label.png_saved"), '___OUT__', '\n')
 """
 
 _CURVE_N_MULTI = r"""\
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 __PARAMS__
 effects <- __EFFECTS__
 __EFFECT_VAR__ <- effects[1]

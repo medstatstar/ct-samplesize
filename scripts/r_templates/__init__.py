@@ -10,6 +10,8 @@ from .r_equivalence import *
 from .r_design_special import *
 from .r_mixed_model import *
 from .r_curve import *
+from .r_survival_ext import *
+from .r_gsd import *
 
 __all__ = [
     "R_T_TESTS",
@@ -38,9 +40,22 @@ __all__ = [
     "R_MUST_WIN",
     "R_DUNNETT",
     "R_MEDIATION",
-    "R_GROUP_SEQUENTIAL",
+    "R_GSD_MEAN",
+    "R_GSD_PROPORTION",
+    "R_GSD_SURVIVAL",
+    "R_GSD_HAZARD",
+    "R_GSD_POISSON",
+    "R_GSD_SURVIVAL_SIM",
+    "R_GSD_HAZARD_SIM",
     "R_ADAPTIVE",
     "R_MIXED_MODEL",
+    "R_SURVIVAL_EQUIVALENCE",
+    "R_SURVIVAL_SUPERIORITY",
+    "R_COX_COVARIATE",
+    "R_SURVIVAL_ONESAMPLE",
+    "R_COMPETING_RISKS",
+    "R_RECURRENT_EVENTS",
+    "R_SURVIVAL_HISTORICAL",
     "CURVE_SOLVERS",
     "_CURVE_POWER_SINGLE",
     "_CURVE_POWER_MULTI",

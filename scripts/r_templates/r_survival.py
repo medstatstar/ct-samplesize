@@ -10,7 +10,7 @@ R_NI_SURVIVAL = """
 library(powerSurvEpi)
 
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Non-inferiority survival design. Forward via powerAnsi (fallback closed-form log-rank);
 # reverse uses approx log-rank power formula.
@@ -68,7 +68,7 @@ R_SURVIVAL_EXACT = """
 library(rpact)
 
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Exact survival design via rpact. Forward getSampleSizeSurvival (fallback Schoenfeld);
 # reverse getPowerSurvival (fallback Schoenfeld log-rank).

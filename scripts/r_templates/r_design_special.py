@@ -7,12 +7,11 @@ __all__ = [
     "R_MUST_WIN",
     "R_DUNNETT",
     "R_MEDIATION",
-    "R_GROUP_SEQUENTIAL",
 ]
 
 R_DOSE_ESCALATION = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Dose escalation (3+3 / CRM): heuristic design, not a power-based sample size.
 ss_dose <- function(n_doses, target_dlt) {{
@@ -36,7 +35,7 @@ if ({solve_for_power}) {{
 
 R_WIN_RATIO = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Win-Ratio (composite endpoint): closed-form log(WR) normal approximation.
 ss_win_ratio <- function(win_ratio_theta, se_approx, alpha, power=NULL, n=NULL) {{
@@ -71,7 +70,7 @@ if ({solve_for_power}) {{
 
 R_MUST_WIN = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Must-Win / Co-Primary Endpoints (all must be significant).
 ss_must_win <- function(n_endpoints, corr, effect, alpha, power=NULL, n=NULL) {{
@@ -111,7 +110,7 @@ if ({solve_for_power}) {{
 
 R_DUNNETT = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Dunnett comparisons (multiple treatments vs single control).
 ss_dunnett <- function(k, n_control, eff, alpha, power=NULL, n=NULL) {{
@@ -148,7 +147,7 @@ if ({solve_for_power}) {{
 
 R_MEDIATION = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Mediation effects (Sobel-test closed-form approximation).
 ss_mediation <- function(a, b, sigma2_m, sigma2_y, alpha, power=NULL, n=NULL) {{
@@ -182,41 +181,5 @@ if ({solve_for_power}) {{
 }}
 """
 
-R_GROUP_SEQUENTIAL = """
-# Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
-
-# Group Sequential Design (O'Brien-Fleming / Pocock) -- closed-form approximation.
-# OF: final critical value ~ z_{{1-alpha/2}} (sample size ~ fixed). Pocock: mild inflation.
-ss_group_seq <- function(n_interim, effect_gs, spending, alpha, power=NULL, n=NULL) {{
-  k <- n_interim + 1
-  z_a <- qnorm(1 - alpha/2)
-  if (!is.null(power)) {{
-    n_fixed <- ((z_a + qnorm(power))^2 * 2) / effect_gs^2
-    infl <- if (spending == "Pocock") (1 + 0.03*(k-1)) else 1.0
-    return(ceiling(n_fixed * infl))
-  }} else {{
-    z_b <- effect_gs * sqrt(n/2) - z_a
-    return(round(pnorm(z_b), 4))
-  }}
-}}
-if ({solve_for_power}) {{
-  pwr <- ss_group_seq(n_interim={n_interim}, effect_gs={effect_gs},
-                      spending="{spending_func}", alpha={alpha}, n={nobs})
-  cat(t("header.group_sequential_power"), "\\n")
-  cat(t("label.n_looks"), {n_interim} + 1, "(", {n_interim}, t("label.interim"), "\\n")
-  cat(t("label.spending_function"), "{spending_func}", "\\n")
-  cat(t("label.effect_size"), {effect_gs}, "\\n")
-  cat(t("label.n_per_group"), {nobs}, "\\n")
-  cat(t("label.achieved_power"), pwr, "\\n")
-}} else {{
-  n_val <- ss_group_seq(n_interim={n_interim}, effect_gs={effect_gs},
-                        spending="{spending_func}", alpha={alpha}, power={power})
-  cat(t("header.group_sequential_n"), "\\n")
-  cat(t("label.n_looks"), {n_interim} + 1, "(", {n_interim}, t("label.interim"), "\\n")
-  cat(t("label.spending_function"), "{spending_func}", "\\n")
-  cat(t("label.effect_size"), {effect_gs}, "\\n")
-  cat(t("label.alpha"), {alpha}, t("label.power"), {power}, "\\n")
-  cat(t("label.n_per_group_final"), n_val, "\\n")
-}}
-"""
+# NOTE: R_GROUP_SEQUENTIAL was upgraded to a rpact-backed design and moved to
+# r_gsd.py (R_GSD_MEAN) in v3.6.0. It is no longer defined here.

@@ -2,292 +2,215 @@
 
 [🇨🇳 中文 (Chinese)](./README_zh-CN.md) | [🇺🇸 English (Current)](#)
 
+<div align="center">
+  <img src="assets/icon.svg" alt="ct-samplesize logo" width="120" height="120">
+</div>
+
 > **Easy-to-use Clinical Sample Size & Power Calculator for Clinical Researchers**
 >
-> This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. Powered by R and 20+ professional R packages (rpact, gsDesign, TrialSize, PowerTOST, etc.), users can perform 37 complex calculations through natural language prompts — English by default, auto-switches to Chinese on Chinese-OS (locale zh/CN). **the generated R code is shown in SAFE PREVIEW (not executed unless you pass `--yes`)**, and can be provided in full on request for verification, submission, or re-execution.
+> You don't need to code or memorize commands — just describe your trial design in **plain language inside a chat**, and the skill performs **49** professional sample-size & power calculations for you. Powered by R and 20+ professional R packages (rpact, gsDesign, TrialSize, PowerTOST, etc.), it returns results in Chinese or English depending on your OS language setting (you can force-switch via a prompt at any time). The generated R code is shown in **SAFE PREVIEW** (not executed) by default — it only computes once you confirm.
+
+---
+
+## 1. How to Use It in a Chat (the Core)
+
+ct-samplesize is a **conversational skill**: you simply tell the assistant your trial design in natural language — no commands, no parameter names to remember. As a WorkBuddy skill it **auto-loads with no extra installation**.
+
+Below are 5 real conversational examples ordered from simple to advanced. Each shows **"You say"** and a sketch of **"The assistant replies"**, plus how to get the actual number.
+
+### Example 1 · Two-means comparison (most common)
+**You say:**
+> Calculate sample size for two independent means, effect size d=0.5, power 80%, two-sided α=0.05
+
+**Assistant replies (sketch):**
+> Here is the sample-size calculation for a two-sample t-test (effect size d=0.5, power=0.8, two-sided α=0.05).
+> You need about **64 per group** (128 total).
+> (Safe preview by default: the R code is shown below but not executed.)
+
+**📌 Get the actual number:** By default only the code is shown, not computed. Add **"please compute directly"** or **"execute with --yes"** and the assistant will really run it and give the number (see Section 4, "Safe Preview").
+
+### Example 2 · Two-group proportion
+**You say:**
+> Control response 20%, treatment 35%, two-group proportion chi-square, α=0.05 two-sided, power=0.8
+
+### Example 3 · Survival endpoint with interim
+**You say:**
+> Design a survival trial with 1 interim analysis, HR=0.75, 1:1 randomization, power 80%
+
+### Example 4 · Non-inferiority
+**You say:**
+> Non-inferiority design, margin=0.1, control rate 85%, treatment 80%, power 80%
+
+### Example 5 · Bioequivalence (BE)
+**You say:**
+> Bioequivalence sample size, theta0=0.95, CV=25%, 2x2 crossover
+
+### Example 6 · Test selection / design-family choice (popup menu)
+**You say:**
+> Compare two antihypertensives on office systolic BP, parallel-group, power 90%. But I haven't decided superiority vs non-inferiority, and I'm not sure whether to add an interim analysis.
+
+**Assistant replies (sketch):**
+> The endpoint (continuous · office SBP) and design (parallel) are clear. Two choices remain — here's a menu to help you decide:
 >
-> **⚠️ Safe by default:** The skill runs in **SAFE PREVIEW** — generated R code is **shown but NOT executed** by default. Use `--yes` to execute and compute; `--show-code` reveals the code, `--dry-run` previews only.
+> **① What do you want to show?**
+> - (a) Superiority: new drug lowers BP more than control → `ttest_ind` (superiority)
+> - (b) Non-inferiority: not worse than control, margin up to you → `non_inferiority`
+>
+> **② Add an interim analysis?**
+> - (a) No, fixed sample size → plain t-test
+> - (b) Yes, 1–2 interims with early stopping → `group_sequential` family
+>
+> **③ Can't decide?** → Say "explain the differences between these choices in detail" and the assistant will first walk through the clinical and statistical meaning of superiority vs non-inferiority and with/without interim, then let you decide.
+>
+> Pick your preferences for ①–②, or choose ③ to hear the explanation, and I'll lock the test and move to parameter completion / computation.
+
+**📌 Note:** When you've **named the test type but are stuck on "which option / design family"** (e.g. superiority vs non-inferiority, with/without interim), the assistant **pops a routing menu** to confirm step by step — instead of deciding for you or dumping the full 49-test menu. The menu also offers an "explain the differences" option — when you're unsure, it explains before you decide. The full classification tree is in [`references/menu.md`](references/menu.md).
+
+### Example 7 · Not sure which test (vague request)
+**You say:**
+> I want a sample-size calculation but I'm not sure which test to use — help me figure it out
+
+**Assistant replies (sketch):**
+> Sure — let's pin down your trial design first; a few key questions will locate the right test:
+> 1. What type is your **primary endpoint**? — continuous (e.g. BP difference) / binary (e.g. response rate) / time-to-event (e.g. OS) / other?
+> 2. Is it a **parallel-group** or **crossover/paired** design?
+> 3. Do you want to show **superiority**, **non-inferiority**, or **equivalence**?
+>
+> (After you answer, the assistant keeps probing until the test is locked, then computes — no 49-test menu dumped on you in the meantime.)
+
+**📌 Note:** When you say "not sure which test", the assistant uses **branch-by-branch probing** to clarify your needs, instead of dumping the 49-test menu. Once clarified, it moves to computation.
+
+> 💡 **Tip:** Most tests need only three things — effect size (or rate / HR) + power + α. Anything you omit (e.g. two-sided α=0.05, 1:1 randomization, follow-up) is filled with sensible defaults. It's fine to be incomplete — the assistant will tell you what's missing.
 
 ---
 
-## Installation
+## 2. What You Can Compute — 49 Test Scenarios
 
-No extra installation needed. Auto-loads as a WorkBuddy / OpenClaw skill.
+Tests are grouped by **endpoint type** (6 categories below). Each row gives the typical **clinical scenario** and a line you can **copy verbatim** under "Try saying". The same test may *also* be reached from a **design-family cross-index** (group-sequential, adaptive, equivalence / non-inferiority, Bayesian, dose-escalation, MAMS, historical control, vaccine, win-statistics …) — see [`references/menu.md`](references/menu.md).
 
-### R Packages (On-Demand)
+> The underlying R packages (rpact / gsDesign / TrialSize / PowerTOST …) are listed in Section 5 "Advanced Reference"; ordinary users don't need to care.
 
-R packages are **not pre-installed**. The skill prompts you to install only when needed:
+### ① Continuous / 连续型终点
+| Test | Clinical Scenario | Try saying in chat |
+|:---|:---|:---|
+| `ttest_ind` | Two-means comparison (parallel) | "Two-group mean comparison, d=0.5, power 0.8" |
+| `ttest_paired` | Paired t / 2×2 crossover | "Paired design sample size, effect 0.5" |
+| `ttest_one` | One-sample vs known mean | "One-sample test, difference from known mean 0.5" |
+| `anova` | Multi-group (k groups) | "3-group ANOVA, effect size f=0.25" |
+| `equivalence` | Equivalence (means) | "Mean equivalence, margin=2, effect 3" |
+| `mixed_model` | Repeated measures / longitudinal | "Repeated-measures sample size, effect 0.5" |
 
-```r
-# When you see: Warning: 'TrialSize' package not found.
-install.packages("TrialSize")
-```
+### ② Binary / Proportions / 二分类终点
+| Test | Clinical Scenario | Try saying in chat |
+|:---|:---|:---|
+| `proportion_two` | Two-group rate (chi-square) | "Control 20% treatment 35%, two-group rate comparison" |
+| `proportion_one` | Single-group rate | "Single-group rate test, expected 30%" |
+| `proportion_paired` | Paired rate (McNemar) | "Paired rate comparison McNemar" |
+| `odds_ratio` | Odds ratio | "Sample size for OR=2" |
+| `risk_ratio` | Risk ratio (RR) | "Sample size for RR=1.5" |
+| `non_inferiority` | Non-inferiority (rate) | "Non-inferiority, margin=0.1, control 85% treatment 80%" |
+| `superiority_margin` | Superiority by margin | "Superiority test, margin 0.05" |
+| `be_tost` | Bioequivalence (TOST) | "BE sample size, theta0=0.95, CV=25%" |
+| `vaccine_efficacy` | Vaccine efficacy | "Vaccine efficacy, control VE=0.02 treatment 0.005" |
+| `gsd_proportion` | Group-sequential two proportions | "Group-sequential two proportions, 1 interim, p1=0.7 p2=0.5" |
 
-**One-click install all:**
-```bash
-python scripts/samplesize_power.py --install-all-packages
-```
+### ③ Count / Rates / 计数·率终点
+| Test | Clinical Scenario | Try saying in chat |
+|:---|:---|:---|
+| `poisson` | Poisson rate | "Two-group rate comparison, λ1=0.05 λ2=0.03" |
+| `recurrent_events` | Recurrent events (Andersen-Gill) | "Recurrent-event sample size, control rate 1.0" |
+| `gsd_poisson` | Group-sequential Poisson | "Group-sequential Poisson rate" |
 
-**Or in R:**
-```r
-install.packages(c("TrialSize","pwr","rpact","gsDesign","PowerTOST","simr","lme4","pROC","powerSurvEpi","survival"))
-```
+### ④ Survival / Time-to-event / 生存·时间-事件终点
+| Test | Clinical Scenario | Try saying in chat |
+|:---|:---|:---|
+| `survival` | Survival (simplified logrank) | "Survival analysis, HR=0.75, power 0.85" |
+| `survival_exact` | Survival (exact) | "Exact survival sample size, HR=0.75, accrual 12mo" |
+| `ni_survival` | Non-inferiority survival | "Non-inferiority survival, HR margin=1.25" |
+| `survival_equivalence` | Survival equivalence (TOST / log-HR) | "Survival equivalence, margin=1.25" |
+| `survival_superiority` | Survival superiority w/ margin | "Survival superiority, margin 0.8" |
+| `cox_covariate` | Cox regression w/ covariate R² | "Cox regression sample size, HR=2, R²=0.3" |
+| `survival_one_sample` | One-sample exponential survival | "One-arm survival, median 12 vs 18" |
+| `competing_risks` | Competing risks (cum. incidence) | "Competing-risk sample size, CIF 0.2 vs 0.1" |
+| `survival_historical` | Historical-control logrank | "Historical-control survival, historical median 12 new 18" |
+| `gsd_survival` | Group-sequential logrank | "Group-sequential survival, 1 interim, HR=0.7" |
+| `gsd_hazard` | Group-sequential HR | "Group-sequential HR, HR=0.7" |
+| `gsd_survival_sim` | Group-sequential logrank — Monte-Carlo | "Group-sequential survival simulation, 2 interims" |
+| `gsd_hazard_sim` | Group-sequential HR — Monte-Carlo | "Group-sequential HR simulation" |
 
-**No R package needed for:** `poisson`, `cluster`, `bland_altman`, `vaccine_efficacy`, `bayesian`, `dose_escalation`, `survival` (Schoenfeld only), `must_win`, `multiple_endpoints`, `assurance`, `dunnett`, `mediation`, `win_ratio`
+### ⑤ Diagnostic / Method comparison / 诊断·方法比较
+| Test | Clinical Scenario | Try saying in chat |
+|:---|:---|:---|
+| `roc` | ROC curve / diagnostic trial | "ROC curve sample size, AUC 0.5→0.75" |
+| `bland_altman` | Bland-Altman method comparison | "Bland-Altman sample size, SDdiff=5, margin 2.5" |
 
----
-
-## Quick Start
-
-```
-"Control 20%, treatment 35%, chi-square test, two-sided α=0.05, power=0.8"
-"Survival trial with 1 interim analysis, HR=0.75, 1:1 randomization"
-"Non-inferiority trial, margin=0.1, control rate=85%, treatment rate=80%"
-```
-
----
-
-## Supported Test Types (37)
-
-| Category | Test Type | Clinical Scenario | R Package(s) |
-|:---|:---|:---|:---|
-| **Continuous** | `ttest_ind` | Two-means comparison (parallel) | `pwr`, `TrialSize` |
-| | `ttest_paired` | Paired t / 2×2 crossover | `pwr`, `TrialSize` |
-| | `anova` | Multi-group (k groups) | `pwr`, `TrialSize` |
-| | `equivalence` | Equivalence (means) | `TrialSize` |
-| | `mixed_model` | Repeated measures / longitudinal | `simr` |
-| **Binary** | `proportion_one` | Single-group rate | `pwr` |
-| | `proportion_two` | Two-group rate (chi-square) | `pwr`, `TrialSize` |
-| | `non_inferiority` | Non-inferiority (rate) | `TrialSize` |
-| | `be_tost` | Bioequivalence (TOST) | `PowerTOST` |
-| | `superiority_margin` | Superiority by margin | `TrialSize` |
-| **Count/Rate** | `poisson` | Poisson rate / recurrent events | Wald test |
-| | `vaccine_efficacy` | Vaccine efficacy | Halloran formula |
-| **Time-to-Event** | `survival` | Survival (simplified) | Schoenfeld formula |
-| | `survival_exact` | Survival (exact) | `rpact` |
-| | `ni_survival` | Non-inferiority survival | `powerSurvEpi` |
-| **Diagnostic** | `roc` | ROC curve / diagnostic trial | `pROC` |
-| | `bland_altman` | Bland-Altman method comparison | Lu et al. formula |
-| **Special Designs** | `cluster` | Cluster-randomized | DEFF formula |
-| | `multiple_endpoints` | Multiple/compound endpoints | Correlation method |
-| | `bayesian` | Bayesian design | `BayesCTDesign` |
-| | `dose_escalation` | Dose escalation (Phase I) | `escalation` |
-| | `group_sequential` | Group sequential / interim | `gsDesign`, `rpact` |
-| | `adaptive` | Adaptive design | `rpact` |
-| | `mams` | Multi-arm multi-stage (MAMS) | `rpact` |
-| **Advanced** | `win_ratio` | Win-Ratio composite endpoint | `BuyseTest` simulation |
-| | `must_win` | Must-Win / co-primary endpoints | Correlation method |
-| | `historical_controls` | Historical control borrowing | `RBesT` MAP prior |
-| | `conditional_power` | Conditional power / SSR | `rpact` |
-| | `assurance` | Bayesian assurance | Monte Carlo |
-| | `dunnett` | Dunnett comparisons | Custom formula |
-| | `mediation` | Mediation effects | `powerMediation` |
-
----
-
-## CLI Examples
-
-```bash
-# === Continuous ===
-python scripts/samplesize_power.py --test ttest_ind --effect 0.5 --power 0.8
-python scripts/samplesize_power.py --test ttest_paired --effect 0.5 --power 0.8
-python scripts/samplesize_power.py --test anova --effect 0.25 --k_groups 3 --power 0.8
-python scripts/samplesize_power.py --test equivalence --margin 2.0 --effect 3.0 --power 0.8
-python scripts/samplesize_power.py --test mixed_model --effect 0.5 --nsim 500
-
-# === Binary ===
-python scripts/samplesize_power.py --test proportion_two --p1 0.3 --p2 0.15 --power 0.8
-python scripts/samplesize_power.py --test non_inferiority --margin 0.1 --p1 0.85 --p2 0.80 --power 0.8
-python scripts/samplesize_power.py --test be_tost --theta0 0.95 --cv 0.25 --design "2x2"
-python scripts/samplesize_power.py --test superiority_margin --sup_margin 0.05 --p_control_sup 0.3 --delta_sup 0.15
-
-# === Count ===
-python scripts/samplesize_power.py --test poisson --lambda1 0.05 --lambda2 0.03 --t1 2 --t2 2 --power 0.8
-python scripts/samplesize_power.py --test vaccine_efficacy --ve_control 0.02 --ve_treatment 0.005 --power 0.8
-
-# === Survival ===
-python scripts/samplesize_power.py --test survival --hazard_ratio 0.75 --power 0.85
-python scripts/samplesize_power.py --test survival_exact --hr_exact 0.75 --accrual_exact 12 --followup_exact 0.85
-python scripts/samplesize_power.py --test ni_survival --ni_margin_surv 1.25 --accrual_time 12 --followup_time 12
-
-# === Diagnostic / Method Comparison ===
-python scripts/samplesize_power.py --test roc --auc0 0.5 --auc1 0.75 --power 0.8
-python scripts/samplesize_power.py --test bland_altman --sd_diff 5 --w 2.5
-
-# === Special Designs ===
-python scripts/samplesize_power.py --test cluster --icc 0.05 --m 30 --n_indiv 64
-python scripts/samplesize_power.py --test multiple_endpoints --effect 0.3 --correlation 0.5
-python scripts/samplesize_power.py --test bayesian --prob_control 0.3 --prob_treatment 0.15 --prior_a0 0.5
-python scripts/samplesize_power.py --test dose_escalation --n_doses 5 --target_dlt 0.33
-
-# === Advanced Endpoints (v3.3) ===
-python scripts/samplesize_power.py --test win_ratio --win_ratio_theta 1.5 --n_sim 1000
-python scripts/samplesize_power.py --test must_win --n_endpoints_must 3 --effect_must 0.3 --correlation_must 0.5
-python scripts/samplesize_power.py --test historical_controls --historical_response 15 --historical_n 100 --a0_borrowing 0.5
-python scripts/samplesize_power.py --test mams --n_arms_mams 3 --n_stages_mams 2 --delta_effect 0.3
-python scripts/samplesize_power.py --test conditional_power --timing 0.5 --observed_effect 0.2 --planned_effect 0.3
-python scripts/samplesize_power.py --test assurance --n_assurance 100 --n_sim_assurance 5000
-python scripts/samplesize_power.py --test dunnett --n_groups_dunnett 3 --n_control_dunnett 50 --effect_dunnett 0.4
-python scripts/samplesize_power.py --test mediation --a_path 0.3 --b_path 0.3
-python scripts/samplesize_power.py --test group_sequential --n_interim 1 --effect_gs 0.4
-python scripts/samplesize_power.py --test adaptive --n_stages_adapt 2 --effect_adaptive 0.4
-```
-
-### Reverse Calculation: Power given Sample Size
-
-By default (`--power` or omitted) the tool solves for **n** given a target power.
-Pass `--nobs N` to reverse the direction: solve for **achieved power** given a fixed sample size.
-`--power` and `--nobs` are mutually exclusive.
-
-```bash
-# n=50 per group → achieved power for two-sample t-test
-python scripts/samplesize_power.py --test ttest_ind --effect 0.5 --nobs 50
-
-# n=20 per sequence → achieved power for bioequivalence TOST
-python scripts/samplesize_power.py --test be_tost --nobs 20
-
-# n=100 per group → achieved power for MAMS design
-python scripts/samplesize_power.py --test mams --nobs 100
-```
-
-All 31 test types support this bidirectional solving. Native reverse functions
-(`pwr.*`, `PowerTOST::power.TOST`, `rpact::getPowerMeans/getPowerSurvival`) are used
-where available; analytic inverse formulas cover self-written tests; precision-style
-tests (`bland_altman`) report achievable CI half-width instead of power.
-
-### Curve Mode: Power / Sample-size Curves
-
-Batch-plot curves to visualize the sample-size ↔ power relationship.
-
-- `--n_seq "20,40,200"` → **Power curve** (x = sample size, y = power)
-- `--n_seq "20:20:200"` → same, but auto-expanded start:step:stop
-- `--power_seq "0.6:0.05:0.95"` → **Sample-size curve** (x = power, y = n)
-- `--plot_effects "0.3,0.5,0.8"` → overlay multiple effect-size curves (sensitivity)
-- `--out path.png` → PNG output (defaults to system temp dir)
-
-```bash
-# Power curve with 3 overlaid effect sizes
-python scripts/samplesize_power.py --test ttest_ind --n_seq "20:20:200" --plot_effects "0.3,0.5,0.8" --out power_curve.png
-
-# Sample-size curve across power 0.6–0.95
-python scripts/samplesize_power.py --test ttest_ind --power_seq "0.6:0.05:0.95" --out n_curve.png
-```
-
-Supported for 22 test types (ttest_*, anova, proportion_*, odds_ratio, risk_ratio,
-roc, poisson, non_inferiority, superiority_margin, be_tost, survival, ni_survival,
-mams, dunnett, group_sequential, survival_exact, equivalence, vaccine_efficacy).
-Curves reuse the same validated formulas as single-point solving; `group_sequential`
-and `survival_exact` use fixed-design / Schoenfeld approximations (noted in output).
+### ⑥ Special / Advanced designs / 特殊·高级设计
+| Test | Clinical Scenario | Try saying in chat |
+|:---|:---|:---|
+| `group_sequential` | Group sequential / interim | "Group-sequential design, 2 interims, Pocock" |
+| `adaptive` | Adaptive design | "Adaptive design, 2 stages" |
+| `adaptive_simulate` | Adaptive design — Monte-Carlo | "Adaptive design Monte-Carlo simulation" |
+| `bayesian` | Bayesian design | "Bayesian design, control 0.3 treatment 0.15" |
+| `dose_escalation` | Dose escalation (Phase I) | "Phase I dose escalation, 5 doses, DLT 0.33" |
+| `mams` | Multi-arm multi-stage (MAMS) | "MAMS, 3 arms 2 stages" |
+| `dunnett` | Dunnett multiple comparison | "Dunnett, 3 groups control 50" |
+| `win_ratio` | Win-Ratio composite endpoint | "Win-Ratio sample size, WR=1.5" |
+| `must_win` | Must-Win / co-primary endpoints | "Co-primary endpoints 3, correlation 0.5" |
+| `historical_controls` | Historical control borrowing | "Historical control borrowing, historical response 15/100" |
+| `conditional_power` | Conditional power / SSR | "Conditional power, interim effect 0.2" |
+| `assurance` | Bayesian assurance | "Assurance calculation" |
+| `multiple_endpoints` | Multiple/compound endpoints | "Multiple-endpoint sample size, correlation 0.5" |
+| `mediation` | Mediation effects | "Mediation sample size" |
+| `cluster` | Cluster-randomized | "Cluster randomized, ICC=0.05, 30 per cluster" |
 
 ---
 
-## Core Formulas
+## 3. First-Time FAQ
 
-| Scenario | Formula |
-|:---|:---|
-| Independent t (equal n) | $n_1 = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{d})^2$ |
-| Proportion (arcsin) | $n = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{h})^2$ |
-| Survival (Schoenfeld) | $d = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(\log HR)^2}$ |
-| ROC (Obuchowski) | $n = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{4(\arcsin\sqrt{AUC_1} - \arcsin\sqrt{AUC_0})^2}$ |
-| Cluster DEFF | $DEFF = 1 + (m - 1) \times ICC$ |
-| Bland-Altman | $n = 2(\frac{Z_{1-\alpha/2} \times SD_{diff}}{W})^2$ |
-| Win-Ratio (approx) | $n = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(\ln WR)^2 / SE_{approx}^2}$ |
-| Must-Win inflation | $n = n_{single} \times [1 + (k-1)\rho \times 0.5]$ |
-| MAMS (Bonferroni) | $n = \frac{(Z_{1-\alpha/(2k)} + Z_{1-\beta})^2}{\delta^2}$ |
-| Assurance | $P(\text{success}) = \frac{1}{N}\sum_{i=1}^N I(\text{trial}_i \text{ significant})$ |
+**Q: I only gave effect size and power, no other parameters — will it still compute?**
+A: Yes. Most tests need only three things — effect size (or rate / HR) + power + α. Omitted parts (two-sided α=0.05, 1:1 randomization, follow-up …) are filled with sensible defaults; if something truly required is missing, the assistant will ask.
 
-**Full formulas:** `references/formulas_zh.md` | **Extended functions:** `references/extended_functions.md`
+**Q: Is the n in the result per group or total?**
+A: By default it's **per group**; paired / crossover designs report per-sequence, and survival often reports total events needed. The output always labels this clearly, so no confusion.
 
----
+**Q: It only shows code, not the number. How do I get the actual result?**
+A: Just add **"please compute directly"** or **"execute with --yes"** in the chat — the assistant will really run R and give you the number. This is the default safe design: see the code first, compute once you're sure.
 
-## System Requirements
+**Q: I want the reproducible R code for submission or audit — how do I ask?**
+A: Say **"give me the full R code"**. The code is also shown in safe preview by default, so you can copy, modify, and re-run it yourself.
 
-| Component | Requirement |
-|:----------|:------------|
-| R | ≥ 4.1.0 (≥ 4.1.0 recommended) |
-| Python | ≥ 3.8 + statsmodels ≥ 0.14, numpy ≥ 1.24, scipy ≥ 1.11 |
-| OS | Windows / macOS / Linux |
+**Q: On a Chinese system, is the output in Chinese?**
+A: Yes. By default the output language follows your OS language setting — Chinese on a Chinese-OS, English otherwise. You can force-switch anytime via a prompt (e.g. "用中文回复" / "switch to English").
 
 ---
 
-## Common Errors
+## 4. Safety & Disclaimer
 
-| Error | Fix |
-|:----------|:--------|
-| "Rscript not found" | Install R or specify path |
-| "package not found" | install.packages("xxx") |
-| ImportError: statsmodels | pip install statsmodels |
-| simr timeout | Reduce --nsim or simplify model |
-| BuyseTest convergence | Increase n_sim, check prior specification |
-| rpact error | Update rpact to latest version |
+- **What is Safe Preview:** By default the skill only **generates and shows the R code, but does not execute it** — you can inspect the logic first, then let it run once you're confident. In chat say **"please compute / execute with --yes"** to trigger the real calculation; say **"show code / --show-code"** to see just the code, or **"preview only / --dry-run"** for preview.
+- All computations are local; no data transmission.
+- Outputs are for reference only; validate before regulatory submissions.
 
 ---
 
-## Safety & Disclaimer
+## 5. Advanced Reference (moved to a separate file)
 
-- By default the skill runs in **SAFE PREVIEW**: generated R code is shown but **NOT executed**; `--yes` executes and computes, `--show-code` reveals the code, `--dry-run` previews only
-- All computations are local; no data transmission
-- Outputs for reference only; validate before regulatory submissions
+CLI examples, bidirectional solving, curve mode, core formulas, system requirements, common errors, file structure, and references for developers have been moved to **[ADVANCED.md](ADVANCED.md)**. Ordinary users don't need it; see Sections 1-4 for daily use.
 
 ---
 
-## File Structure
+**Version**: v3.8.0 | **License**: MIT | **Authors**: medstatstar, phoe-zip
 
-```
-ct-samplesize/
-├── SKILL.md              ← Skill definition (English by default, auto-Chinese on Chinese OS)
-├── README.md             ← This file (English)
-├── README_zh-CN.md          ← Chinese version
-├── AGENTS.md             ← Core execution rules (English by default, auto-Chinese on Chinese OS)
-├── assets/
-│   └── icon.svg          ← Skill icon (104×104)
-├── scripts/
-│   └── samplesize_power.py  ← Python calculator + auto R code gen
-└── references/
-    ├── r_packages_zh.md     ← R package reference (20+ pkgs)
-    ├── formulas_zh.md       ← Formula derivations
-    ├── python_usage.md      ← Python quick ref
-    ├── r_usage.md           ← R quick ref
-    ├── effect_size.md       ← Effect size standards (d/f/h + Z table)
-    ├── report_template.md   ← Report template + on-request R code
-    ├── data_format_guide.md ← 31 test types data format + examples
-    └── examples.md          ← 3 full walkthroughs (proportion/GS/noninferiority)
-```
+For feature requests, bug reports, or other feedback, please contact the author directly at medstatstar@gmail.com (Wintone Zhang / 张文彤).
 
 ---
 
-## Core Features
+## Confidentiality Notice
 
-1. **Smart Env Detection**: Auto-detect R installation on every trigger
-2. **Dual-path**: Python (simple) + R (exact & complex)
-3. **R Code in SAFE PREVIEW**: Shown by default but not executed; `--yes` executes, full code provided on request
-4. **Comprehensive**: 20+ R packages, full formula derivations, 3 complete examples
-5. **Natural Language**: Just describe your trial in plain language
-6. **Language**: English by default, auto-switches to Chinese on Chinese-OS (locale zh/CN)
-
----
-
-## References
-
-- rpact: https://www.rpact.org/
-- gsDesign: https://keaven.github.io/gsDesign/
-- TrialSize: https://cran.r-project.org/web/packages/TrialSize/
-- PowerTOST: https://cran.r-project.org/web/packages/PowerTOST/
-- simr: https://github.com/pitakakariki/simr/
-- powerSurvEpi: https://cran.r-project.org/web/packages/powerSurvEpi/
-- BayesCTDesign: https://cran.r-project.org/web/packages/BayesCTDesign/
-- BuyseTest: https://cran.r-project.org/web/packages/BuyseTest/
-- RBesT: https://cran.r-project.org/web/packages/RBesT/
-- MCPAN: https://cran.r-project.org/web/packages/MCPAN/
-- powerMediation: https://cran.r-project.org/web/packages/powerMediation/
-- CRAN ClinicalTrials View: https://cran.r-project.org/web/views/ClinicalTrials.html
-
----
-
-## Source Code
-
-https://github.com/medstatstar/ct-samplesize
-
----
-
-**Version**: v3.3.0 | **License**: MIT | **Authors**: medstatstar, phoe-zip
+> The CT series consists of 16+ specialized domain skills, organized into four tiers — A, B, C, D — by "confidential-data-exfiltration risk + whether external retrieval is needed", providing full coverage of the entire new-drug clinical trial (Clinical Trial) lifecycle.
+>
+> - **Tier A / B (non-confidential)**: run fully locally using only ordinary data; Tier B may need external public retrieval but involves no confidential information. These skills will be published openly on GitHub.
+> - **Tier C / D (confidential)**: involve strictly confidential clinical-trial data and internal information from pharma sponsors (e.g., ct-analysis, ct-sdtm); Tier C is processed locally and never leaves the boundary, while Tier D additionally requires policy approval. These skills are designated for internal enterprise use only and are not publicly released at present.
+>
+> If you do have a genuine need for these confidential skills, please contact the author to request custom installation.
+>
+> 📧 Contact: medstatstar@gmail.com (Wintone Zhang / 张文彤)

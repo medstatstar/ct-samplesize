@@ -1,286 +1,216 @@
 # ct-samplesize
 
-[🇺🇳 English](./README.md) | [🇨🇳 中文 (Chinese, 当前)](#)
+[🇺🇸 English](./README.md) | [🇨🇳 中文 (Chinese, 当前)](#)
+
+<div align="center">
+  <img src="assets/icon.svg" alt="ct-samplesize 图标" width="120" height="120">
+</div>
 
 > **面向临床试验从业者的易用型样本量与检验效能计算工具**
 >
-> 本技能为临床试验从业人员提供一整套简单易用的样本量与检验效能计算工具。后台以 R 软件及 rpact/gsDesign/TrialSize/PowerTOST 等 20+ R工具包为依托，用户只需使用自然语言对话方式的提示词，即可完成（默认英文输出，OS 中文环境时自动切换中文）37 种复杂专业的样本量与检验效能计算工作。生成的 R 代码默认以**安全预览**展示（不执行，除非加 `--yes`），也可应要求完整提供，供用户核查、递交代码或修改后重跑。
+> 你不需要会编程，也不用手敲命令——只要在对话里用**日常语言描述你的试验设计**，就能完成 **49 种**专业的样本量与检验效能计算。后台以 R 及 20+ 专业 R 包（rpact / gsDesign / TrialSize / PowerTOST 等）为依托，默认按操作系统语言设定给出中文或英文结果（可用提示词强制切换）。生成的 R 代码默认以**安全预览**展示（不执行），确认后才会真正计算。
+
+---
+
+## 一、如何在对话里使用（最核心）
+
+ct-samplesize 是一个**对话式技能**：你直接用自然语言把试验设计告诉助手即可，无需记忆任何命令或参数名。技能作为 WorkBuddy 技能**自动加载，无需额外安装**。
+
+下面是 5 个由简到繁的真实对话示例。每一例都包含「你这样说」和「助手大致会这样回」，以及「如何拿到真实数字」的提示。
+
+### 示例 1 · 两均数比较（最常用）
+**你这样说：**
+> 帮我算一下两组均数比较的样本量，效应量 d=0.5，把握度 80%，双侧 α=0.05
+
+**助手会这样回（示意）：**
+> 已为你生成两独立样本 t 检验的样本量（效应量 d=0.5，power=0.8，双侧 α=0.05）。
+> 每组约需 **64 例**（共 128 例）。
+> （默认安全预览：下方为对应 R 代码，未执行）
+
+**📌 拿到真实数字：** 默认只展示代码不计算。补一句 **「请直接计算」** 或 **「用 --yes 执行」**，助手就会真正运行并给出结果（详见第四节「安全预览」）。
+
+### 示例 2 · 两组率比较
+**你这样说：**
+> 对照组有效率 20%，试验组 35%，做两组率比较的卡方检验，α=0.05 双侧，power=0.8
+
+### 示例 3 · 生存终点 + 期中分析
+**你这样说：**
+> 设计一个含 1 次期中分析的生存终点试验，HR=0.75，两组 1:1 随机，把握度 80%
+
+### 示例 4 · 非劣效设计
+**你这样说：**
+> 非劣效设计，margin=0.1，对照组有效率 85%，试验组 80%，把握度 80%
+
+### 示例 5 · 生物等效性（BE）
+**你这样说：**
+> 计算生物等效性样本量，theta0=0.95，CV=25%，2x2 交叉设计
+
+### 示例 6 · 多检验选型 / 设计族抉择（弹出菜单）
+**你这样说：**
+> 比较两种降压药对诊室收缩压的影响，平行组设计，把握度 90%。但我没想好是做优效还是非劣效，也不知道要不要加期中分析。
+
+**助手会这样回（示意）：**
+> 终点（连续型·诊室收缩压）和设计（平行组）已经清楚了。剩下两个关键选择，我列个菜单帮你定：
 >
-> **⚠️ 默认安全预览**：技能默认运行于**安全预览模式**——生成的 R 代码会展示但**不执行**；用 `--yes` 才显式执行并计算；`--show-code` 展示代码，`--dry-run` 仅预览。
+> **① 想要证明什么？**
+> - (a) 优效：新药比对照降得更低 → `ttest_ind`（优效）
+> - (b) 非劣效：不差于对照，margin 由你定 → `non_inferiority`
+>
+> **② 是否加期中分析？**
+> - (a) 不加，固定样本量 → 普通 t 检验
+> - (b) 加 1–2 次期中、可早停 → `group_sequential` 族
+>
+> **③ 还拿不准？** → 说「详细解释这些选择之间的差异」，助手会先把优效 vs 非劣效、加 vs 不加期中的临床与统计含义讲清楚，再让你决定。
+>
+> 你勾一下 ①② 的偏好，或直接选 ③ 听讲解，我就锁定检验并进入参数补全 / 计算。
+
+**📌 说明**：当你**已点名检验类型、却卡在「选型 / 设计族」上**（比如优效 vs 非劣、加不加期中），助手会**弹出路由菜单**帮你逐步确认，而不是替你拍板或直接甩 49 种全菜单。菜单里也提供「详细解释差异」选项——拿不准时先讲清楚再决策。完整分类树见 `references/menu.md`。
+
+### 示例 7 · 不确定该用什么检验（模糊请求）
+**你这样说：**
+> 我想做个样本量计算，但不知道该用哪种检验，你帮我参谋一下
+
+**助手会这样回（示意）：**
+> 没问题，我们先把试验设计理清楚，我问你几个关键问题就能定位合适的检验：
+> 1. 你的**主要终点**是什么类型？—— 连续型（如血压差值）/ 二分类（如有效率）/ 生存时间（如 OS）/ 其他？
+> 2. 是**平行组**还是**交叉 / 配对**设计？
+> 3. 你想证明的是**优效**、**非劣效**还是**等效**？
+>
+> （你回答后，助手继续追问直至锁定检验类型，再进入计算——这期间不会直接把 49 种检验的菜单甩给你。）
+
+**📌 说明**：当你说"不确定用什么检验"时，助手会用**逐分支追问**帮你理清需求，而不是把 49 种检验菜单砸过来。说清楚了自然就进入计算。
+
+> 💡 **小提示**：多数检验只需「效应量（或率 / HR）+ 把握度 + α」三个要素；没说全的部分（如双侧 α=0.05、1:1 随机、随访时间）会用常规默认补全。说不全也没关系，助手会提示你还缺哪些参数。
 
 ---
 
-## 安装
+## 二、你能算什么 — 49 种检验场景索引
 
-无需额外安装。作为 WorkBuddy 技能自动加载。
+按**终点类型**分 6 大类。下表给出每类典型的「临床场景」和一句你可以**直接照抄**的「试试这样说」。同一检验也可从「设计族」交叉进入（组序贯、自适应、等效 / 非劣、贝叶斯、剂量递增、MAMS、历史对照、疫苗、胜率统计等），详见 `references/menu.md`。
 
-### R 包安装（按需）
+> 底层所用 R 包（rpact / gsDesign / TrialSize / PowerTOST 等）见第五节「进阶参考」，普通使用者无需关心。
 
-R 包**不需要全部预装**。技能在用到某包时自动提示安装：
+### ① 连续型终点
+| 类型 | 临床场景 | 试试在对话里这样说 |
+|:---|:---|:---|
+| `ttest_ind` | 两均数比较（平行） | "两组均数比较，d=0.5，power 0.8" |
+| `ttest_paired` | 配对 t / 2×2 交叉 | "配对设计样本量，效应量 0.5" |
+| `ttest_one` | 单样本 vs 已知均值 | "单样本检验，和已知均值差 0.5" |
+| `anova` | 多组比较（k 组） | "3 组 ANOVA，效应量 f=0.25" |
+| `equivalence` | 等效性（均数） | "均数等效性，margin=2，效应量 3" |
+| `mixed_model` | 重复测量 / 纵向 | "重复测量设计样本量，效应量 0.5" |
 
-```r
-# 当输出: Warning: 'TrialSize' package not found.
-install.packages("TrialSize")
-```
+### ② 二分类终点
+| 类型 | 临床场景 | 试试在对话里这样说 |
+|:---|:---|:---|
+| `proportion_two` | 两组率（卡方） | "对照组 20% 试验组 35%，两组率比较" |
+| `proportion_one` | 单组率 | "单组率检验，预期 30%" |
+| `proportion_paired` | 配对率（McNemar） | "配对率比较 McNemar" |
+| `odds_ratio` | 比值比 | "OR=2 的样本量" |
+| `risk_ratio` | 风险比 | "RR=1.5 的样本量" |
+| `non_inferiority` | 非劣（率） | "非劣效，margin=0.1，对照 85% 试验 80%" |
+| `superiority_margin` | 优效（界值） | "优效性检验，界值 0.05" |
+| `be_tost` | 生物等效（TOST） | "BE 样本量，theta0=0.95，CV=25%" |
+| `vaccine_efficacy` | 疫苗效力 | "疫苗效力，对照 VE=0.02 试验 0.005" |
+| `gsd_proportion` | 组序贯两比例 | "组序贯两比例，1 次期中，p1=0.7 p2=0.5" |
 
-**一键安装全部：**
-```bash
-python scripts/samplesize_power.py --install-all-packages
-```
+### ③ 计数·率终点
+| 类型 | 临床场景 | 试试在对话里这样说 |
+|:---|:---|:---|
+| `poisson` | Poisson 率 | "两组发生率比较，λ1=0.05 λ2=0.03" |
+| `recurrent_events` | 复发事件（Andersen-Gill） | "复发事件样本量，对照率 1.0" |
+| `gsd_poisson` | 组序贯 Poisson 率 | "组序贯 Poisson 率" |
 
-**或在 R 控制台：**
-```r
-install.packages(c("TrialSize","pwr","rpact","gsDesign","PowerTOST","simr","lme4","pROC","powerSurvEpi","survival"))
-```
+### ④ 生存·时间-事件终点
+| 类型 | 临床场景 | 试试在对话里这样说 |
+|:---|:---|:---|
+| `survival` | 生存（简化 logrank） | "生存分析，HR=0.75，power 0.85" |
+| `survival_exact` | 生存（精确） | "精确生存样本量，HR=0.75，入组 12 月" |
+| `ni_survival` | 非劣生存 | "非劣生存，HR margin=1.25" |
+| `survival_equivalence` | 生存等效（TOST / log-HR） | "生存等效，margin=1.25" |
+| `survival_superiority` | 生存优效 + 界值 | "生存优效，界值 0.8" |
+| `cox_covariate` | Cox 回归（含协变量 R²） | "Cox 回归样本量，HR=2，R²=0.3" |
+| `survival_one_sample` | 单组指数生存 | "单组生存，中位 12 vs 18" |
+| `competing_risks` | 竞争风险（累积发生率） | "竞争风险样本量，CIF 0.2 vs 0.1" |
+| `survival_historical` | 历史对照 logrank | "历史对照生存，历史中位 12 新 18" |
+| `gsd_survival` | 组序贯 logrank | "组序贯生存，1 次期中，HR=0.7" |
+| `gsd_hazard` | 组序贯风险比（HR） | "组序贯 HR，HR=0.7" |
+| `gsd_survival_sim` | 组序贯 logrank — 蒙特卡洛模拟 | "组序贯生存模拟，2 次期中" |
+| `gsd_hazard_sim` | 组序贯 HR — 蒙特卡洛模拟 | "组序贯 HR 模拟" |
 
-**无需 R 包的检测类型：** `poisson`, `cluster`, `bland_altman`, `vaccine_efficacy`, `bayesian`, `dose_escalation`, `survival`（仅 Schoenfeld）, `must_win`, `multiple_endpoints`, `assurance`, `dunnett`, `mediation`, `win_ratio`
+### ⑤ 诊断·方法比较
+| 类型 | 临床场景 | 试试在对话里这样说 |
+|:---|:---|:---|
+| `roc` | ROC 曲线 / 诊断试验 | "ROC 曲线样本量，AUC 0.5→0.75" |
+| `bland_altman` | Bland-Altman 方法学比对 | "Bland-Altman 样本量，SDdiff=5，界值 2.5" |
 
----
-
-## 快速开始
-
-```
-"对照组有效率20%，试验组35%，做两组率比较的卡方检验，α=0.05双侧，power=0.8"
-"设计一个含1次期中分析的生存终点试验，HR=0.75，两组1:1随机"
-"非劣效设计，margin=0.1，对照组有效率85%，试验组80%"
-```
-
----
-
-## 支持的检验类型（37）
-
-| 分类 | 检验类型 | 临床场景 | R 包 / 方法 |
-|:---|:---|:---|:---|
-| **连续变量** | `ttest_ind` | 两均数比较（平行设计） | `pwr`, `TrialSize` |
-| | `ttest_paired` | 配对t / 交叉设计2×2 | `pwr`, `TrialSize` |
-| | `anova` | 多组比较（k组） | `pwr`, `TrialSize` |
-| | `equivalence` | 等效性检验（均数） | `TrialSize` |
-| | `mixed_model` | 重复测量 / 纵向数据 | `simr` |
-| **二分类** | `proportion_one` | 单组率检验 | `pwr` |
-| | `proportion_two` | 两组率比较（卡方） | `pwr`, `TrialSize` |
-| | `non_inferiority` | 非劣效设计（率） | `TrialSize` |
-| | `be_tost` | 生物等效性 (TOST) | `PowerTOST` |
-| | `superiority_margin` | 优效性检验（界值法） | `TrialSize` |
-| **计数/事件率** | `poisson` | Poisson率 / 复发性事件 | Wald 检验 |
-| | `vaccine_efficacy` | 疫苗效力 | Halloran 公式 |
-| **生存分析** | `survival` | 生存分析（简化） | Schoenfeld 公式 |
-| | `survival_exact` | 生存分析（精确） | `rpact` |
-| | `ni_survival` | 非劣效生存设计 | `powerSurvEpi` |
-| **诊断/方法学** | `roc` | ROC曲线 / 诊断试验 | `pROC` |
-| | `bland_altman` | Bland-Altman方法学比对 | Lu et al. 公式 |
-| **特殊设计** | `cluster` | 类随机设计 | DEFF 公式 |
-| | `multiple_endpoints` | 多终点 / 复合终点 | 相关系数法 |
-| | `bayesian` | 贝叶斯设计 | `BayesCTDesign` |
-| | `dose_escalation` | 剂量递增 (I期) | `escalation` |
-| | `group_sequential` | 组序贯 / 期中分析 | `gsDesign`, `rpact` |
-| | `adaptive` | 适应性设计 | `rpact` |
-| | `mams` | 多臂多阶段 (MAMS) | `rpact` |
-| **高级终点** | `win_ratio` | Win-Ratio复合终点 | `BuyseTest` 模拟 |
-| | `must_win` | Must-Win / 共主要终点 | 相关系数法 |
-| | `historical_controls` | 历史对照借用 | `RBesT` MAP先验 |
-| | `conditional_power` | 条件效能 / 样本量重估计 | `rpact` |
-| | `assurance` | 贝叶斯确信度 | Monte Carlo |
-| | `dunnett` | Dunnett 多重比较 | 自定义公式 |
-| | `mediation` | 中介效应样本量 | `powerMediation` |
-
----
-
-## CLI 命令示例
-
-```bash
-# === 连续变量 ===
-python scripts/samplesize_power.py --test ttest_ind --effect 0.5 --power 0.8
-python scripts/samplesize_power.py --test ttest_paired --effect 0.5 --power 0.8
-python scripts/samplesize_power.py --test anova --effect 0.25 --k_groups 3 --power 0.8
-python scripts/samplesize_power.py --test equivalence --margin 2.0 --effect 3.0 --power 0.8
-python scripts/samplesize_power.py --test mixed_model --effect 0.5 --nsim 500
-
-# === 二分类 ===
-python scripts/samplesize_power.py --test proportion_two --p1 0.3 --p2 0.15 --power 0.8
-python scripts/samplesize_power.py --test non_inferiority --margin 0.1 --p1 0.85 --p2 0.80 --power 0.8
-python scripts/samplesize_power.py --test be_tost --theta0 0.95 --cv 0.25 --design "2x2"
-python scripts/samplesize_power.py --test superiority_margin --sup_margin 0.05 --p_control_sup 0.3 --delta_sup 0.15
-
-# === 计数 ===
-python scripts/samplesize_power.py --test poisson --lambda1 0.05 --lambda2 0.03 --t1 2 --t2 2 --power 0.8
-python scripts/samplesize_power.py --test vaccine_efficacy --ve_control 0.02 --ve_treatment 0.005 --power 0.8
-
-# === 生存 ===
-python scripts/samplesize_power.py --test survival --hazard_ratio 0.75 --power 0.85
-python scripts/samplesize_power.py --test survival_exact --hr_exact 0.75 --accrual_exact 12 --followup_exact 0.85
-python scripts/samplesize_power.py --test ni_survival --ni_margin_surv 1.25 --accrual_time 12 --followup_time 12
-
-# === 诊断/方法比对 ===
-python scripts/samplesize_power.py --test roc --auc0 0.5 --auc1 0.75 --power 0.8
-python scripts/samplesize_power.py --test bland_altman --sd_diff 5 --w 2.5
-
-# === 特殊设计 ===
-python scripts/samplesize_power.py --test cluster --icc 0.05 --m 30 --n_indiv 64
-python scripts/samplesize_power.py --test multiple_endpoints --effect 0.3 --correlation 0.5
-python scripts/samplesize_power.py --test bayesian --prob_control 0.3 --prob_treatment 0.15 --prior_a0 0.5
-python scripts/samplesize_power.py --test dose_escalation --n_doses 5 --target_dlt 0.33
-
-# === 高级终点 (v3.3) ===
-python scripts/samplesize_power.py --test win_ratio --win_ratio_theta 1.5 --n_sim 1000
-python scripts/samplesize_power.py --test must_win --n_endpoints_must 3 --effect_must 0.3 --correlation_must 0.5
-python scripts/samplesize_power.py --test historical_controls --historical_response 15 --historical_n 100 --a0_borrowing 0.5
-python scripts/samplesize_power.py --test mams --n_arms_mams 3 --n_stages_mams 2 --delta_effect 0.3
-python scripts/samplesize_power.py --test conditional_power --timing 0.5 --observed_effect 0.2 --planned_effect 0.3
-python scripts/samplesize_power.py --test assurance --n_assurance 100 --n_sim_assurance 5000
-python scripts/samplesize_power.py --test dunnett --n_groups_dunnett 3 --n_control_dunnett 50 --effect_dunnett 0.4
-python scripts/samplesize_power.py --test mediation --a_path 0.3 --b_path 0.3
-python scripts/samplesize_power.py --test group_sequential --n_interim 1 --effect_gs 0.4
-python scripts/samplesize_power.py --test adaptive --n_stages_adapt 2 --effect_adaptive 0.4
-```
-
-### 双向求解：给定样本量求检验效能
-
-默认（`--power` 或省略）为**正向**：给定目标效能求解所需样本量 `n`。
-传入 `--nobs N` 切换为**反向**：给定样本量求解可达检验效能（power）。
-`--power` 与 `--nobs` **互斥**。
-
-```bash
-# 给定 n=50/组，求两独立样本 t 检验可达效能
-python scripts/samplesize_power.py --test ttest_ind --effect 0.5 --nobs 50
-
-# 给定 n=20/序列，求生物等效 TOST 可达效能
-python scripts/samplesize_power.py --test be_tost --nobs 20
-
-# 给定 n=100/组，求多臂多阶段(MAMS)设计可达效能
-python scripts/samplesize_power.py --test mams --nobs 100
-```
-
-**覆盖全部 31 种检验类型。** 反向求解策略：优先使用原生包反解（`pwr.*`、`PowerTOST::power.TOST`、`rpact::getPowerMeans/getPowerSurvival`）；自写检验采用解析逆公式（非中心参数逆推 `z_b` 后 `power = pnorm(z_b)`）；精度型检验（`bland_altman`）回报可达 CI 半宽而非效能。
-
-### 曲线模式：Power / 样本量曲线
-
-在双向求解基础上，支持**批量绘制曲线**，直观展示样本量与检验效能的关系。
-
-- `--n_seq "20,40,200"` → **Power 曲线**（x=样本量，y=效能）
-- `--n_seq "20:20:200"` → 同上，但按「起:步:止」自动展开
-- `--power_seq "0.6:0.05:0.95"` → **样本量曲线**（x=效能，y=样本量）
-- `--plot_effects "0.3,0.5,0.8"` → 多效应量叠加多条曲线（敏感性分析）
-- `--out path.png` → 指定 PNG 输出路径（默认写入系统临时目录）
-
-```bash
-# Power 曲线：n = 20,40,...,200，叠加 3 条效应量曲线
-python scripts/samplesize_power.py --test ttest_ind --n_seq "20:20:200" --plot_effects "0.3,0.5,0.8" --out power_curve.png
-
-# 样本量曲线：power = 0.6,0.65,...,0.95
-python scripts/samplesize_power.py --test ttest_ind --power_seq "0.6:0.05:0.95" --out n_curve.png
-```
-
-**曲线模式支持 22 种检验类型**：ttest_ind、ttest_paired、ttest_one、anova、proportion_one、proportion_two、proportion_paired、odds_ratio、risk_ratio、roc、poisson、non_inferiority、superiority_margin、be_tost、survival、ni_survival、mams、dunnett、group_sequential、survival_exact、equivalence、vaccine_efficacy。曲线复用与单点求解**同一套已验证公式**，数值完全一致；`group_sequential`、`survival_exact` 采用固定设计 / Schoenfeld 近似（输出已标注）。其余类型（mixed_model、bayesian、win_ratio、must_win、historical_controls、assurance、conditional_power、adaptive、dose_escalation、bland_altman、cluster）曲线模式暂未覆盖，运行时会给出清晰提示。
+### ⑥ 特殊·高级设计
+| 类型 | 临床场景 | 试试在对话里这样说 |
+|:---|:---|:---|
+| `group_sequential` | 组序贯 / 期中分析 | "组序贯设计，2 次期中，Pocock" |
+| `adaptive` | 适应性设计 | "适应性设计，2 阶段" |
+| `adaptive_simulate` | 适应性设计 — 蒙特卡洛模拟 | "适应性设计蒙特卡洛模拟" |
+| `bayesian` | 贝叶斯设计 | "贝叶斯设计，对照 0.3 试验 0.15" |
+| `dose_escalation` | 剂量递增（I 期） | "I 期剂量递增，5 个剂量，DLT 0.33" |
+| `mams` | 多臂多阶段（MAMS） | "MAMS，3 臂 2 阶段" |
+| `dunnett` | Dunnett 多重比较 | "Dunnett，3 组对照 50" |
+| `win_ratio` | Win-Ratio 复合终点 | "Win-Ratio 样本量，WR=1.5" |
+| `must_win` | Must-Win / 共主要终点 | "共主要终点 3 个，相关 0.5" |
+| `historical_controls` | 历史对照借用 | "历史对照借用，历史应答 15/100" |
+| `conditional_power` | 条件效能 / 样本量重估计 | "条件效能，中期效应 0.2" |
+| `assurance` | 贝叶斯确信度 | "确信度计算" |
+| `multiple_endpoints` | 多重 / 复合终点 | "多终点样本量，相关 0.5" |
+| `mediation` | 中介效应样本量 | "中介效应样本量" |
+| `cluster` | 整群随机设计 | "整群随机，ICC=0.05，每群 30" |
 
 ---
 
-## 核心公式
+## 三、首次使用常见问题（FAQ）
 
-| 场景 | 公式 |
-|:---|:---|
-| 独立样本 t（等样本） | $n_1 = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{d})^2$ |
-| 率比较（arcsin） | $n = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{h})^2$ |
-| 生存（Schoenfeld） | $d = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(\log HR)^2}$ |
-| ROC（Obuchowski） | $n = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{4(\arcsin\sqrt{AUC_1} - \arcsin\sqrt{AUC_0})^2}$ |
-| 类随机 DEFF | $DEFF = 1 + (m - 1) \times ICC$ |
-| Bland-Altman | $n = 2(\frac{Z_{1-\alpha/2} \times SD_{diff}}{W})^2$ |
-| Win-Ratio（近似） | $n = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(\ln WR)^2 / SE_{approx}^2}$ |
-| Must-Win 膨胀因子 | $n = n_{single} \times [1 + (k-1)\rho \times 0.5]$ |
-| MAMS（Bonferroni） | $n = \frac{(Z_{1-\alpha/(2k)} + Z_{1-\beta})^2}{\delta^2}$ |
-| 确信度 | $P(\text{success}) = \frac{1}{N}\sum_{i=1}^N I(\text{trial}_i \text{ significant})$ |
+**Q：我只说了效应量和把握度，没给别的参数，能算吗？**
+A：能。多数检验只需「效应量（或率 / HR）+ 把握度 + α」三要素。没说全的部分（如双侧 α=0.05、1:1 随机、随访时间）会用常规默认补全；若某项确实必需而缺失，助手会提示你补充。
 
-**完整公式推导：** `references/formulas_zh.md` | **扩展函数：** `references/extended_functions.md`
+**Q：结果里的 n 是每组还是总人数？**
+A：默认报 **每组 n（per group）**；配对 / 交叉设计报序列数，生存类常报所需总事件数。输出里都会标注清楚，不用担心误解。
 
----
+**Q：默认只给代码不出数，我想要真实计算结果怎么办？**
+A：在对话里补一句 **「请直接计算」** 或 **「用 --yes 执行」**，助手就会真正运行 R 并给出数字。这是默认的安全设计——先看代码，确认无误再算。
 
-## 系统要求
+**Q：我想要可复现的 R 代码用于递交或核查，怎么要？**
+A：说 **「把完整 R 代码给我」** 即可。代码默认也会以安全预览展示，可复制、修改后自行重跑。
 
-| 组件 | 要求 |
-|:-----|:-----|
-| R | ≥ 4.1.0（推荐 ≥ 4.1.0） |
-| Python | ≥ 3.8 + statsmodels ≥ 0.14, numpy ≥ 1.24, scipy ≥ 1.11 |
-| 操作系统 | Windows / macOS / Linux |
+**Q：中文环境下面输出是中文吗？**
+A：是。默认跟随操作系统的语言设定给出中文或英文结果；你也可以用提示词（如"用中文回复"或"switch to English"）随时强制切换。
 
 ---
 
-## 常见错误
+## 四、安全与声明
 
-| 错误 | 解决方案 |
-|:-----|:---------|
-| "Rscript not found" | 安装 R 或指定路径 |
-| "package not found" | install.packages("xxx") |
-| ImportError: statsmodels | pip install statsmodels |
-| simr timeout | 减少 --nsim 或简化模型 |
-| BuyseTest convergence | 增加 n_sim，检查先验分布 |
-| rpact error | 更新 rpact 至最新版本 |
+- **什么是安全预览**：技能默认只 **生成并展示 R 代码，但不执行**——你可以先检查计算逻辑，确认无误后再让它真正运行。在对话中说 **「请直接计算 / 用 --yes 执行」** 即触发真实计算；想只看代码本身说 **「展示代码 / --show-code」**，只想看预览说 **「仅预览 / --dry-run」**。
+- **纯本地计算**，无任何数据外传。
+- **输出仅供参考**，用于监管申报前请独立验证。
 
 ---
 
-## 安全与声明
+## 五、进阶参考（已移至独立文件）
 
-- 默认运行于**安全预览**：生成的 R 代码会展示但**不执行**；`--yes` 才执行并计算，`--show-code` 展示代码，`--dry-run` 仅预览
-- 纯本地计算，无数据外传
-- 输出仅供参考，监管申报前需独立验证
+CLI 命令示例、双向求解、曲线模式、核心公式、系统要求、常见错误、文件结构、参考文献等开发者内容，已整理至 **[ADVANCED_zh-CN.md](ADVANCED_zh-CN.md)**。普通使用者无需阅读；日常使用见第一至四节。
 
 ---
 
-## 文件结构
+**Version**: v3.8.0 | **License**: MIT | **Authors**: medstatstar, phoe-zip
 
-```
-ct-samplesize/
-├── SKILL.md              ← 技能定义（默认英文，OS 中文环境自动切换中文）
-├── README.md             ← 英文版说明
-├── README_zh-CN.md          ← 中文版说明（当前）
-├── AGENTS.md             ← 核心执行规则（默认英文，OS 中文环境自动切换中文）
-├── assets/
-│   └── icon.svg          ← 技能图标 (104×104)
-├── scripts/
-│   └── samplesize_power.py  ← Python 计算 + 自动 R 代码生成
-└── references/
-    ├── r_packages_zh.md     ← R 包推荐（20+ 包）
-    ├── formulas_zh.md       ← 公式推导
-    ├── python_usage.md      ← Python 速查
-    ├── r_usage.md           ← R 速查
-    ├── effect_size.md       ← 效应量标准 (d/f/h + Z 值表)
-    ├── report_template.md   ← 汇报模板 + 按需 R 代码模板
-    ├── data_format_guide.md ← 31 种检验数据框架 + 示例
-    └── examples.md          ← 3 个完整走查（率比较/GS/非劣效）
-```
+如有功能改进建议、Bug 报告或其他反馈，请直接联系作者：medstatstar@gmail.com（张文彤 / Wintone Zhang）。
 
 ---
 
-## 核心功能
+## 保密声明
 
-1. **智能环境检测**：每次触发自动检测 R 安装
-2. **双路径**：Python（简单）+ R（精确）
-3. **按需 R 代码**：仅当使用者明确要求时提供可复现 R 代码；默认回复提示可提供
-4. **全面**：20+ R 包，完整公式推导，3 个完整示例
-5. **自然语言**：日常语言描述试验设计即可
-6. **语言**：默认英文，OS 中文环境时自动切换中文
-
----
-
-## 参考文献
-
-- rpact: https://www.rpact.org/
-- gsDesign: https://keaven.github.io/gsDesign/
-- TrialSize: https://cran.r-project.org/web/packages/TrialSize/
-- PowerTOST: https://cran.r-project.org/web/packages/PowerTOST/
-- simr: https://github.com/pitakakariki/simr/
-- powerSurvEpi: https://cran.r-project.org/web/packages/powerSurvEpi/
-- BayesCTDesign: https://cran.r-project.org/web/packages/BayesCTDesign/
-- BuyseTest: https://cran.r-project.org/web/packages/BuyseTest/
-- RBesT: https://cran.r-project.org/web/packages/RBesT/
-- MCPAN: https://cran.r-project.org/web/packages/MCPAN/
-- powerMediation: https://cran.r-project.org/web/packages/powerMediation/
-- CRAN ClinicalTrials View: https://cran.r-project.org/web/views/ClinicalTrials.html
-
----
-
-## 开源代码
-
-https://github.com/medstatstar/ct-samplesize
-
----
-
-**Version**: v3.3.2 | **License**: MIT | **Authors**: medstatstar, phoe-zip
+> CT 全系列技能由 16 余个专用行业技能构成，按「保密信息出域风险 + 是否对外检索」分为 A、B、C、D 四级，完整覆盖新药临床试验（Clinical Trial）全流程的各方面需求。
+>
+> - **A 级 / B 级（不涉密）**：完全本地运行、仅使用普通数据；B 级虽需对外公开检索，但不涉及任何保密信息。这两级技能均会在 GitHub 公开发布。
+> - **C 级 / D 级（涉密）**：涉及药企需严格保密的临床试验数据、内部资讯等敏感内容（如 ct-analysis、ct-sdtm 等）；C 级在本地处理、数据不出域，D 级还需政策审批。这两级技能仅限企业内部使用，目前不对外公开发布。
+>
+> 若您对这些涉密技能确有实际需求，欢迎与作者联系，定制并安装相关技能。
+>
+> 📧 联系方式：medstatstar@gmail.com，张文彤（Wintone Zhang）

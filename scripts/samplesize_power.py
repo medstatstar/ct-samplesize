@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Clinical Trial Sample Size & Power Calculator — v3.3.0
+Clinical Trial Sample Size & Power Calculator — v3.8.0
 
 Security model:
 - All R code comes from pre-defined templates (validated str args only)
@@ -12,7 +12,7 @@ Security model:
 - Output is sanitized (paths stripped, length-capped)
 - String args validated against strict allowlists
 
-Test types (37 total):
+Test types (47 total):
   Core: ttest_ind, ttest_paired, anova, proportion_one, proportion_two,
         non_inferiority, equivalence, be_tost, mixed_model, roc, poisson,
         bland_altman, cluster, vaccine_efficacy, multiple_endpoints,
@@ -20,6 +20,13 @@ Test types (37 total):
   New in v3.3: win_ratio, must_win, historical_controls, mams,
         conditional_power, ni_survival, superiority_margin, assurance,
         dunnett, mediation, group_sequential, adaptive, survival_exact
+  New in v3.5 (PASS-survival): survival_equivalence, survival_superiority,
+        cox_covariate, survival_one_sample, competing_risks,
+        recurrent_events, survival_historical
+  New in v3.6 (PASS Group-Sequential, rpact-backed): group_sequential
+        (upgraded to rpact exact two-sample means), gsd_proportion,
+        gsd_survival, gsd_hazard, gsd_poisson; real spending functions
+        (OF/Pocock/WT/HSD-gamma/Kim-DeMets) + non-binding futility bounds
 """
 import argparse, sys, os, textwrap, subprocess, tempfile, re, json
 from r_templates import *
@@ -48,7 +55,7 @@ def _qt(key, **kwargs):
 def _r_cat(*args):
     """Build an R cat() call string from arguments.
 
-    Moves _qt() calls out of f-string expression context to avoid a reported
+    Moves ._qt() calls out of f-string expression context to avoid a reported
     parser edge-case on Anaconda Python 3.13.9 where a function-call expression
     sharing a line with a literal backslash silently fails to evaluate.
     """
@@ -472,7 +479,7 @@ def build_curve_code(args):
     return r
 
 def main():
-    p = argparse.ArgumentParser(description="Clinical Trial Sample Size Calculator v3.3.0")
+    p = argparse.ArgumentParser(description="Clinical Trial Sample Size Calculator v3.8.0")
     p.add_argument("--test", required=False, default=None,
         choices=["ttest_ind","ttest_paired","ttest_one","anova","proportion_one","proportion_two",
                  "proportion_paired","odds_ratio","risk_ratio",
@@ -481,7 +488,10 @@ def main():
                  "vaccine_efficacy","multiple_endpoints","bayesian","dose_escalation",
                  "win_ratio","must_win","historical_controls","mams",
                  "conditional_power","ni_survival","superiority_margin","assurance",
-                 "dunnett","mediation","group_sequential","adaptive","survival_exact",
+                 "dunnett","mediation","group_sequential","gsd_proportion","gsd_survival","gsd_hazard","gsd_poisson","gsd_survival_sim","gsd_hazard_sim","adaptive","survival_exact",
+                 "survival_equivalence","survival_superiority","cox_covariate",
+                 "survival_one_sample","competing_risks","recurrent_events",
+                 "survival_historical",
                  "adaptive_simulate"])
     p.add_argument("--yes", "-y", action="store_true",
                    help="显式确认执行 R 代码（默认 dry-run 安全预览，仅展示代码、不执行）")
@@ -505,8 +515,10 @@ def main():
     p.add_argument("--sd", type=float, default=None,
                    help="标准差。提供时 --effect 视为原始均差(Δ), 自动折算 Cohen's d = effect/sd; 否则 --effect 直接作为 d")
     # ── Proportion ──
-    p.add_argument("--p1", type=float)
-    p.add_argument("--p2", type=float)
+    p.add_argument("--p1", type=float, default=0.7,
+                   help="gsd_proportion 治疗组比例 (difference 模式必填, 默认 0.7)")
+    p.add_argument("--p2", type=float, default=0.5,
+                   help="gsd_proportion 对照组比例 (difference 模式必填, 默认 0.5)")
     # ── Non-inferiority / Equivalence ──
     p.add_argument("--margin", type=float)
     # ── Survival ──
@@ -602,9 +614,14 @@ def main():
     p.add_argument("--cprime", type=float, default=0.0)
     p.add_argument("--n_sim_mediation", type=int, default=1000)
     # Group Sequential
-    p.add_argument("--n_interim", type=int, default=1)
-    p.add_argument("--effect_gs", type=float, default=0.4)
-    p.add_argument("--spending_func", type=str, default="OF")
+    p.add_argument("--n_interim", type=int, default=1,
+                   help="中期分析次数 (k-1)；总分析次数 kMax = n_interim + 1")
+    p.add_argument("--effect_gs", type=float, default=0.4,
+                   help="group_sequential 的标准化效应量 (Cohen's d)")
+    p.add_argument("--spending_func", type=str, default="OF",
+                   choices=["OF", "Pocock", "WT", "HSD", "KimDeMets"],
+                   help="alpha 消耗函数: OF=O'Brien-Fleming, Pocock, WT=Wang-Tsiatis, "
+                        "HSD=Hwang-Shih-DeCani(gamma, 经 --rho), KimDeMets(asOF)")
     # Adaptive
     p.add_argument("--n_stages_adapt", type=int, default=2)
     p.add_argument("--effect_adaptive", type=float, default=0.4)
@@ -618,6 +635,49 @@ def main():
     p.add_argument("--dropout_exact", type=float, default=0.05)
     p.add_argument("--event_rate_exact", type=float, default=0.3)
     p.add_argument("--n_stages_exact", type=int, default=1)
+    # ═══ NEW v3.5: PASS-survival extensions (7) ═══
+    # Survival Equivalence (TOST on HR)
+    p.add_argument("--eq_margin_surv", type=float, default=1.25)
+    # Survival Superiority by a margin (HR)
+    p.add_argument("--sup_margin_surv", type=float, default=0.8)
+    p.add_argument("--sup_hr", type=float, default=0.67)
+    # Cox covariate power (Vittinghoff)
+    p.add_argument("--cox_hr", type=float, default=2.0)
+    p.add_argument("--cox_r2", type=float, default=0.3)
+    p.add_argument("--cox_prev", type=float, default=0.5)
+    p.add_argument("--cox_event_prop", type=float, default=0.3)
+    # One-sample exponential
+    p.add_argument("--median0", type=float, default=12.0)
+    p.add_argument("--median1", type=float, default=18.0)
+    # Competing risks (cumulative incidence)
+    p.add_argument("--ci_control", type=float, default=0.2)
+    p.add_argument("--ci_treatment", type=float, default=0.1)
+    # Recurrent events (Andersen-Gill)
+    p.add_argument("--rate_control", type=float, default=1.0)
+    p.add_argument("--rate_ratio", type=float, default=0.6)
+    p.add_argument("--recur_followup", type=float, default=2.0)
+    # Historical control log-rank
+    p.add_argument("--new_median", type=float, default=18.0)
+    p.add_argument("--hist_n", type=float, default=100.0)
+    # ═══ NEW v3.6: PASS Group-Sequential extensions (rpact-backed) ═══
+    # Two proportions (difference / ratio / odds-ratio)
+    p.add_argument("--gs_proportion_metric", type=str, default="difference",
+                   choices=["difference", "ratio", "or"],
+                   help="gsd_proportion 的效应度量: difference(默认)/ratio/or")
+    p.add_argument("--gs_ratio", type=float, default=0.8,
+                   help="gsd_proportion ratio 模式: 治疗组比例 = 对照组 × ratio")
+    p.add_argument("--gs_or", type=float, default=0.5,
+                   help="gsd_proportion OR 模式: 治疗组比值比")
+    # Two survival / hazard-rate (control median -> lambda2)
+    p.add_argument("--gs_median_control", type=float, default=12.0,
+                   help="gsd_survival/gsd_hazard 对照中位生存(月), 推导 lambda2")
+    # Two Poisson rates
+    p.add_argument("--gs_rate1", type=float, default=0.6,
+                   help="gsd_poisson 治疗组发生率 (lambda1, /人年)")
+    p.add_argument("--gs_rate2", type=float, default=1.0,
+                   help="gsd_poisson 对照组发生率 (lambda2, /人年)")
+    p.add_argument("--gs_poisson_time", type=float, default=2.0,
+                   help="gsd_poisson 每人随访时间(年)")
     # ── Adaptive Monte-Carlo simulator (test=adaptive_simulate) ──
     # 纯 Python 蒙特卡洛自适应/成组序贯仿真器 (无 R, 无 shell, 直接运行)
     p.add_argument("--sim_design", type=str, default="group_sequential",
@@ -636,7 +696,10 @@ def main():
     p.add_argument("--spending_function", type=str, default="obrien_fleming",
                    choices=["obrien_fleming", "pocock", "power_family"],
                    help="alpha 消耗函数 / alpha spending function")
-    p.add_argument("--rho", type=float, default=3.0, help="power_family 形状参数")
+    p.add_argument("--rho", type=float, default=3.0,
+                   help="HSD / Kim-DeMets 消耗函数的 gammaA (Hwang-Shih-DeCani γ, 默认 3.0)")
+    p.add_argument("--wt_delta", type=float, default=0.25,
+                   help="Wang-Tsiatis 参数 Δ (仅 --spending_func WT 生效, 默认 0.25)")
     p.add_argument("--futility", action="store_true", help="加入非绑定 futility 边界")
     p.add_argument("--beta", type=float, default=0.2, help="futility beta-spending")
     p.add_argument("--reestimate_method", type=str, default="promising_zone",
@@ -716,6 +779,14 @@ def main():
         "p_control_sup": (0, 1), "p_control_current": (0, 1),
         "event_rate_exact": (0, 1), "dropout_exact": (0, 1),
         "p1": (0, 1), "p2": (0, 1),
+        "eq_margin_surv": (0, None), "sup_margin_surv": (0, None), "sup_hr": (0, None),
+        "cox_hr": (0, None), "cox_r2": (0, 1), "cox_prev": (0, 1),
+        "cox_event_prop": (0, 1), "median0": (0, None), "median1": (0, None),
+        "ci_control": (0, 1), "ci_treatment": (0, 1),
+        "rate_control": (0, None), "rate_ratio": (0, None),
+        "recur_followup": (0, None), "new_median": (0, None), "hist_n": (0, None),
+        "gs_ratio": (0, 1), "gs_or": (0, None), "gs_median_control": (0, None),
+        "gs_rate1": (0, None), "gs_rate2": (0, None), "gs_poisson_time": (0, None),
         "nobs": (0, None),
     }
     _range_errors = []
@@ -862,6 +933,37 @@ def main():
     # Core test types (17)
     # ═══════════════════════════════════════════════════════════════════════════
 
+    # ── Shared Group-Sequential design parameters (computed once) ──
+    # rpact supports futilityStops directly on the exact-boundary designs
+    # ("OF"/"P"/"WT"); only the gamma-family designs (HSD / Kim-DeMets, i.e.
+    # "asHSD"/"asKD") must use the spending-function form.
+    if args.futility:
+        # Exact boundaries (OF/P/WT) support futilityStops directly; only the
+        # gamma-family designs (HSD/KimDeMets) must use the "as*" spending form.
+        _gs_type = {"OF": "asOF", "Pocock": "asP", "WT": "asKD",
+                    "HSD": "asHSD", "KimDeMets": "asKD"}.get(args.spending_func, "asOF")
+        _futil_params = (', futilityStops = rep(TRUE, %d), '
+                         'typeBetaSpending = "bsOF", bindingFutility = FALSE') % args.n_interim
+    else:
+        _gs_type = {"OF": "OF", "Pocock": "P", "WT": "WT",
+                    "HSD": "asHSD", "KimDeMets": "asKD"}.get(args.spending_func, "OF")
+        _futil_params = ""
+    # gammaA drives the HSD and Kim-DeMets (asKD) spending families; it is
+    # ignored (and must be 0) for OF / Pocock / WT exact boundaries.
+    _gs_gamma = args.rho if args.spending_func in ("HSD", "KimDeMets") else 0
+    # Wang-Tsiatis needs its own deltaWT parameter (NOT gammaA); it only applies
+    # to the exact "WT" design (no futility). WT + futility is intercepted below.
+    _delta_frag = ", deltaWT = %.4f" % args.wt_delta if (args.spending_func == "WT" and not args.futility) else ""
+    _design_beta = round(1 - args.power, 4) if args.power is not None else 0.2
+    _kmax = args.n_interim + 1
+
+    # rpact has no "asWT" spending-function form, so Wang-Tsiatis (exact "WT")
+    # cannot be combined with a futility bound. Intercept with a clear message
+    # instead of letting rpact raise a cryptic error.
+    if args.futility and args.spending_func == "WT":
+        print(t("error.wt_futility_unsupported"))
+        sys.exit(1)
+
     if args.test == "mixed_model":
         if not args.effect_name:
             print(t("error.effect_name_required")); sys.exit(1)
@@ -881,55 +983,55 @@ def main():
             print(t("error.auc1_or_effect_required")); sys.exit(1)
         auc1 = args.auc1 or min(auc0 + args.effect, 0.99)
         if solve_for_power:
-            _lines = []
-            _lines.append(_r_cat(_qt("r_header.roc_power")))
-            _lines.append(_r_cat(_qt("label.h0_auc"), auc0, _qt("label.h1_auc"), auc1, "\\n"))
-            _lines.append(_r_cat(_qt("label.alpha"), args.alpha, "\\n"))
-            _lines.append(_r_cat(_qt("label.sample_size"), args.nobs, "\\n"))
-            _lines.append(_r_cat(_qt("label.achieved_power"), ss_roc(auc0=auc0, auc1=auc1, alpha=args.alpha, n=args.nobs), "\\n"))
-            r_code = R_ROC + "\n".join(_lines) + "\n"
+            r_code = R_ROC + f"""
+cat(._qt("r_header.roc_power"), "\\n")
+cat(._qt("label.h0_auc"), {auc0}, ._qt("label.h1_auc"), {auc1}, "\\n")
+cat(._qt("label.alpha"), {args.alpha}, "\\n")
+cat(._qt("label.sample_size"), {args.nobs}, "\\n")
+cat(._qt("label.achieved_power"), ss_roc(auc0={auc0}, auc1={auc1}, alpha={args.alpha}, n={args.nobs}), "\\n")
+"""
         else:
-            _lines = []
-            _lines.append(_r_cat(_qt("r_header.roc_n")))
-            _lines.append(_r_cat(_qt("label.h0_auc"), auc0, _qt("label.h1_auc"), auc1, "\\n"))
-            _lines.append(_r_cat(_qt("label.alpha"), args.alpha, _qt("label.power"), args.power, "\\n"))
-            _lines.append(_r_cat(_qt("label.sample_size"), ss_roc(auc0=auc0, auc1=auc1, alpha=args.alpha, power=args.power), "\\n"))
-            r_code = R_ROC + "\n".join(_lines) + "\n"
+            r_code = R_ROC + f"""
+cat(._qt("r_header.roc_n"), "\\n")
+cat(._qt("label.h0_auc"), {auc0}, ._qt("label.h1_auc"), {auc1}, "\\n")
+cat(._qt("label.alpha"), {args.alpha}, ._qt("label.power"), {args.power}, "\\n")
+cat(._qt("label.sample_size"), ss_roc(auc0={auc0}, auc1={auc1}, alpha={args.alpha}, power={args.power}), "\\n")
+"""
 
     elif args.test == "poisson":
         if solve_for_power:
             r_code = R_POISSON + f"""
 cat("\\n========== Poisson Rate Comparison (Power given N) ==========\\n")
-cat(_qt("label.rate_ratio"), round({args.lambda1}/{args.lambda2}, 3), "\\n")
-cat(_qt("label.sample_size_per_group"), {args.nobs}, "\\n")
-cat(_qt("label.achieved_power"), ss_poisson(lambda1={args.lambda1}, lambda2={args.lambda2}, t1={args.t1}, t2={args.t2}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat(._qt("label.rate_ratio"), round({args.lambda1}/{args.lambda2}, 3), "\\n")
+cat(._qt("label.sample_size_per_group"), {args.nobs}, "\\n")
+cat(._qt("label.achieved_power"), ss_poisson(lambda1={args.lambda1}, lambda2={args.lambda2}, t1={args.t1}, t2={args.t2}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
             r_code = R_POISSON + f"""
 cat("\\n========== Poisson Rate Comparison ==========\\n")
-cat(_qt("label.rate_ratio"), round({args.lambda1}/{args.lambda2}, 3), "\\n")
-cat(_qt("label.sample_size_per_group"), ss_poisson(lambda1={args.lambda1}, lambda2={args.lambda2}, t1={args.t1}, t2={args.t2}, alpha={args.alpha}, power={args.power}), "\\n")
+cat(._qt("label.rate_ratio"), round({args.lambda1}/{args.lambda2}, 3), "\\n")
+cat(._qt("label.sample_size_per_group"), ss_poisson(lambda1={args.lambda1}, lambda2={args.lambda2}, t1={args.t1}, t2={args.t2}, alpha={args.alpha}, power={args.power}), "\\n")
 """
 
     elif args.test == "cluster":
         if solve_for_power:
             r_code = R_CLUSTER + f"""
 cat("\\n========== Cluster-RCT (Power given N) ==========\\n")
-cat(_qt("label.deff"), round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
-cat(_qt("label.cluster_size_m"), {args.m}, _qt("label.icc"), {args.icc}, "\\n")
-cat(_qt("label.total_sample_size"), {args.nobs}, "\\n")
+cat(._qt("label.deff"), round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
+cat(._qt("label.cluster_size_m"), {args.m}, ._qt("label.icc"), {args.icc}, "\\n")
+cat(._qt("label.total_sample_size"), {args.nobs}, "\\n")
 res <- ss_cluster(m={args.m}, icc={args.icc}, n_total={args.nobs})
-cat(_qt("label.effective_n_per_group"), res$n_indiv_eff, "\\n")
-cat(_qt("label.implied_n_clusters"), res$n_clusters, "\\n")
+cat(._qt("label.effective_n_per_group"), res$n_indiv_eff, "\\n")
+cat(._qt("label.implied_n_clusters"), res$n_clusters, "\\n")
 """
         else:
             r_code = R_CLUSTER + f"""
 cat("\\n========== Cluster-Randomized Design ==========\\n")
-cat(_qt("label.deff"), round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
+cat(._qt("label.deff"), round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
 res <- ss_cluster(m={args.m}, icc={args.icc}, n_indiv={args.n_indiv})
-cat(_qt("label.adjusted_n_per_group"), res$n_adj, "\\n")
-cat(_qt("label.clusters_per_group"), res$n_clusters, _qt("label.total_clusters"), res$total_clusters, "\\n")
-cat(_qt("label.total_sample_size"), res$total, "\\n")
+cat(._qt("label.adjusted_n_per_group"), res$n_adj, "\\n")
+cat(._qt("label.clusters_per_group"), res$n_clusters, ._qt("label.total_clusters"), res$total_clusters, "\\n")
+cat(._qt("label.total_sample_size"), res$total, "\\n")
 """
 
     elif args.test == "bland_altman":
@@ -959,31 +1061,31 @@ cat(_qt("label.total_sample_size"), res$total, "\\n")
         if solve_for_power:
             r_code = R_VACCINE_EFFICACY + f"""
 cat("\\n========== Vaccine Efficacy (Power given N) ==========\\n")
-cat(_qt("label.ve"), round(({args.ve_control}-{args.ve_treatment})/{args.ve_control}*100, 1), "%\\n")
-cat(_qt("label.n_per_group_total"), {args.nobs}, "\\n")
-cat(_qt("label.achieved_power"), ss_vaccine(vc={args.ve_control}, vt={args.ve_treatment}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat(._qt("label.ve"), round(({args.ve_control}-{args.ve_treatment})/{args.ve_control}*100, 1), "%\\n")
+cat(._qt("label.n_per_group_total"), {args.nobs}, "\\n")
+cat(._qt("label.achieved_power"), ss_vaccine(vc={args.ve_control}, vt={args.ve_treatment}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
             r_code = R_VACCINE_EFFICACY + f"""
 cat("\\n========== Vaccine Efficacy ==========\\n")
-cat(_qt("label.ve"), round(({args.ve_control}-{args.ve_treatment})/{args.ve_control}*100, 1), "%\\n")
-cat(_qt("label.n_per_group_total"), ss_vaccine(vc={args.ve_control}, vt={args.ve_treatment}, alpha={args.alpha}, power={args.power}), "\\n")
+cat(._qt("label.ve"), round(({args.ve_control}-{args.ve_treatment})/{args.ve_control}*100, 1), "%\\n")
+cat(._qt("label.n_per_group_total"), ss_vaccine(vc={args.ve_control}, vt={args.ve_treatment}, alpha={args.alpha}, power={args.power}), "\\n")
 """
 
     elif args.test == "multiple_endpoints":
         if solve_for_power:
             r_code = R_MULTIPLE_ENDPOINTS + f"""
 cat("\\n========== Multiple Endpoints (Power given N) ==========\\n")
-cat(_qt("label.correlation"), {args.correlation}, "\\n")
-cat(_qt("label.adjusted_n"), {args.nobs}, "\\n")
-cat(_qt("label.achieved_power"), ss_multiple(rho={args.correlation}, effect={args.effect or 0.3}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat(._qt("label.correlation"), {args.correlation}, "\\n")
+cat(._qt("label.adjusted_n"), {args.nobs}, "\\n")
+cat(._qt("label.achieved_power"), ss_multiple(rho={args.correlation}, effect={args.effect or 0.3}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
             r_code = R_MULTIPLE_ENDPOINTS + f"""
 cat("\\n========== Multiple Endpoints ==========\\n")
-cat(_qt("label.correlation"), {args.correlation}, "\\n")
+cat(._qt("label.correlation"), {args.correlation}, "\\n")
 res <- ss_multiple(rho={args.correlation}, effect={args.effect or 0.3}, alpha={args.alpha}, power={args.power})
-cat(_qt("label.single_endpoint_n"), res$n_single, _qt("label.adjusted_total"), res$n_adj, "\\n")
+cat(._qt("label.single_endpoint_n"), res$n_single, ._qt("label.adjusted_total"), res$n_adj, "\\n")
 """
 
     elif args.test == "bayesian":
@@ -1001,64 +1103,64 @@ cat(_qt("label.single_endpoint_n"), res$n_single, _qt("label.adjusted_total"), r
         if solve_for_power:
             r_code = R_T_TESTS + f"""
 cat("\\n========== Two-Sample T-Test (Power given N) ==========\\n")
-cat(_qt("label.cohens_d"), {d_val}, "\\n")
-cat(_qt("label.n_per_group_total"), {args.nobs}, "\\n")
-cat(_qt("label.achieved_power"), ss_ttest("two.sample", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
+cat(._qt("label.cohens_d"), {d_val}, "\\n")
+cat(._qt("label.n_per_group_total"), {args.nobs}, "\\n")
+cat(._qt("label.achieved_power"), ss_ttest("two.sample", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
 """
         else:
             r_code = R_T_TESTS + f"""
 cat("\\n========== Two-Sample T-Test ==========\\n")
-cat(_qt("label.cohens_d"), {d_val}, "\\n")
+cat(._qt("label.cohens_d"), {d_val}, "\\n")
 n_pg <- ss_ttest("two.sample", d={d_val}, alpha={args.alpha}, power={args.power}, alt="{alt}")
-cat(_qt("label.n_per_group"), n_pg, "\\n")
+cat(._qt("label.n_per_group"), n_pg, "\\n")
 """
 
     elif args.test == "ttest_paired":
         if solve_for_power:
             r_code = R_T_TESTS + f"""
 cat("\\n========== Paired T-Test (Power given N) ==========\\n")
-cat(_qt("label.cohens_d"), {d_val}, "\\n")
-cat(_qt("label.n_pairs"), {args.nobs}, "\\n")
-cat(_qt("label.achieved_power"), ss_ttest("paired", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
+cat(._qt("label.cohens_d"), {d_val}, "\\n")
+cat(._qt("label.n_pairs"), {args.nobs}, "\\n")
+cat(._qt("label.achieved_power"), ss_ttest("paired", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
 """
         else:
             r_code = R_T_TESTS + f"""
 cat("\\n========== Paired T-Test ==========\\n")
-cat(_qt("label.cohens_d"), {d_val}, "\\n")
+cat(._qt("label.cohens_d"), {d_val}, "\\n")
 n_pg <- ss_ttest("paired", d={d_val}, alpha={args.alpha}, power={args.power}, alt="{alt}")
-cat(_qt("label.n_pairs"), n_pg, "\\n")
+cat(._qt("label.n_pairs"), n_pg, "\\n")
 """
 
     elif args.test == "ttest_one":
         if solve_for_power:
             r_code = R_T_TESTS + f"""
 cat("\\n========== One-Sample T-Test (Power given N) ==========\\n")
-cat(_qt("label.cohens_d"), {d_val}, "\\n")
-cat(_qt("label.n_total"), {args.nobs}, "\\n")
-cat(_qt("label.achieved_power"), ss_ttest("one.sample", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
+cat(._qt("label.cohens_d"), {d_val}, "\\n")
+cat(._qt("label.n_total"), {args.nobs}, "\\n")
+cat(._qt("label.achieved_power"), ss_ttest("one.sample", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
 """
         else:
             r_code = R_T_TESTS + f"""
 cat("\\n========== One-Sample T-Test ==========\\n")
-cat(_qt("label.cohens_d"), {d_val}, "\\n")
+cat(._qt("label.cohens_d"), {d_val}, "\\n")
 n_pg <- ss_ttest("one.sample", d={d_val}, alpha={args.alpha}, power={args.power}, alt="{alt}")
-cat(_qt("label.n_total"), n_pg, "\\n")
+cat(._qt("label.n_total"), n_pg, "\\n")
 """
 
     elif args.test == "anova":
         if solve_for_power:
             r_code = R_T_TESTS + f"""
 cat("\\n========== One-Way ANOVA (Power given N) ==========\\n")
-cat(_qt("label.k_groups"), {args.k_groups}, _qt("label.f_effect"), {args.effect or 0.25}, "\\n")
-cat(_qt("label.n_per_group_total"), {args.nobs}, "\\n")
-cat(_qt("label.achieved_power"), ss_anova(k={args.k_groups}, f={args.effect or 0.25}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat(._qt("label.k_groups"), {args.k_groups}, ._qt("label.f_effect"), {args.effect or 0.25}, "\\n")
+cat(._qt("label.n_per_group_total"), {args.nobs}, "\\n")
+cat(._qt("label.achieved_power"), ss_anova(k={args.k_groups}, f={args.effect or 0.25}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
             r_code = R_T_TESTS + f"""
 cat("\\n========== One-Way ANOVA ==========\\n")
-cat(_qt("label.k_groups"), {args.k_groups}, _qt("label.f_effect"), {args.effect or 0.25}, "\\n")
+cat(._qt("label.k_groups"), {args.k_groups}, ._qt("label.f_effect"), {args.effect or 0.25}, "\\n")
 n_pg <- ss_anova(k={args.k_groups}, f={args.effect or 0.25}, alpha={args.alpha}, power={args.power})
-cat(_qt("label.n_per_group"), n_pg, "\\n")
+cat(._qt("label.n_per_group"), n_pg, "\\n")
 """
 
     elif args.test == "proportion_one":
@@ -1068,20 +1170,20 @@ cat(_qt("label.n_per_group"), n_pg, "\\n")
         if solve_for_power:
             r_code = R_PROP_FUNCS + f"""
 cat("\\n========== One-Sample Proportion Test (Power given N) ==========\\n")
-cat(_qt("label.h0_proportion"), {p0}, "\\n")
-cat(_qt("label.h1_proportion"), {p1}, "\\n")
-cat(_qt("label.side"), "{alt_r}", "\\n")
-cat(_qt("label.given_n"), {args.nobs}, "\\n")
-cat(_qt("label.achieved_power"), ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, n={args.nobs}, alt="{alt_r}"), "\\n")
+cat(._qt("label.h0_proportion"), {p0}, "\\n")
+cat(._qt("label.h1_proportion"), {p1}, "\\n")
+cat(._qt("label.side"), "{alt_r}", "\\n")
+cat(._qt("label.given_n"), {args.nobs}, "\\n")
+cat(._qt("label.achieved_power"), ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, n={args.nobs}, alt="{alt_r}"), "\\n")
 """
         else:
             r_code = R_PROP_FUNCS + f"""
 cat("\\n========== One-Sample Proportion Test ==========\\n")
-cat(_qt("label.h0_proportion"), {p0}, "\\n")
-cat(_qt("label.h1_proportion"), {p1}, "\\n")
-cat(_qt("label.side"), "{alt_r}", "\\n")
-cat(_qt("label.target_power"), {args.power}, "\\n")
-cat(_qt("label.n_total_result"), ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, power={args.power}, alt="{alt_r}"), "\\n")
+cat(._qt("label.h0_proportion"), {p0}, "\\n")
+cat(._qt("label.h1_proportion"), {p1}, "\\n")
+cat(._qt("label.side"), "{alt_r}", "\\n")
+cat(._qt("label.target_power"), {args.power}, "\\n")
+cat(._qt("label.n_total_result"), ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, power={args.power}, alt="{alt_r}"), "\\n")
 """
 
     elif args.test in ("proportion_two", "proportion_paired", "odds_ratio", "risk_ratio"):
@@ -1098,22 +1200,22 @@ cat(_qt("label.n_total_result"), ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha
         if solve_for_power:
             r_code = R_PROP_FUNCS + f"""
 cat("\\n========== {label} (Power given N) ==========\\n")
-cat(_qt("label.control_h0"), {p1}, "\\n")
-cat(_qt("label.treatment_h1"), {p2}, "\\n")
-cat(_qt("label.side"), "{alt_r}", "\\n")
-cat(_qt("label.given_n_per_group"), {args.nobs}, "\\n")
-cat(_qt("label.achieved_power"), {fn}(p1={p1}, p2={p2}, alpha={args.alpha}, n={args.nobs}, alt="{alt_r}"), "\\n")
+cat(._qt("label.control_h0"), {p1}, "\\n")
+cat(._qt("label.treatment_h1"), {p2}, "\\n")
+cat(._qt("label.side"), "{alt_r}", "\\n")
+cat(._qt("label.given_n_per_group"), {args.nobs}, "\\n")
+cat(._qt("label.achieved_power"), {fn}(p1={p1}, p2={p2}, alpha={args.alpha}, n={args.nobs}, alt="{alt_r}"), "\\n")
 """
         else:
             r_code = R_PROP_FUNCS + f"""
 cat("\\n========== {label} ==========\\n")
-cat(_qt("label.control_h0"), {p1}, "\\n")
-cat(_qt("label.treatment_h1"), {p2}, "\\n")
-cat(_qt("label.side"), "{alt_r}", "\\n")
-cat(_qt("label.target_power"), {args.power}, "\\n")
+cat(._qt("label.control_h0"), {p1}, "\\n")
+cat(._qt("label.treatment_h1"), {p2}, "\\n")
+cat(._qt("label.side"), "{alt_r}", "\\n")
+cat(._qt("label.target_power"), {args.power}, "\\n")
 n_pg <- {fn}(p1={p1}, p2={p2}, alpha={args.alpha}, power={args.power}, alt="{alt_r}")
-cat(_qt("label.n_per_group"), n_pg, "\\n")
-cat(_qt("label.total_n"), 2 * n_pg, "\\n")
+cat(._qt("label.n_per_group"), n_pg, "\\n")
+cat(._qt("label.total_n"), 2 * n_pg, "\\n")
 """
 
     elif args.test == "non_inferiority":
@@ -1123,25 +1225,30 @@ cat(_qt("label.total_n"), 2 * n_pg, "\\n")
         if solve_for_power:
             r_code = R_NON_INFERIORITY + f"""
 cat("\\n========== Non-Inferiority (Proportions, Power given N) ==========\\n")
-cat(_qt("label.control_rate_ni"), {p1}, "\\n")
-cat(_qt("label.treatment_rate_ni"), {p2}, "\\n")
-cat(_qt("label.ni_margin"), {margin}, "\\n")
-cat(_qt("label.total_n_ni"), {args.nobs}, _qt("label.each_group"), {args.nobs}/2, "\\n")
-cat(_qt("label.achieved_power"), ss_noninf_prop(p1={p1}, p2={p2}, margin={margin}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat(._qt("label.control_rate_ni"), {p1}, "\\n")
+cat(._qt("label.treatment_rate_ni"), {p2}, "\\n")
+cat(._qt("label.ni_margin"), {margin}, "\\n")
+cat(._qt("label.total_n_ni"), {args.nobs}, ._qt("label.each_group"), {args.nobs}/2, "\\n")
+cat(._qt("label.achieved_power"), ss_noninf_prop(p1={p1}, p2={p2}, margin={margin}, alpha={args.alpha}, n={args.nobs}), "\\n")
 """
         else:
             r_code = R_NON_INFERIORITY + f"""
 cat("\\n========== Non-Inferiority (Proportions) ==========\\n")
-cat(_qt("label.control_rate_ni_short", p1=p1))
-cat(_qt("label.treatment_rate_ni_short", p2=p2))
-cat(_qt("label.assumed_diff"), abs({p1} - {p2}), "\\n")
-cat(_qt("label.ni_margin_short", margin=margin))
-cat(_qt("label.one_sided_alpha", alpha=args.alpha, power=args.power))
+cat(._qt("label.control_rate_ni_short", p1=p1), "
+")
+cat(._qt("label.treatment_rate_ni_short", p2=p2), "
+")
+cat(._qt("label.assumed_diff"), abs({p1} - {p2}), "\\n")
+cat(._qt("label.ni_margin_short", margin=margin), "
+")
+cat(._qt("label.one_sided_alpha", alpha=args.alpha, power=args.power), "
+")
 res <- ss_noninf_prop(p1={p1}, p2={p2}, margin={margin}, alpha={args.alpha}, power={args.power})
-cat(_qt("label.result_header"))
-cat(_qt("label.n_per_arm"), res$n_arm, "\\n")
-cat(_qt("label.total_sample_size_result"), res$total, "\\n")
-cat(_qt("label.with_dropout"), ceiling(res$total * 1.1), "\\n")
+cat(._qt("label.result_header"), "
+")
+cat(._qt("label.n_per_arm"), res$n_arm, "\\n")
+cat(._qt("label.total_sample_size_result"), res$total, "\\n")
+cat(._qt("label.with_dropout"), ceiling(res$total * 1.1), "\\n")
 """
 
     elif args.test == "survival":
@@ -1149,26 +1256,26 @@ cat(_qt("label.with_dropout"), ceiling(res$total * 1.1), "\\n")
         if solve_for_power:
             r_code = R_SURVIVAL_SIMPLE + f"""
 cat("\\n========== Survival (Log-Rank, Power given N) ==========\\n")
-cat(_qt("label.hazard_ratio_surv"), {hr}, "\\n")
-cat(_qt("label.total_events"), {args.nobs}, "\\n")
-cat(_qt("label.achieved_power"), ss_survival_logrank(hr={hr}, alpha={args.alpha}, n={args.nobs}), "\\n")
+cat(._qt("label.hazard_ratio_surv"), {hr}, "\\n")
+cat(._qt("label.total_events"), {args.nobs}, "\\n")
+cat(._qt("label.achieved_power"), ss_survival_logrank(hr={hr}, alpha={args.alpha}, n={args.nobs}), "\\n")
 if ({args.event_rate} > 0 && {args.followup_time} > 0) {{
   n_per_group <- ceiling({args.nobs} / (2 * {args.event_rate}))
-  cat(_qt("label.approx_n_per_group_surv", event_rate=args.event_rate), n_per_group, "\\n")
+  cat(._qt("label.approx_n_per_group_surv", event_rate=args.event_rate), n_per_group, "\\n")
 }}
 """
         else:
             r_code = R_SURVIVAL_SIMPLE + f"""
 cat("\\n========== Survival (Log-Rank Test) ==========\\n")
-cat(_qt("label.hr_format", hr=hr))
+cat(._qt("label.hazard_ratio"), {hr}, "\\n")
 res <- ss_survival_logrank(hr={hr}, alpha={args.alpha}, power={args.power},
                            event_rate={args.event_rate}, accrual_time={args.accrual_time}, followup_time={args.followup_time})
-cat(_qt("label.total_events_needed"), res$d, "\\n")
+cat(._qt("label.total_events_needed"), res$d, "\\n")
 if (!is.na(res$n_per_group)) {{
-  cat(_qt("label.each_group_n"), res$n_per_group, _qt("label.total_n_surv"), res$total, "\\n")
-  if (!is.na(res$n_with_dropout)) cat(_qt("label.dropout_note_inline"), res$n_with_dropout, "\\n")
+  cat(._qt("label.each_group_n"), res$n_per_group, ._qt("label.total_n_surv"), res$total, "\\n")
+  if (!is.na(res$n_with_dropout)) cat(._qt("label.dropout_note_inline"), res$n_with_dropout, "\\n")
 }} else {{
-  cat(_qt("label.survival_note"))
+  cat(._qt("label.survival_note"))
 }}
 """
 
@@ -1269,15 +1376,108 @@ if (!is.na(res$n_per_group)) {{
             solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "group_sequential":
-        # Validate spending function against allowlist
-        _allowed_spending = ["OF", "Pocock", "WT"]
-        if args.spending_func not in _allowed_spending:
-            print(t("error.spending_func_must_be_one_of", options=", ".join(_allowed_spending)))
-            sys.exit(1)
-        r_code = R_GROUP_SEQUENTIAL.format(
+        # Upgraded in v3.6.0: rpact-backed exact two-sample means GSD
+        # (replaces the old approximate closed-form). Spending validated via choices.
+        # directionUpper: FALSE only when the treatment effect is a reduction.
+        _dir_upper = "FALSE" if (args.effect_gs is not None and args.effect_gs < 0) else "TRUE"
+        r_code = R_GSD_MEAN.format(
+            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
+            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
             alpha=args.alpha, power=args.power, nobs=args.nobs,
             n_interim=args.n_interim, effect_gs=args.effect_gs,
-            spending_func=args.spending_func,
+            spending_func=args.spending_func, direction_upper=_dir_upper,
+            solve_for_power=str(solve_for_power).upper())
+
+    elif args.test == "gsd_proportion":
+        if args.gs_proportion_metric == "ratio":
+            _p1, _p2 = args.p1, args.p1 * args.gs_ratio
+        elif args.gs_proportion_metric == "or":
+            _p1, _p2 = args.p1, (args.gs_or * args.p1) / (1 - args.p1 + args.gs_or * args.p1)
+        else:
+            _p1, _p2 = args.p1, args.p2
+        # directionUpper: FALSE when the treatment proportion is LOWER (beneficial
+        # reduction, e.g. fewer adverse events); TRUE when higher (e.g. response).
+        _dir_upper = "FALSE" if (_p1 is not None and _p2 is not None and _p1 < _p2) else "TRUE"
+        r_code = R_GSD_PROPORTION.format(
+            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
+            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            n_interim=args.n_interim, spending_func=args.spending_func,
+            p1=_p1, p2=_p2, metric=args.gs_proportion_metric,
+            direction_upper=_dir_upper,
+            solve_for_power=str(solve_for_power).upper())
+
+    elif args.test == "gsd_survival":
+        _lambda2 = (0.69314718056 / args.gs_median_control) if args.gs_median_control > 0 else 0.0578
+        _hr = args.hazard_ratio if args.hazard_ratio is not None else 0.7
+        # HR < 1 (beneficial) -> reject on the lower side -> directionUpper = FALSE.
+        _dir_upper = "FALSE" if _hr < 1 else "TRUE"
+        r_code = R_GSD_SURVIVAL.format(
+            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
+            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            n_interim=args.n_interim, spending_func=args.spending_func,
+            lambda2=_lambda2, hr=_hr, accrual=args.accrual_time,
+            followup=args.followup_time, dropout=args.dropout_rate,
+            direction_upper=_dir_upper,
+            solve_for_power=str(solve_for_power).upper())
+
+    elif args.test == "gsd_hazard":
+        _lambda2 = (0.69314718056 / args.gs_median_control) if args.gs_median_control > 0 else 0.0578
+        _hr = args.hazard_ratio if args.hazard_ratio is not None else 0.7
+        _dir_upper = "FALSE" if _hr < 1 else "TRUE"
+        r_code = R_GSD_HAZARD.format(
+            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
+            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            n_interim=args.n_interim, spending_func=args.spending_func,
+            lambda2=_lambda2, hr=_hr, accrual=args.accrual_time,
+            followup=args.followup_time, dropout=args.dropout_rate,
+            direction_upper=_dir_upper,
+            solve_for_power=str(solve_for_power).upper())
+
+    elif args.test == "gsd_survival_sim":
+        _lambda2 = (0.69314718056 / args.gs_median_control) if args.gs_median_control > 0 else 0.0578
+        _hr = args.hazard_ratio if args.hazard_ratio is not None else 0.7
+        _dir_upper = "FALSE" if _hr < 1 else "TRUE"
+        _nobs_given = "TRUE" if args.nobs is not None else "FALSE"
+        _sim_seed = args.sim_seed if args.sim_seed is not None else "NULL"
+        r_code = R_GSD_SURVIVAL_SIM.format(
+            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
+            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            n_interim=args.n_interim, spending_func=args.spending_func,
+            lambda2=_lambda2, hr=_hr, accrual=args.accrual_time,
+            followup=args.followup_time, dropout=args.dropout_rate,
+            direction_upper=_dir_upper, nobs_given=_nobs_given,
+            n_simulations=args.n_simulations, sim_seed=_sim_seed)
+
+    elif args.test == "gsd_hazard_sim":
+        _lambda2 = (0.69314718056 / args.gs_median_control) if args.gs_median_control > 0 else 0.0578
+        _hr = args.hazard_ratio if args.hazard_ratio is not None else 0.7
+        _dir_upper = "FALSE" if _hr < 1 else "TRUE"
+        _nobs_given = "TRUE" if args.nobs is not None else "FALSE"
+        _sim_seed = args.sim_seed if args.sim_seed is not None else "NULL"
+        r_code = R_GSD_HAZARD_SIM.format(
+            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
+            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            n_interim=args.n_interim, spending_func=args.spending_func,
+            lambda2=_lambda2, hr=_hr, accrual=args.accrual_time,
+            followup=args.followup_time, dropout=args.dropout_rate,
+            direction_upper=_dir_upper, nobs_given=_nobs_given,
+            n_simulations=args.n_simulations, sim_seed=_sim_seed)
+
+    elif args.test == "gsd_poisson":
+        # Treatment rate LOWER (rate1 < rate2) -> beneficial reduction -> FALSE.
+        _dir_upper = "FALSE" if args.gs_rate1 < args.gs_rate2 else "TRUE"
+        r_code = R_GSD_POISSON.format(
+            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
+            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            n_interim=args.n_interim, spending_func=args.spending_func,
+            rate1=args.gs_rate1, rate2=args.gs_rate2, ptime=args.gs_poisson_time,
+            direction_upper=_dir_upper,
             solve_for_power=str(solve_for_power).upper())
 
     elif args.test == "adaptive":
@@ -1298,6 +1498,56 @@ if (!is.na(res$n_per_group)) {{
             hr_exact=args.hr_exact, accrual_exact=args.accrual_exact,
             followup_exact=args.followup_exact, dropout_exact=args.dropout_exact,
             event_rate_exact=args.event_rate_exact, n_stages_exact=args.n_stages_exact,
+            solve_for_power=str(solve_for_power).upper())
+
+    elif args.test == "survival_equivalence":
+        r_code = R_SURVIVAL_EQUIVALENCE.format(
+            eq_margin_surv=args.eq_margin_surv, hr_expected=args.hr_expected,
+            accrual_time=args.accrual_time, followup_time=args.followup_time,
+            dropout_rate=args.dropout_rate, event_rate=args.event_rate,
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            solve_for_power=str(solve_for_power).upper())
+
+    elif args.test == "survival_superiority":
+        r_code = R_SURVIVAL_SUPERIORITY.format(
+            sup_margin_surv=args.sup_margin_surv, hr_expected=args.sup_hr,
+            accrual_time=args.accrual_time, followup_time=args.followup_time,
+            dropout_rate=args.dropout_rate, event_rate=args.event_rate,
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            solve_for_power=str(solve_for_power).upper())
+
+    elif args.test == "cox_covariate":
+        r_code = R_COX_COVARIATE.format(
+            cox_hr=args.cox_hr, cox_r2=args.cox_r2, cox_prev=args.cox_prev,
+            cox_event_prop=args.cox_event_prop, alpha=args.alpha,
+            power=args.power, nobs=args.nobs,
+            solve_for_power=str(solve_for_power).upper())
+
+    elif args.test == "survival_one_sample":
+        r_code = R_SURVIVAL_ONESAMPLE.format(
+            median0=args.median0, median1=args.median1,
+            accrual_time=args.accrual_time, followup_time=args.followup_time,
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            solve_for_power=str(solve_for_power).upper())
+
+    elif args.test == "competing_risks":
+        r_code = R_COMPETING_RISKS.format(
+            ci_control=args.ci_control, ci_treatment=args.ci_treatment,
+            alpha=args.alpha, power=args.power, nobs=args.nobs,
+            solve_for_power=str(solve_for_power).upper())
+
+    elif args.test == "recurrent_events":
+        r_code = R_RECURRENT_EVENTS.format(
+            rate_control=args.rate_control, rate_ratio=args.rate_ratio,
+            recur_followup=args.recur_followup, alpha=args.alpha,
+            power=args.power, nobs=args.nobs,
+            solve_for_power=str(solve_for_power).upper())
+
+    elif args.test == "survival_historical":
+        r_code = R_SURVIVAL_HISTORICAL.format(
+            median0=args.median0, new_median=args.new_median,
+            accrual_time=args.accrual_time, followup_time=args.followup_time,
+            hist_n=args.hist_n, alpha=args.alpha, power=args.power, nobs=args.nobs,
             solve_for_power=str(solve_for_power).upper())
 
     else:

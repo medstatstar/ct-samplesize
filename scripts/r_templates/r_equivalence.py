@@ -10,7 +10,7 @@ __all__ = [
 
 R_BLAND_ALTMAN = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Bland-Altman: precision (CI half-width) calc, not a power calc.
 ss_bland_altman <- function(sd_diff, w, alpha, n=NULL) {{
@@ -39,7 +39,7 @@ if ({solve_for_power}) {{
 
 R_EQ_MEANS = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Equivalence of two means (TOST). Forward via TrialSize; reverse approx.
 ss_eq_means <- function(delta, sigma, alpha, power=NULL, n=NULL) {{
@@ -73,7 +73,7 @@ if ({solve_for_power}) {{
 
 R_BE_TOST = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Bioequivalence (TOST) via PowerTOST. Forward sampleN.TOST; reverse power.TOST.
 ss_be_tost <- function(theta0, cv, design, alpha, power=NULL, n=NULL) {{
@@ -104,7 +104,7 @@ if ({solve_for_power}) {{
 
 R_SUPERIORITY_MARGIN = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Superiority by a Margin: TrialSize::TwoSampleProportion.Equality + fallback.
 ss_sup_margin <- function(p_control, delta_sup, sup_margin, alpha, power=NULL, n=NULL) {{

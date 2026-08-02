@@ -2,6 +2,79 @@
 
 > This file records ct-samplesize's key architecture & security changes for maintainer auditing (user-facing usage: `SKILL.md` & `references/`). / 本文件记录 ct-samplesize 的关键架构与安全变更，供维护者审计参考（用户面向的使用说明见 `SKILL.md` 与 `references/`）。
 
+## v3.8.0 — UX: friendlier menu & README / 用户体验：菜单与 README 更友好
+
+- **User menu (UI) optimized**: `references/menu.md` reorganized as scenario-first — top Triage gate (Simple / Complex / Vague) + `③ explain differences` entry, then a "find your test by research question" index (Part 0) ahead of the authoritative endpoint-type tree (Part 1); cleaner navigation for non-statistician users. / 用户菜单（界面）优化：`references/menu.md` 改为场景优先——顶部 Triage 门控（简单/复杂/模糊）+「③ 解释差异」入口，再按「研究问题找检验」索引（Part 0）置于权威终点类型树（Part 1）之前；非统计背景用户导航更顺畅。
+- **README optimized**: dialogue-style examples (1–7, incl. Complex pop-up menu & grill-me), a scenario index with "try saying", and a clear feedback/contact section (§10.6) — onboarding closer to a first-time user's needs. / README 优化：对话式示例（1–7，含复杂弹出菜单与 grill-me）、场景索引含「试试这样说」、明确的反馈/联系段（§10.6），更贴近初次使用者需求。
+- **Version unified to v3.8.0**: `SKILL.md`, both READMEs, `references/operation_sop.md`, and `scripts/samplesize_power.py` all bumped; docs remain English-only per ct-base §13.2. / 版本统一至 v3.8.0：SKILL.md、双语 README、`references/operation_sop.md`、`scripts/samplesize_power.py` 全部同步；文档按 ct-base §13.2 保持英文-only。
+
+## v3.7.2 — Docs: English-only (ct-base §13.2) / 文档：英文-only（ct-base §13.2）
+
+- **Docs English-only**: `references/*` and `AGENTS.md` are now English-only per ct-base §13.2 (Chinese removed; runtime output may still be EN+ZH per OS setting). Renamed `formulas_zh.md`→`formulas.md`, `r_packages_zh.md`→`r_packages.md`; updated all references. `SKILL.md` language-policy section reworded to English-only docs; `references/language_policy.md` retitled accordingly. / 文档英文-only：`references/*` 与 `AGENTS.md` 按 ct-base §13.2 改为纯英文（删除中文；运行时输出仍可随 OS 中英）。重命名 `formulas_zh.md`→`formulas.md`、`r_packages_zh.md`→`r_packages.md` 并同步引用；`SKILL.md` 语言策略段改为英文-only 文档说明；`references/language_policy.md` 同步调整。
+- **SKILL.md trimmed to ≤200 lines**: Implementation section condensed (examples externalized to `references/cli_examples.md`); removed duplicated menu note and decorative lines. / `SKILL.md` 压缩至 200 行内：Implementation 段精简（示例外迁 `references/cli_examples.md`），删除重复菜单说明与装饰行。
+- **Triage alignment (ct-base §5.2)**: Simple / Complex / Vague three-way interaction formalized in `SKILL.md` and `AGENTS.md` (Complex → routing menu with `③ explain differences`; Vague → grill-me probing). / Triage 三分类（简单/复杂/模糊）在 `SKILL.md` 与 `AGENTS.md` 落地（复杂→路由菜单含「③ 解释差异」；模糊→grill-me 逐分支追问）。
+- **`references/menu.md` user-friendly rewrite**: added a scenario-first "find your test by research question" index (Part 0, mirroring ct-advisor's intent-organized clarify menu) ahead of the authoritative endpoint-type tree (Part 1) and design-family cross-index (Part 2); triage gate + `③ explain-differences` entry stated at top; removed leftover English-cleanup fragments. 49 tests all covered. / `references/menu.md` 用户友好化重写：新增「按研究问题找检验」场景索引（Part 0，对齐 ct-advisor 意图组织式澄清菜单）置于权威终点类型树（Part 1）与设计族交叉索引（Part 2）之前；顶部明确 Triage 门控与「③ 解释差异」入口；清理英化残留碎片。49 检验全覆盖。
+- **README version fix**: `README.md` / `README_zh-CN.md` footer bumped v3.7.1 → v3.7.2 to match `SKILL.md` / `samplesize_power.py`. / README 版本号 v3.7.1→v3.7.2，与 SKILL.md / samplesize_power.py 一致。
+
+## v3.7.1 — Fix: R-side `._qt` alias & ROC `ss_roc` execution / 修复：R 端 `._qt` 别名与 ROC `ss_roc` 执行
+
+- **Bug 1（核心、广泛）**: 生成的 R 代码使用 `cat(_qt("label.xxx"), ...)`，但 R 端 `I18N_R` 从未定义 `_qt`，且 **R 标识符不能以 `_` 开头**（`_qt` 为非法符号，故 R 报 `unexpected symbol in "_qt"`）。旧 `i18n.R` 内联重构时漏掉该别名；此前 dry-run 不执行 R，从未暴露。
+  - 修复：R 端别名改为 `._qt`（`.` 开头，R 合法，与 `.messages` / `.t_lang` 同风格）；生成代码 `cat(_qt(` → `cat(._qt(`（R 字符串上下文 88 处）；Python 端 `_qt()` 函数与 ROC 的 Python 端调用保持不变。
+  - 验证：ttest_ind / roc / adaptive_simulate 实跑均正常（不再报 `_qt` 错误）。
+- **Bug 2（ROC 模块）**: ROC 模块在 Python 端调用 R 函数 `ss_roc`（如 `_r_cat(_qt(...), ss_roc(...))`），`ss_roc` 仅在 R 端定义（`r_templates/r_proportions_rates.py` 的 `R_ROC` 常量），导致 `NameError: name 'ss_roc' is not defined`。该问题在 v3.4.9 修复 `_qt` f-string bug 时遗留（只把 `_qt` 移到 Python 端，未处理同为 R 函数的 `ss_roc`）。
+  - 修复：ROC 模块改为与其它比例 / 率类检验一致的 R 字符串上下文（`cat(._qt(...))` 形式），`ss_roc(auc0=..., n=...)` 作为 R 代码在 R 端执行（由 `R_ROC` 引入）。
+  - 验证：roc 两条路径（给 n 求 power / 给 power 求 n）均正确产出（Achieved power 0.9931 / Sample size 81）。
+- **新增 `references/operation_sop.md`**：从触发、环境、调用、安全模型、参数、实测工作流、结果产出格式到故障排查的完整操作 SOP。
+
+## v3.7.0 — New: Group-sequential survival/hazard MONTE-CARLO SIMULATION / 新增：组序贯生存/风险率蒙特卡洛模拟
+
+- **New tests / 新增检验类型 (2)**: `gsd_survival_sim`, `gsd_hazard_sim` — Monte-Carlo simulation of group-sequential survival designs via rpact `getSimulationSurvival`. / 基于 rpact `getSimulationSurvival` 的组序贯生存设计蒙特卡洛模拟。
+  - Validates empirical power, stage-wise rejection probabilities, expected N, and expected events against the analytic (closed-form) GSD designs. / 用于验证经验功效、各阶段拒绝概率、预期样本量与预期事件数，与解析（闭式）组序贯设计互校。
+  - Reuses the exact same `_GSD_DESIGN` block, spending functions (`--spending_func`), `--futility` bound, and `directionUpper` reduction guard as the analytic `gsd_survival`/`gsd_hazard`. / 复用与解析型 `gsd_survival`/`gsd_hazard` 完全相同的设计块、消耗函数、futility 边界与下降型方向守卫。
+  - New params / 新增参数: `--n_simulations` (→ `maxNumberOfIterations`, default 10000; shared with `adaptive_simulate`) and `--sim_seed` (→ `seed`). / 复用 `adaptive_simulate` 的 `--n_simulations` 与 `--sim_seed`。
+- **rpact simulation constraints (validated empirically) / rpact 模拟约束（已实测验证）**:
+  - `maxNumberOfSubjects` is NOT passed — rpact derives it from `accrualTime × accrualIntensity`, which must agree (a conflicting explicit value raises an error). / 不传 `maxNumberOfSubjects`，由入组强度推导，避免与 API 约束冲突。
+  - The interim-event plan is anchored on rpact's analytic `maxNumberOfEvents` (internally consistent); `longTimeSimulationAllowed = TRUE` lets follow-up extend so planned events accrue. / 期中事件计划锚定 rpact 解析 `maxNumberOfEvents`；开 `longTimeSimulationAllowed` 让随访延长以累积事件。
+  - `futilityStops` length must be `kMax-1` (last look has no futility stop) — same rule as the analytic design. / `futilityStops` 长度须为 kMax-1，与解析设计一致。
+- **Validation / 验证**: R-executed (rpact 4.4.0). Default mode (solve n+events from power 0.8, kMax=3, OF) → n=180/arm, empirical power **0.776** (≈ analytic 0.8), expected N=356.6, expected events=163.9, stage-wise reject 0.071/0.398/0.307. `gsd_hazard_sim` gives identical numbers (HR ≡ hazard rate). Supplying a too-small `--nobs` (e.g. 89) honestly yields lower empirical power (0.42) and expected N (75.2). / 默认模式经验功效 0.776（接近解析 0.8）；给定过小 nobs 如实反映功效不足。
+- Count: 47 → 49 analytic test types. / 检验类型计数 47 → 49。
+
+## v3.6.0 — New: PASS Group-Sequential extensions (rpact-backed) / 新增：PASS 组序贯扩展（rpact 驱动）
+
+- **`group_sequential` upgraded / 升级**: replaced the old approximate closed-form (`gsDesign`) two-sample **means** design with an **exact rpact** implementation (`getSampleSizeMeans`/`getPowerMeans`). Spending validated via `choices`. / 将旧的近似闭式（gsDesign）两样本**均值**组序贯设计替换为 **rpact 精确**实现；消耗函数经 `choices` 校验。
+- **New tests / 新增检验类型 (4)**: `gsd_proportion`, `gsd_survival`, `gsd_hazard`, `gsd_poisson` — rpact-backed group-sequential designs for the other PASS Group-Sequential families. / rpact 驱动的组序贯设计，覆盖 PASS 组序贯的其余族。
+  - `gsd_proportion` — two proportions; `difference`/`ratio`/`or` effect metrics; `getSampleSizeRates`/`getPowerRates`. / 两比例，支持差值/比值/OR 三种效应度量。
+  - `gsd_survival` / `gsd_hazard` — logrank / HR; `getSampleSizeSurvival`/`getPowerSurvival`; control median → λ₂. / 生存 logrank 与风险比，对照中位推导 λ₂。
+  - `gsd_poisson` — two Poisson rates; `getSampleSizeCounts`/`getPowerCounts`. / 两 Poisson 率。
+- **Real spending functions / 真实消耗函数**: OF / Pocock / WT / HSD(γ via `--rho`) / KimDeMets(γ via `--rho`); futility bound via `--futility` (non-binding, `bsOF`), which requires the `as*` family. / 5 种消耗函数；`--futility` 加非绑定边界，须配 `as*` 族。
+- **Bug fixes / 修复**:
+  - `directionUpper` guard: effects that are *reductions* (HR<1, rate1<rate2, negative `effect_gs`, p1<p2) now set `directionUpper = FALSE`, fixing power=0 on the lower side. / 方向守卫：下降型效应自动设 `FALSE`，修复下侧备择 power=0。
+  - `getPowerSurvival` does not accept `followUpTime`; survival/hazard reverse now encodes accrual via `accrualIntensity` + estimated events. / `getPowerSurvival` 不接受 `followUpTime`，反向改用 `accrualIntensity`+事件估计。
+  - WT requires `deltaWT` (via `--wt_delta`, default 0.25); WT + `--futility` is rejected with a friendly bilingual error (rpact has no `asWT` form). / WT 需 `deltaWT`；WT 与 futility 组合被友好拦截（rpact 无 asWT）。
+  - KimDeMets / HSD now set `gammaA` from `--rho` (previously only HSD did, triggering the "out of validated bounds" warning). / KimDeMets/HSD 均从 `--rho` 取 gammaA。
+  - `gsd_proportion` difference mode: `--p1`/`--p2` got defaults (0.7/0.5) to avoid `object 'None' not found`. / 差值模式补默认参数。
+- **Bidirectional / 双向求解**: all 5 GSD types support `--nobs` reverse (solve power), self-consistent with forward n (means 80/0.80, proportion 75/0.80, survival 178/0.82, poisson 33/0.81). / 5 类均支持 `--nobs` 反解，正反向自洽。
+- **Implementation / 实现**: new `scripts/r_templates/r_gsd.py` (5 rpact templates + shared `_GSD_DESIGN`); dispatch wired in `samplesize_power.py` (`choices`, argparse params, `_GSD_DESIGN` injection: `_futil_params`/`_gs_type`/`_gs_gamma`/`_delta_frag`/`_design_beta`/`_kmax`/`_dir_upper`); i18n key `error.wt_futility_unsupported` added. / 新增 `r_gsd.py` 与调度接线；i18n 新增键。
+- **Validation / 验证**: `py_compile` clean; all 5 types R-executed forward & reverse give self-consistent results; spending×futility matrix reachable; WT+futility guard verified. / 编译通过；5 类正反向 R 实跑自洽；消耗函数×futility 矩阵可达；WT+futility 守卫已验证。
+- Count: 43 → 47 analytic test types. / 检验类型计数 43 → 47。
+
+## v3.5.0 — New: 7 PASS-survival test types (closed-form, base R) / 新增：7 个 PASS 生存检验类型（闭式、纯 base R）
+
+- **New tests / 新增检验类型 (7)**: `survival_equivalence`, `survival_superiority`, `cox_covariate`, `survival_one_sample`, `competing_risks`, `recurrent_events`, `survival_historical` — ported from the NCSS/PASS survival-analysis coverage. All are **closed-form, pure base R** (no extra R packages), so they run even when `survRM2`/`cpsurvsim`/`frailtypack` are absent. / 移植自 NCSS/PASS 生存分析能力；全部为**闭式、纯 base R**（无需额外 R 包），在 `survRM2`/`cpsurvsim`/`frailtypack` 缺失时仍可运行。
+- **Methods / 方法**:
+  - `survival_equivalence` — TOST on log-HR; $D = [2(Z_{1-\alpha}+Z_{1-\beta})]^2/(\log\delta_E)^2$ (one-sided per arm). / 对数 HR 上的双单侧检验。
+  - `survival_superiority` — superiority **with** margin $\delta_S$: $\delta=\log\delta_S-\log(HR)$; guard $HR\ge\delta_S$ errors out. / 含界值优效，守卫 HR≥界值即报错。
+  - `cox_covariate` — Vittinghoff & McCulloch (2007) covariate R² adjustment: $d=(Z_{1-\alpha/2}+Z_{1-\beta})^2/[(1-R^2)p(1-p)(\log HR)^2]$. / 协变量 R² 校正。
+  - `survival_one_sample` — one-arm exponential vs historical median; $\lambda_j=\log2/m_j$, $e_j=1-e^{-\lambda_j\bar t}$. / 单组指数生存。
+  - `competing_risks` — 2-sample cumulative-incidence (CIF) proportion test. / 竞争风险（累积发生率）。
+  - `recurrent_events` — Andersen-Gill marginal rate-ratio (Poisson). / 复发事件（Poisson 边际率比）。
+  - `survival_historical` — single-arm logrank vs historical median (same exponential structure as `survival_one_sample`). / 历史对照 logrank。
+- **Bidirectional / 双向求解**: all 7 support `--nobs` reverse (solve power given n), consistent with the other 43 types. / 7 个类型均支持 `--nobs` 反向求效能，与其余 43 种一致。
+- **Implementation / 实现**: new `scripts/r_templates/r_survival_ext.py` (7 `R_*` constants + `ss_*` R functions); wired into `samplesize_power.py` dispatch (`choices`, argparse params, `_RANGE_RULES`, 7 `elif` branches). i18n keys added to both `r_libs.py` (R side `t()`) and `i18n.py` (Python `_qt()`). / 新增 `r_survival_ext.py` 与调度接线；i18n 双系统同步新增键。
+- **Bug fix / 修复**: removed the now-redundant `source(file.path("{scriptdir}", "i18n.R"))` lines from R templates — `run_r()` already prepends `I18N_R` at execution time, so the literal `{scriptdir}` placeholder previously caused a `KeyError` on `.format()` (also affected the pre-existing `ni_survival`/`survival_exact` templates). / 删除冗余的 `source(i18n.R)` 行：因 `run_r()` 已在运行时前置 `I18N_R`，原 `{scriptdir}` 占位符会在 `.format()` 时触发 `KeyError`（此前也影响 `ni_survival`/`survival_exact`）。
+- **Validation / 验证**: `py_compile` clean; all 7 types R-executed forward (`--power 0.8`) and reverse (`--nobs`) give self-consistent results. / `py_compile` 通过；7 个类型正反向 R 实跑数值自洽。
+- Count: 37 → 43 analytic test types. / 检验类型计数 37 → 43。
+
 ## v3.4.9 — Fix: Anaconda f-string _qt() bug / 修复：Anaconda Python 下 f-string _qt() 静默失效
 
 - **Fix / 修复**: On Anaconda Python 3.13.9 (and potentially other builds), within a multi-line f-string, a function-call expression like `{_qt("...")}` that shares a physical line with a literal backslash `"\\n" ` silently fails to evaluate — leaving `_qt(` as literal text in the generated R code, which then crashes R with `unexpected symbol in "cat(_qt("`. This is **not** a universal Python bug (I could not reproduce on my own Win10/Anaconda 3.13.9 setup), but is clearly environment-sensitive and has been confirmed by the user via ct-pipeline runs. / 在 Anaconda Python 3.13.9（及可能的其它构建）中，多行 f-string 里面，函数调用表达式 `{_qt("...")}` 如果与字面反斜杠 `"\\n"` 在同一物理行，会静默不生效 — 生成的 R 代码里保留 `_qt(` 字面文本，R 报 `unexpected symbol in "cat(_qt("`。这不是普遍性 Python 缺陷（我在本机 Win10/Anaconda 3.13.9 无法复现），但显然对环境敏感，已由用户通过 ct-pipeline 确认。

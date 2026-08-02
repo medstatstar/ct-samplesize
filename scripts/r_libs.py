@@ -315,7 +315,58 @@ I18N_R = r"""# =================================================================
     en = "(Use rpact::getDesignMAMS for exact calculations with selection rules)",
     zh = "(使用 rpact::getDesignMAMS 进行含选择规则的精确计算)"
   ),
-  label.n = list(en = "N:", zh = "N:")
+  label.n = list(en = "N:", zh = "N:"),
+  # ── v3.5.0 PASS-survival extensions / PASS 生存扩展 ──
+  r_header.surv_equiv_power = list(en = "\n========== Survival Equivalence (Power given N) ==========", zh = "\n========== 生存等效 (给定 N 求功效) =========="),
+  r_header.surv_equiv_n = list(en = "\n========== Survival Equivalence (TOST on HR) ==========", zh = "\n========== 生存等效 (HR 等效性 TOST) =========="),
+  r_header.surv_sup_power = list(en = "\n========== Survival Superiority by Margin (Power given N) ==========", zh = "\n========== 生存优效含界值 (给定 N 求功效) =========="),
+  r_header.surv_sup_n = list(en = "\n========== Survival Superiority by Margin ==========", zh = "\n========== 生存优效含界值 =========="),
+  r_header.cox_cov_power = list(en = "\n========== Cox Covariate Power (Power given N) ==========", zh = "\n========== Cox 协变量功效 (给定 N 求功效) =========="),
+  r_header.cox_cov_n = list(en = "\n========== Cox Covariate Power (Vittinghoff) ==========", zh = "\n========== Cox 协变量功效 (Vittinghoff 法) =========="),
+  r_header.onesample_surv_power = list(en = "\n========== One-Sample Exponential (Power given N) ==========", zh = "\n========== 单样本指数 (给定 N 求功效) =========="),
+  r_header.onesample_surv_n = list(en = "\n========== One-Sample Exponential Survival ==========", zh = "\n========== 单样本指数生存 =========="),
+  r_header.comprisk_power = list(en = "\n========== Competing Risks (Power given N) ==========", zh = "\n========== 竞争风险 (给定 N 求功效) =========="),
+  r_header.comprisk_n = list(en = "\n========== Competing Risks (Cumulative Incidence) ==========", zh = "\n========== 竞争风险 (累积发生率) =========="),
+  r_header.recur_power = list(en = "\n========== Recurrent Events (Power given N) ==========", zh = "\n========== 复发事件 (给定 N 求功效) =========="),
+  r_header.recur_n = list(en = "\n========== Recurrent Events (Andersen-Gill) ==========", zh = "\n========== 复发事件 (Andersen-Gill) =========="),
+  r_header.histctrl_power = list(en = "\n========== Historical Control (Power given N) ==========", zh = "\n========== 历史对照 (给定 N 求功效) =========="),
+  r_header.histctrl_n = list(en = "\n========== Historical Control Log-Rank ==========", zh = "\n========== 历史对照 Log-Rank =========="),
+  label.eq_margin_hr = list(en = "Equivalence margin (HR):", zh = "等效界值 (HR):"),
+  label.sup_margin_hr = list(en = "Superiority margin (HR):", zh = "优效界值 (HR):"),
+  label.cox_hr = list(en = "Covariate HR:", zh = "协变量 HR:"),
+  label.cox_r2 = list(en = "R^2 (other covariates):", zh = "R² (其它协变量):"),
+  label.cox_prev = list(en = "Covariate prevalence:", zh = "协变量患病率:"),
+  label.cox_event_prop = list(en = "Expected event proportion:", zh = "预期事件比例:"),
+  label.events_needed = list(en = "Required events (d):", zh = "所需事件数 (d):"),
+  label.median0 = list(en = "Null median survival:", zh = "原假设中位生存:"),
+  label.median1 = list(en = "Alternative median survival:", zh = "备择中位生存:"),
+  label.hazard0 = list(en = "Null hazard (lambda0):", zh = "原假设风险率 (λ0):"),
+  label.hazard1 = list(en = "Alternative hazard (lambda1):", zh = "备择风险率 (λ1):"),
+  label.events_h0 = list(en = "Expected events under H0:", zh = "H0 下预期事件数:"),
+  label.events_h1 = list(en = "Expected events under H1:", zh = "H1 下预期事件数:"),
+  label.ci_control = list(en = "Cumulative incidence (control):", zh = "累积发生率 (对照):"),
+  label.ci_treatment = list(en = "Cumulative incidence (treatment):", zh = "累积发生率 (治疗):"),
+  label.rate_control = list(en = "Recurrent-event rate (control, /py):", zh = "复发事件率 (对照, /人年):"),
+  label.rate_ratio = list(en = "Rate ratio:", zh = "率比:"),
+  label.recur_followup = list(en = "Follow-up (years):", zh = "随访时间 (年):"),
+  label.person_time = list(en = "Person-time per group:", zh = "每组人年:"),
+  label.hist_median = list(en = "Historical control median:", zh = "历史对照中位:"),
+  label.new_median = list(en = "New-arm median:", zh = "新臂中位:"),
+  label.hist_n = list(en = "Historical control n:", zh = "历史对照样本量:"),
+  label.total_with_dropout = list(en = "Total N (with dropout):", zh = "总 N (含脱落):"),
+  header.gsd_proportion_power = list(en = "GROUP-SEQUENTIAL TWO PROPORTIONS -- POWER", zh = "成组序贯·两比例 -- 效能"),
+  header.gsd_proportion_n = list(en = "GROUP-SEQUENTIAL TWO PROPORTIONS -- SAMPLE SIZE", zh = "成组序贯·两比例 -- 样本量"),
+  header.gsd_survival_power = list(en = "GROUP-SEQUENTIAL SURVIVAL -- POWER", zh = "成组序贯·生存 -- 效能"),
+  header.gsd_survival_n = list(en = "GROUP-SEQUENTIAL SURVIVAL -- SAMPLE SIZE", zh = "成组序贯·生存 -- 样本量"),
+  header.gsd_hazard_power = list(en = "GROUP-SEQUENTIAL HAZARD RATE -- POWER", zh = "成组序贯·风险率 -- 效能"),
+  header.gsd_hazard_n = list(en = "GROUP-SEQUENTIAL HAZARD RATE -- SAMPLE SIZE", zh = "成组序贯·风险率 -- 样本量"),
+  header.gsd_poisson_power = list(en = "GROUP-SEQUENTIAL POISSON RATE -- POWER", zh = "成组序贯·Poisson 率 -- 效能"),
+  header.gsd_poisson_n = list(en = "GROUP-SEQUENTIAL POISSON RATE -- SAMPLE SIZE", zh = "成组序贯·Poisson 率 -- 样本量"),
+  label.p1 = list(en = "P1 (control):", zh = "P1 (对照):"),
+  label.p2 = list(en = "P2 (treatment):", zh = "P2 (治疗):"),
+  label.proportion_metric = list(en = "Metric:", zh = "度量:"),
+  label.rate1 = list(en = "Lambda1 (treatment):", zh = "λ1 (治疗):"),
+  label.rate2 = list(en = "Lambda2 (control):", zh = "λ2 (对照):")
 )
 
 # ── Translation function / 翻译函数 ──
@@ -328,6 +379,13 @@ t <- function(key, ...) {
   } else {
     text
   }
+}
+
+# R-side alias for the Python _qt() helper used by generated cat() lines.
+# Python: _qt(key, **kw) -> escaped "string literal" (for f-strings).
+# R:     generated code emits cat(._qt("label.xxx"), ...) -> resolve to t().
+._qt <- function(key, ...) {
+  t(key, ...)
 }
 """
 

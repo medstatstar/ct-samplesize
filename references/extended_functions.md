@@ -1,42 +1,39 @@
-# Extended Functions Reference / 扩展功能参考
+# Extended Functions Reference
 
 > v4.0 additions: Win-Ratio, Must-Win/Co-Primary, Historical Controls, MAMS, Conditional Power/SSR, NI Survival, Superiority Margin, Assurance, Dunnett, Mediation, Survival Exact
 
 ---
 
-## Mixed Model Power (混合效应模型) — `simr`
+## Mixed Model Power — `simr`
 
-### Clinical Use / 临床场景
-- **重复测量**（同一受试者多次随访：基线、3月、6月、12月）
-- **多中心试验**（中心作为随机效应）
-- **阶梯式设计**（Cluster-level intervention with individual outcomes）
-- **纵向数据**（肿瘤大小随时间变化、血糖控制轨迹）
+### Clinical Use
+- Cluster-level intervention with individual outcomes
 
-### R Code / R 代码
+### R Code
 ```r
 library(simr); library(lme4)
 set.seed(42)
 
-# 预试验参数
-beta <- c(5.0, -0.8)        # 固定效应:截距=5, 处理效应=-0.8
-V1   <- 0.5                 # 随机截距方差
-sigma <- 1.0                # 残差标准差
+# pilot parameters
+beta <- c(5.0, -0.8)        # fixed effects: intercept=5, treatment effect=-0.8
+V1   <- 0.5                 # random intercept variance
+sigma <- 1.0                # residual standard deviation
 
-# 数据框架
+# data frame
 n_subjects <- 20
 n_treatment <- 10
 df <- expand.grid(time = c(0, 3, 6, 12), subject = seq_len(n_subjects))
 df$treatment <- ifelse(df$subject <= n_treatment, "active", "placebo")
 
-# 构建模型
+# build model
 model <- makeLmer(y ~ treatment * time + (1|subject),
                   fixef = beta, VarCorr = V1, sigma = sigma, data = df)
 
-# 检验效能
+# test power
 result <- powerSim(model, nsim = 1000, test = fcompare(y ~ time + (1|subject)))
 print(result)
 
-# 样本量曲线
+# power curve
 pc <- powerCurve(model, test = fcompare(y ~ time + (1|subject)),
                  along = "subject", breaks = seq(10, 50, 10))
 plot(pc)
@@ -49,15 +46,13 @@ python scripts/samplesize_power.py --test mixed_model --effect 0.5 --nsim 500
 
 ---
 
-## ROC 曲线 / ROC Curve — `pROC`
+## ROC Curve — `pROC`
 
-### Clinical Use / 临床场景
-- **诊断试验**：新标志物 vs. 金标准（AUC从0.5提升至0.75）
-- **预测模型**：构建诊断评分系统
-- **生物标志物验证**：确定标志物检测所需样本量
+### Clinical Use
+- ROC AUC versus null 0.50 / reference 0.75
 
-### Formula / 公式
-基于 Obuchowski 方法（AUC方差的二项分布近似）：
+### Formula
+Obuchowski AUC
 
 $$n = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{4(\arcsin\sqrt{AUC_1} - \arcsin\sqrt{AUC_0})^2}$$
 
@@ -68,15 +63,10 @@ python scripts/samplesize_power.py --test roc --auc0 0.5 --auc1 0.75 --power 0.8
 
 ---
 
-## Poisson 率比较 / Poisson Rate Comparison
+## Poisson Rate Comparison
 
-### Clinical Use / 临床场景
-- **复发性事件**：癫痫发作次数、哮喘急性加重次数、住院次数
-- **罕见事件发生率**：特定不良事件发生率比较
-- **率比校正**：随访时间不等长时率比校正
-
-### 方法
-Wald 检验 + 正态近似法
+### Method
+- Wald approximation
 
 ### CLI
 ```bash
@@ -85,14 +75,13 @@ python scripts/samplesize_power.py --test poisson --lambda1 0.05 --lambda2 0.03 
 
 ---
 
-## 类随机设计 / Cluster-Randomized Design
+## Cluster-Randomized Design
 
-### Clinical Use / 临床场景
-- **群组随机**：按中心/诊所/学校随机分组
-- **Pragmatic Trial**：全科医生随机到干预组，患者为分析单元
-- **阶梯式设计 (Stepped Wedge)**：所有cluster逐步引入干预
+### Clinical Use
+- Pragmatic Trial
+- Stepped Wedge cluster design
 
-### 设计效应公式
+### Method
 $$DEFF = 1 + (m - 1) \times ICC$$
 
 ### CLI
@@ -102,19 +91,18 @@ python scripts/samplesize_power.py --test cluster --icc 0.05 --m 30 --n_indiv 64
 
 ---
 
-## Bland-Altman 方法学比对 / Method Comparison
+## Bland-Altman Method Comparison
 
-### Clinical Use / 临床场景
-- **器械比对**：新型POCT设备 vs. 中心实验室
-- **两次测量一致性**：超声 vs. CT 肿瘤测量
-- **诊断方法一致性**：同一标本两种试剂盒
+### Clinical Use
+- POCT versus reference laboratory
+- New method versus CT
 
-### Formula / 公式
-基于 Lu et al. (2016) 的 LoA 精度法：
+### Formula
+Lu et al. (2016) LoA
 
 $$n = 2 \times \left(\frac{Z_{1-\alpha/2} \times SD_{diff}}{W}\right)^2$$
 
-其中 W 为 LoA 置信区间允许的半宽度。
+W = half-width of the limits of agreement (LoA)
 
 ### CLI
 ```bash
@@ -123,15 +111,14 @@ python scripts/samplesize_power.py --test bland_altman --sd_diff 5 --w 2.5
 
 ---
 
-## 生物等效性 / Bioequivalence (TOST) — `PowerTOST`
+## Bioequivalence (TOST) — `PowerTOST`
 
-### Clinical Use / 临床场景
-- **仿制药申报**：受试制剂 vs. 参比制剂的AUC/Cmax比
-- **不同规格**：剂量比例性研究
-- **食物影响**: Fed vs. Fasted BE
-- **特殊药品**：窄治疗指数药物（NTID）的高阶BE
+### Clinical Use
+- AUC / Cmax comparison
+- Fed versus Fasted BE
+- NTID BE
 
-### R Code / R 代码
+### R Code
 ```r
 library(PowerTOST)
 sampleN.TOST(theta0 = 0.95, CV = 0.25, design = "2x2", alpha = 0.05, targetpower = 0.8)
@@ -144,14 +131,10 @@ python scripts/samplesize_power.py --test be_tost --theta0 0.95 --cv 0.25 --desi
 
 ---
 
-## 疫苗效力 / Vaccine Efficacy
+## Vaccine Efficacy
 
-### Clinical Use / 临床场景
-- **传染病预防**：流感、新冠、肺炎球菌等疫苗试验
-- **真实世界效果**：疫苗保护效力研究
-
-### Formula / 公式
-基于 Halloran et al. 的 Poisson 发病率法：
+### Method
+Halloran et al. Poisson
 
 $$VE = \frac{ARU - ARV}{ARU}$$
 
@@ -164,16 +147,14 @@ python scripts/samplesize_power.py --test vaccine_efficacy --ve_control 0.02 --v
 
 ---
 
-## 多终点 / Multiple Endpoints
+## Multiple Endpoints
 
-### Clinical Use / 临床场景
-- **复合终点**：心血管试验（MACE: 死亡+MI+卒中）
-- **共主要终点**：需要同时有效的多个指标
-- **关键次要终点**：确证性试验的层级检验
+### Clinical Use
+- MACE: MI + stroke composite
 
-### 方法
-- 共主要终点（相关系数法）：$n_{adj} = n_{single} / (1 - \rho)$
-- 复合终点：基于事件计数的 rpact 精确法
+### Method
+- $n_{adj} = n_{single} (1 - \rho)$
+- rpact
 
 ### CLI
 ```bash
@@ -182,17 +163,15 @@ python scripts/samplesize_power.py --test multiple_endpoints --effect 0.3 --corr
 
 ---
 
-## 贝叶斯设计 / Bayesian Design — `BayesCTDesign`
+## Bayesian Design — `BayesCTDesign`
 
-### Clinical Use / 临床场景
-- **I/II期肿瘤试验**：小样本+历史对照数据借用
-- **罕见病试验**：需要整合历史对照
-- **适应性设计**：基于后验概率动态调整
+### Clinical Use
+- Phase I/II design
 
-### 方法
-- `BayesCTDesign::simple_sim()` 蒙特卡洛模拟
-- 历史对照权重 a0（0=完全独立，1=完全借用）
-- 后验概率 P(效应>margin | data) > 阈值
+### Method
+- `BayesCTDesign::simple_sim`
+- prior a0 shape parameter
+- P(effect > margin | data)
 
 ### CLI
 ```bash
@@ -201,19 +180,19 @@ python scripts/samplesize_power.py --test bayesian --prob_control 0.3 --prob_tre
 
 ---
 
-## 剂量递增 / Dose Escalation — `escalation`
+## Dose Escalation — `escalation`
 
-### Clinical Use / 临床场景
-- **I期肿瘤试验**：首次人体试验剂量探索
-- **BOIN/CRM/METHIT** 等现代设计
+### Clinical Use
+- Phase I
+- BOIN / CRM / mTPI
 
-### 3+3 设计方案
-| DLT 数 | 决策 |
+### 3+3
+|DLT|
 |:-------|:-----|
-| 0/3    | 升至下一剂量 |
-| 1/3    | 再入组3人 |
-| 1/6    | 升至下一剂量 |
-| ≥2/6   | 前一剂量为 MTD |
+|0/3|
+|1/3|3|
+|1/6|
+|≥2/6|MTD|
 
 ### CLI
 ```bash
@@ -222,20 +201,17 @@ python scripts/samplesize_power.py --test dose_escalation --n_doses 5 --target_d
 
 ---
 
-## Win-Ratio 复合终点 / Win-Ratio Composite Endpoint — `BuyseTest` 模拟
+## Win-Ratio Composite Endpoint — `BuyseTest`
 
-### Clinical Use / 临床场景
-- **心血管复合终点**：将全因死亡、心衰住院、疗效恶化按优先级排序
-- **肿瘤试验**：PFS + 主观症状改善
-- **非参数终点**：不依赖比例风险假设
+### Clinical Use
+- PFS + death composite
 
-### 方法
-基于 BuyseTest 的优先化 win-ratio 方法：
-- 对每个受试者对，按优先级比较直至出现优胜者
-- Win-Ratio = 优胜次数 / 落败次数
-- 样本量通过 log(WR) 的 SE 近似反推
+### Method
+- BuyseTest win-ratio
+- Win-Ratio = priority-ranked pairwise comparisons
+- log(WR) standard error
 
-### Formula (approx) / 公式（近似）
+### Formula (approx)
 $$n = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(\ln WR)^2 / SE_{approx}^2}$$
 
 ### CLI
@@ -245,18 +221,15 @@ python scripts/samplesize_power.py --test win_ratio --win_ratio_theta 1.5 --n_si
 
 ---
 
-## Must-Win / 共主要终点 — 相关系数法
+## Must-Win (Co-Primary)
 
-### Clinical Use / 临床场景
-- **共主要终点**：试验必须同时达到所有主要终点才视为成功
-- **联合终点**：安全性+有效性双重指标
-- **监管要求**：FDA/EMA 要求多终点确证
+### Clinical Use
+- FDA/EMA co-primary endpoints
 
-### 方法
-- 假设 k 个共主要终点，相关系数 ρ
-- 每个终点独立所需 n 按效应量计算
-- 膨胀因子（inflation）= $1 + (k-1) \times \rho \times 0.5$
-- 确保整体检验效能达到目标
+### Method
+- k endpoints, correlation $\rho$
+- sample size per endpoint $n$
+- inflation factor $= 1 + (k-1) \times \rho \times 0.5$
 
 ### CLI
 ```bash
@@ -265,17 +238,12 @@ python scripts/samplesize_power.py --test must_win --n_endpoints_must 3 --effect
 
 ---
 
-## 历史对照借用 / Historical Controls — `RBesT` MAP先验
+## Historical Controls — `RBesT` MAP
 
-### Clinical Use / 临床场景
-- **罕见病试验**：历史对照信息减少所需样本量
-- **儿科试验**：成人数据外推
-- **医疗器械**：已有大量历史数据
-
-### 方法
-- **MAP (Maximal A Posteriori) 先验**：将历史数据转化为 Beta 先验分布
-- **ESS (Effective Sample Size)**：历史数据相当于的当前样本量
-- **样本量缩减**：$N_{borrow} = N_{fixed} \times \frac{1}{1 + ESS_{hist}/N_{fixed}}$
+### Method
+- **MAP (Maximal A Posteriori)** Beta mixture
+- **ESS (Effective Sample Size)**
+- $N_{borrow} = N_{fixed} \times \frac{1}{1 + ESS_{hist}/N_{fixed}}$
 
 ### CLI
 ```bash
@@ -284,17 +252,11 @@ python scripts/samplesize_power.py --test historical_controls --historical_respo
 
 ---
 
-## 多臂多阶段设计 / MAMS — `rpact`
+## MAMS — `rpact`
 
-### Clinical Use / 临床场景
-- **多剂量对比**：同时评估多个剂量 vs. 安慰剂
-- **平台试验**：多个治疗臂共享对照组
-- **阶段淘汰**：中期分析时淘汰无效臂
-
-### 方法
-- 使用 O'Brien-Fleming 类消耗函数
-- Bonferroni 法校正多重比较（k 个臂 vs 对照组）
-- 每阶段样本量递增，最大样本量 > 固定设计
+### Method
+- O'Brien-Fleming boundaries
+- Bonferroni adjustment for k comparisons
 
 ### CLI
 ```bash
@@ -303,17 +265,15 @@ python scripts/samplesize_power.py --test mams --n_arms_mams 3 --n_stages_mams 2
 
 ---
 
-## 条件效能 / 样本量重估计 / Conditional Power & SSR — `rpact`
+## Conditional Power & SSR — `rpact`
 
-### Clinical Use / 临床场景
-- **期中分析**：基于已观察数据重新评估试验成功概率
-- **样本量重估计 (SSR)**：根据中期效应量调整最终样本量
-- **无效性终止**：条件效能过低时提前终止
+### Clinical Use
+- Sample Size Reassessment (SSR)
 
-### 方法
-- 条件效能 = 给定中期数据时，最终达到显著性的概率
-- 样本量重估计因子：$SSR = (planned\_effect / observed\_effect)^2$
-- 逆正态法保持类型 I 错误率控制
+### Method
+- conditional power formula
+- $SSR = (planned\_effect / observed\_effect)^2$
+- information fraction
 
 ### CLI
 ```bash
@@ -322,17 +282,13 @@ python scripts/samplesize_power.py --test conditional_power --timing 0.5 --obser
 
 ---
 
-## 非劣效生存设计 / Non-Inferiority Survival — `powerSurvEpi`
+## Non-Inferiority Survival — `powerSurvEpi`
 
-### Clinical Use / 临床场景
-- **肿瘤非劣效**：新疗法不劣于标准治疗（HR < 1.25）
-- **器械验证**：新型器械不劣于传统手术
-- **仿制药品**：仿制药不劣于原研药
+### Clinical Use
+- HR < 1.25 (non-inferiority margin)
 
-### 方法
-- 基于指数分布/比例风险假设
-- 使用 `powerSurvEpi::powerAnsi()` 函数
-- 考虑招募时间、随访时间、失访率
+### Method
+- `powerSurvEpi::powerAnsi`
 
 ### CLI
 ```bash
@@ -341,16 +297,14 @@ python scripts/samplesize_power.py --test ni_survival --ni_margin_surv 1.25 --ac
 
 ---
 
-## 优效界值设计 / Superiority by a Margin
+## Superiority by a Margin
 
-### Clinical Use / 临床场景
-- **临床意义最小差异**：效应不仅统计显著，还需超过临床界值
-- **器械/药物审批**：需证明效应 > 预定义界值 $\delta$
-- **保守设计**：防止统计显著但临床无意义的结果
+### Clinical Use
+- Superiority if difference > $\delta$
 
-### 方法
-- 假设检验：$H_0: p_T - p_C \leq \delta$ vs $H_1: p_T - p_C > \delta$
-- 样本量计算基于真实效应超过界值的部分：$p_T - p_C - \delta$
+### Method
+- $H_0: p_T - p_C \leq \delta$ vs $H_1: p_T - p_C > \delta$
+- $p_T - p_C - \delta$
 
 ### CLI
 ```bash
@@ -359,18 +313,14 @@ python scripts/samplesize_power.py --test superiority_margin --sup_margin 0.05 -
 
 ---
 
-## 贝叶斯确信度 / Bayesian Assurance — Monte Carlo
+## Bayesian Assurance — Monte Carlo
 
-### Clinical Use / 临床场景
-- **试验前决策**：在试验开始前评估成功概率
-- **样本量参考**：找到达到目标确信度（如 80%）的样本量
-- **风险沟通**：向申办方直观展示试验成功概率
+### Clinical Use
+- Target assurance 80%
 
-### 方法
-- 从先验分布中抽样"真实"参数值
-- 模拟 N 次试验，每次从真实参数生成数据
-- 计算显著性检验通过后验概率 > 阈值 的比例
-- Assurance = 成功次数 / N
+### Method
+- Monte Carlo simulation
+- Assurance = P(power > target | data)
 
 ### CLI
 ```bash
@@ -379,17 +329,14 @@ python scripts/samplesize_power.py --test assurance --n_assurance 100 --n_sim_as
 
 ---
 
-## Dunnett 多重比较 / Dunnett Comparisons — `MCPAN`
+## Dunnett Comparisons — `MCPAN`
 
-### Clinical Use / 临床场景
-- **多剂量 vs 安慰剂**：多个剂量组同时与对照组比较
-- **家族错误率控制**：控制所有比较的整体 I 错误率
-- **后期分析**：中期分析后继续进行的多个比较
+### Clinical Use
+- Multiple treatments versus control
 
-### 方法
-- Dunnett 临界值近似：$d_{crit} \approx Z_{1-\alpha/2} + 0.5 \ln(k)$
-- 样本量基于校正后的 Z 值
-- Bonferroni 法作为 k > 10 时的备用
+### Method
+- Dunnett $d_{crit} \approx Z_{1-\alpha/2} + 0.5 \ln(k)$
+- Bonferroni when k > 10
 
 ### CLI
 ```bash
@@ -398,17 +345,12 @@ python scripts/samplesize_power.py --test dunnett --n_groups_dunnett 3 --n_contr
 
 ---
 
-## 中介效应 / Mediation Effects — `powerMediation`
+## Mediation Effects — `powerMediation`
 
-### Clinical Use / 临床场景
-- **机制研究**：治疗通过某个中间变量（生物标志物）影响结局
-- **中介效应检测**：评估生物标志物的中介作用
-- **个性化医疗**：识别受益亚组的机制路径
-
-### 方法
-- **乘积系数法 (Sobel)**：效应量 = a × b（a: 治疗→中介, b: 中介→结局）
-- **Monte Carlo 模拟**：更精确的样本量估计
-- `powerMediation::power.powerMediation.v2()` 提供精确计算
+### Method
+- **Sobel test** = a × b (a-path, b-path)
+- **Monte Carlo** method
+- `powerMediation::power.powerMediation.v2`
 
 ### CLI
 ```bash
@@ -417,18 +359,13 @@ python scripts/samplesize_power.py --test mediation --a_path 0.3 --b_path 0.3
 
 ---
 
-## 组序贯设计 / Group Sequential Design — `gsDesign`
+## Group Sequential Design — `rpact` (upgraded from `gsDesign` in v3.6)
 
-### Clinical Use / 临床场景
-- **期中分析**：在试验完成前多次检查显著性
-- **提前终止**：疗效明确或无效时提前停止
-- **监管要求**：确证性试验通常需要期中分析
-
-### 方法
-- **O'Brien-Fleming (OF)**：早期严格，后期宽松
-- **Pocock**：各阶段相同临界值
-- **消耗函数 (alpha spending)**：灵活调整期中时机
-- 膨胀因子：$N_{gs} = N_{fixed} \times IF$
+### Method
+- **O'Brien-Fleming (OF)**
+- **Pocock**
+- **Alpha spending function**
+- $N_{gs} = N_{fixed} \times IF$
 
 ### CLI
 ```bash
@@ -437,17 +374,123 @@ python scripts/samplesize_power.py --test group_sequential --n_interim 1 --effec
 
 ---
 
-## 适应性设计 / Adaptive Design — `rpact`
+## Group-Sequential Two Proportions — `rpact`
 
-### Clinical Use / 临床场景
-- **样本量重估计 (SSR)**：根据中期数据调整样本量
-- **人群富集 (Population Enrichment)**：中期分析后聚焦于有效亚组
-- **组合检验法 (Combination Test)**：各阶段 p 值通过逆正态合并
+### Clinical Use
+- difference / ratio / odds-ratio
 
-### 方法
-- **rpact** 提供完整的适应性设计框架
-- **逆正态法**：保持类型 I 错误率
-- 需预先指定适应性规则和停止边界
+### Method
+- `rpact::getSampleSizeRates` (n) / `getPowerRates` (power)
+- `getDesignGroupSequential(kMax, typeOfDesign, ...)`
+- AE: `directionUpper = FALSE` (lower is better) / `TRUE`
+- `--power` to solve n; `--nobs` to solve power
+
+### CLI
+```bash
+# difference mode (default): --p1 = treatment, --p2 = control
+python scripts/samplesize_power.py --test gsd_proportion --n_interim 1 --p1 0.7 --p2 0.5 --power 0.8   # -> n~=75/arm
+# ratio mode: treatment rate = control rate x ratio
+python scripts/samplesize_power.py --test gsd_proportion --n_interim 1 --p1 0.7 --gs_proportion_metric ratio --gs_ratio 0.8 --power 0.8
+# OR mode
+python scripts/samplesize_power.py --test gsd_proportion --n_interim 1 --p1 0.7 --gs_proportion_metric or --gs_or 0.5 --power 0.8
+# reverse: given n, solve power
+python scripts/samplesize_power.py --test gsd_proportion --n_interim 1 --p1 0.7 --p2 0.5 --nobs 75      # -> power~=0.80
+```
+
+---
+
+## Group-Sequential Survival (logrank) — `rpact`
+
+### Clinical Use
+- logrank
+
+### Method
+- `rpact::getSampleSizeSurvival` / `getPowerSurvival`; `followUpTime`, `maxNumberOfEvents`, `accrualIntensity`
+- `--gs_median_control` ($\lambda_2$), `--hazard_ratio`
+- HR < 1: `directionUpper = FALSE` (lower is better) / `TRUE`
+- `events ≈ n·[(1−e^{−λ₂·expo}) + (1−e^{−λ₁·expo})]`, expo = accrual / 2
+
+### CLI
+```bash
+python scripts/samplesize_power.py --test gsd_survival --n_interim 1 --gs_median_control 12 --hazard_ratio 0.7 --accrual_time 12 --followup_time 12 --power 0.8   # -> n~=178/arm, 198 events
+python scripts/samplesize_power.py --test gsd_survival --n_interim 1 --gs_median_control 12 --hazard_ratio 0.7 --accrual_time 12 --followup_time 12 --nobs 178      # -> power~=0.82
+```
+
+---
+
+## Group-Sequential Hazard Ratio — `rpact`
+
+### Clinical Use
+- `gsd_survival` (HR)
+- HR
+
+### Method
+- `gsd_survival`; env `R_GSD_SURVIVAL`, `R_GSD_HAZARD`; header `surv_header`
+
+### CLI
+```bash
+python scripts/samplesize_power.py --test gsd_hazard --n_interim 1 --gs_median_control 12 --hazard_ratio 0.7 --accrual_time 12 --followup_time 12 --power 0.8   # -> n~=178/arm
+```
+
+---
+
+## Group-Sequential Survival/Hazard — Monte-Carlo Simulation — `rpact`
+
+### Clinical Use
+- PASS Group-Sequential "Logrank Tests (Simulation)"
+
+### Method
+- `rpact::getSimulationSurvival` for `gsd_survival`/`gsd_hazard`; `getDesignGroupSequential`; `--spending_func`, `--futility`, `directionUpper`
+- rpact `maxNumberOfEvents`; `longTimeSimulationAllowed = TRUE`
+- `maxNumberOfSubjects`; rpact `accrualTime × accrualIntensity` API
+- `futilityStops` = kMax - 1 (futility stop)
+- `adaptive_simulate`; `--n_simulations` → `maxNumberOfIterations` (10000); `--sim_seed` → `seed`
+- `--nobs` to target power (n, events)
+
+### CLI
+```bash
+# default (analytic n + events, then simulate to verify), kMax=3, O-F
+python scripts/samplesize_power.py --test gsd_survival_sim --n_interim 2 --gs_median_control 12 --hazard_ratio 0.7 --accrual_time 12 --followup_time 12 --power 0.8 --n_simulations 2000 --sim_seed 1   # -> n=180/arm, empirical power ~0.78
+# fixed n simulation (too-small n yields low empirical power)
+python scripts/samplesize_power.py --test gsd_hazard_sim --n_interim 2 --gs_median_control 12 --hazard_ratio 0.7 --accrual_time 12 --followup_time 12 --nobs 180
+```
+
+---
+
+## Poisson Group-Sequential Two Poisson Rates — `rpact`
+
+### Method
+- `rpact::getSampleSizeCounts` / `getPowerCounts`
+- $\lambda_1$ = `--gs_rate1`, $\lambda_2$ = `--gs_rate2`, `--gs_poisson_time`
+- $\lambda_1 < \lambda_2$: `directionUpper = FALSE` (lower is better) / `TRUE`
+
+### CLI
+```bash
+python scripts/samplesize_power.py --test gsd_poisson --n_interim 1 --gs_rate1 0.6 --gs_rate2 1.0 --gs_poisson_time 2 --power 0.8   # -> n~=33/arm
+python scripts/samplesize_power.py --test gsd_poisson --n_interim 1 --gs_rate1 0.6 --gs_rate2 1.0 --gs_poisson_time 2 --nobs 33      # -> power~=0.81
+```
+
+---
+
+## Group-Sequential Spending Functions
+
+- Spending functions: `--spending_func` OF (O'Brien-Fleming), Pocock, WT (Wang-Tsiatis), HSD (Hwang-Shih-DeCani, $\gamma$ via `--rho`), Kim-DeMets (asOF, $\gamma$ via `--rho`)
+- Futility: `--futility`, `bindingFutility = FALSE`; beta spending `bsOF`; aliases `as*` `asOF`/`asP`/`asHSD`/`asKD` for OF/P/WT futility
+- WT: `WT`, `--wt_delta` (default 0.25); WT with `--futility`; rpact `asWT`
+- Direction: HR<1, rate1<rate2, `effect_gs`, p1<p2 → `directionUpper = FALSE` (lower is better); otherwise `TRUE`. Mis-set direction yields power=0
+
+---
+
+## Adaptive Design — `rpact`
+
+### Clinical Use
+- Sample Size Reassessment (SSR)
+- Population Enrichment
+- Combination Test
+
+### Method
+- rpact
+- information fraction
 
 ### CLI
 ```bash
@@ -456,17 +499,13 @@ python scripts/samplesize_power.py --test adaptive --n_stages_adapt 2 --effect_a
 
 ---
 
-## 精确生存设计 / Survival Exact — `rpact`
+## Survival Exact — `rpact`
 
-### Clinical Use / 临床场景
-- **确证性肿瘤试验**：基于事件的精确样本量计算
-- **考虑复杂时间线**：招募、随访、失访的完整建模
-- **监管申报**：符合 ICH E9 要求的精确计算
+### Clinical Use
+- ICH E9 (R1)
 
-### 方法
-- 使用 `rpact::getSampleSizeSurvival()` 函数
-- 考虑招募时间、随访时间、事件率、失访率
-- 基于对数秩检验的精确计算
+### Method
+- `rpact::getSampleSizeSurvival`
 
 ### CLI
 ```bash
@@ -475,7 +514,116 @@ python scripts/samplesize_power.py --test survival_exact --hr_exact 0.75 --accru
 
 ---
 
-## Full Command Matrix / 完整命令矩阵
+## Survival Equivalence (TOST) — closed-form (base R)
+
+### Clinical Use
+- HR equivalence margin $\delta_E$ (80–125%)
+
+### Method
+- TOST on log-HR: $D = \frac{[2(Z_{1-\alpha} + Z_{1-\beta})]^2}{(\log \delta_E)^2}$
+- $n_{pg} = \frac{D/2}{e}$, e = event_rate
+
+### CLI
+```bash
+python scripts/samplesize_power.py --test survival_equivalence --eq_margin_surv 1.25 --hr_expected 1.0 --accrual_time 12 --followup_time 12 --event_rate 0.7 --power 0.8
+```
+
+---
+
+## Survival Superiority with Margin — closed-form (base R)
+
+### Clinical Use
+- $\delta_S$ HR margin, $\delta_S < 1$
+
+### Method
+- $\delta = \log\delta_S - \log(HR)$, $D = \frac{[2(Z_{1-\alpha} + Z_{1-\beta})]^2}{\delta^2}$
+- $HR \ge \delta_S$
+
+### CLI
+```bash
+python scripts/samplesize_power.py --test survival_superiority --sup_margin_surv 0.8 --sup_hr 0.67 --accrual_time 12 --followup_time 12 --event_rate 0.7 --power 0.8
+```
+
+---
+
+## Cox Regression w/ Covariate R² (Vittinghoff) — base R
+
+### Clinical Use
+- Cox model with covariate R²
+- Cox regression
+
+### Method
+- Vittinghoff & McCulloch (2007): $d = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(1-R^2)\,p(1-p)\,(\log HR)^2}$
+- p = event proportion $\in (0,1)$, $R^2\in[0,1)$
+
+### CLI
+```bash
+python scripts/samplesize_power.py --test cox_covariate --cox_hr 2.0 --cox_r2 0.3 --cox_prev 0.5 --cox_event_prop 0.3 --power 0.8
+```
+
+---
+
+## One-Sample Exponential Survival — base R
+
+### Method
+- $\lambda_j = \log2 / m_j$, $e_j = 1 - e^{-\lambda_j\bar t}$, $\bar t =$ (accrual + followup)/2
+- $r = e_0/e_1$, $n = \lceil \mu_1/e_1\rceil$, $\mu_1 = \big(\frac{Z_{1-\alpha}\sqrt r + Z_{1-\beta}}{r-1}\big)^2$
+
+### CLI
+```bash
+python scripts/samplesize_power.py --test survival_one_sample --median0 12 --median1 18 --accrual_time 12 --followup_time 12 --power 0.8
+```
+
+---
+
+## Competing Risks (Cumulative Incidence) — 2-sample proportion (base R)
+
+### Clinical Use
+- Cumulative Incidence Function (CIF)
+- log-rank
+
+### Method
+- $n_{pg} = \left\lceil\frac{(Z_{1-\alpha/2}+Z_{1-\beta})^2[\pi_C(1-\pi_C)+\pi_T(1-\pi_T)]}{(\pi_C-\pi_T)^2}\right\rceil$
+
+### CLI
+```bash
+python scripts/samplesize_power.py --test competing_risks --ci_control 0.2 --ci_treatment 0.1 --power 0.8
+```
+
+---
+
+## Recurrent Events (Andersen-Gill, Poisson) — base R
+
+### Clinical Use
+- rate ratio
+
+### Method
+- Poisson: $n_{pg} = \left\lceil\frac{(Z_{1-\alpha/2}+Z_{1-\beta})^2(\lambda_1+\lambda_2)}{t\,(\lambda_1-\lambda_2)^2}\right\rceil$, $\lambda_1 = RR\cdot\lambda_2$
+
+### CLI
+```bash
+python scripts/samplesize_power.py --test recurrent_events --rate_control 1.0 --rate_ratio 0.6 --recur_followup 2 --power 0.8
+```
+
+---
+
+## Logrank Historical-Control Logrank — base R
+
+### Clinical Use
+- versus historical control
+
+### Method
+- $m_H$ (historical median), $m_N$ (new median)
+- $n = \lceil \mu_1/e_N\rceil$, hist_n
+
+### CLI
+```bash
+python scripts/samplesize_power.py --test survival_historical --hist_median 12 --new_median 18 --hist_n 100 --accrual_time 12 --followup_time 12 --power 0.8
+```
+
+---
+
+## Full Command Matrix
 
 | Test Type | CLI Flag | Required Params |
 |:----------|:---------|:----------------|
@@ -509,11 +657,24 @@ python scripts/samplesize_power.py --test survival_exact --hr_exact 0.75 --accru
 | **Dunnett** | `--test dunnett` | `--n_groups_dunnett` |
 | **Mediation** | `--test mediation` | `--a_path`, `--b_path` |
 | **Group Sequential** | `--test group_sequential` | `--n_interim` |
+| **GSD Two Proportions** | `--test gsd_proportion` | `--p1`, `--p2` (or `--gs_proportion_metric` + `--gs_ratio` / `--gs_or`), `--n_interim` |
+| **GSD Survival (logrank)** | `--test gsd_survival` | `--gs_median_control`, `--hazard_ratio`, `--n_interim` |
+| **GSD Hazard Ratio** | `--test gsd_hazard` | `--gs_median_control`, `--hazard_ratio`, `--n_interim` |
+| **GSD Survival Sim** | `--test gsd_survival_sim` | `--gs_median_control`, `--hazard_ratio`, `--n_interim`, `--n_simulations`, `--sim_seed` |
+| **GSD Hazard Sim** | `--test gsd_hazard_sim` | `--gs_median_control`, `--hazard_ratio`, `--n_interim`, `--n_simulations`, `--sim_seed` |
+| **GSD Two Poisson** | `--test gsd_poisson` | `--gs_rate1`, `--gs_rate2`, `--gs_poisson_time`, `--n_interim` |
 | **Adaptive** | `--test adaptive` | `--n_stages_adapt` |
+| **Survival Equivalence** | `--test survival_equivalence` | `--eq_margin_surv`, `--hr_expected` |
+| **Survival Superiority** | `--test survival_superiority` | `--sup_margin_surv`, `--sup_hr` |
+| **Cox w/ Covariate** | `--test cox_covariate` | `--cox_hr`, `--cox_r2`, `--cox_prev`, `--cox_event_prop` |
+| **One-Sample Survival** | `--test survival_one_sample` | `--median0`, `--median1` |
+| **Competing Risks** | `--test competing_risks` | `--ci_control`, `--ci_treatment` |
+| **Recurrent Events** | `--test recurrent_events` | `--rate_control`, `--rate_ratio`, `--recur_followup` |
+| **Historical-Control Logrank** | `--test survival_historical` | `--hist_median`, `--new_median`, `--hist_n` |
 
 ---
 
-## References / 参考文献
+## References
 
 - Green P, MacLeod CJ. SIMR: an R package for power analysis of generalized linear mixed models by simulation. Methods in Ecology and Evolution, 2016.
 - Obuchowski NA, et al. Sample size requirements for studies of diagnostic tests. Radiology, 1998.

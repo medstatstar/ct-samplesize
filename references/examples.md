@@ -1,15 +1,15 @@
-# Examples / 使用示例
+# Examples
 
-> By default the skill runs in SAFE PREVIEW: generated R code is shown but NOT executed. Use `--yes` to execute & compute, `--show-code` to display the code (no execution), or `--dry-run` to preview only. / 默认运行于**安全预览模式**：展示生成的 R 代码但**不执行**。使用 `--yes` 执行并计算，`--show-code` 仅展示代码（不执行），`--dry-run` 仅预览。
+> By default the skill runs in SAFE PREVIEW: generated R code is shown but NOT executed. Use `--yes` to execute & compute, `--show-code` to display the code (no execution), or `--dry-run` to preview only. **** R **** `--yes` `--show-code` `--dry-run`
 
 ---
 
-## Example 1: Two Proportion Comparison / 两组率比较
+## Example 1: Two Proportion Comparison
 
 **User query:**
-> "对照组有效率20%、试验组35%，做两组率比较的卡方检验，α=0.05双侧，power=0.8"
+> "20%35%α=0.05power=0.8"
 
-### Step 1 — Preview R Code (dry-run) / 第一步 — 预览 R 代码（不执行）
+### Step 1 — Preview R Code (dry-run) — R
 
 ```bash
 python scripts/samplesize_power.py --test proportion_two --p1 0.35 --p2 0.20 --power 0.8
@@ -17,30 +17,30 @@ python scripts/samplesize_power.py --test proportion_two --p1 0.35 --p2 0.20 --p
 
 Output: R code is displayed (dry-run, NOT executed).
 
-### Step 2 — Execute (after review) / 第二步 — 执行（审查后）
+### Step 2 — Execute (after review) —
 
 ```bash
 python scripts/samplesize_power.py --test proportion_two --p1 0.35 --p2 0.20 --power 0.8 -y
 ```
 
-### Results / 计算结果
+### Results
 - **Per-group N**: 138 → Total 276
 - Adjusted for 10% dropout: 154/group → Total 308
 
 ---
 
-## Example 2: Group Sequential / 组序贯设计
+## Example 2: Group Sequential
 
 **User query:**
-> "含2次期中分析的生存终点试验，HR=0.7，α=0.025，power=0.9，入组12月，总36月"
+> "2HR=0.7α=0.025power=0.91236"
 
-### Preview (dry-run) / 预览（不执行）
+### Preview (dry-run)
 
 ```bash
 python scripts/samplesize_power.py --test survival --hazard_ratio 0.7 --alpha 0.025 --power 0.9
 ```
 
-### Execute (after review) / 执行（审查后）
+### Execute (after review)
 
 ```bash
 python scripts/samplesize_power.py --test survival --hazard_ratio 0.7 --alpha 0.025 --power 0.9 -y
@@ -48,18 +48,18 @@ python scripts/samplesize_power.py --test survival --hazard_ratio 0.7 --alpha 0.
 
 ---
 
-## Example 3: Non-inferiority / 非劣效设计
+## Example 3: Non-inferiority
 
 **User query:**
-> "非劣效检验，对照组率70%，试验组预期65%，非劣效界值10%，α=0.025单侧，power=0.8"
+> "70%65%10%α=0.025power=0.8"
 
-### Preview (dry-run) / 预览（不执行）
+### Preview (dry-run)
 
 ```bash
 python scripts/samplesize_power.py --test non_inferiority --p1 0.65 --p2 0.70 --margin 0.1 --alpha 0.025 --power 0.8
 ```
 
-### Execute (after review) / 执行（审查后）
+### Execute (after review)
 
 ```bash
 python scripts/samplesize_power.py --test non_inferiority --p1 0.65 --p2 0.70 --margin 0.1 --alpha 0.025 --power 0.8 -y
@@ -67,7 +67,7 @@ python scripts/samplesize_power.py --test non_inferiority --p1 0.65 --p2 0.70 --
 
 ---
 
-## Execution Notes / 执行要点
+## Execution Notes
 
 1. **Default behavior**: R code is executed and results returned; code hidden (add `--show-code` to show, `--dry-run` to preview only)
 2. **To show code while executing**: Add `--show-code` (after reviewing a `--dry-run` preview if desired)

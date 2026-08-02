@@ -9,7 +9,7 @@ R_MIXED_MODEL = r'''
 library(simr); library(lme4)
 
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Power of a mixed model given n (simulation). Returns achieved power.
 ss_mixed_model <- function(n_subjects, eff, varcorr, sigma, nsim, effect_name) {{

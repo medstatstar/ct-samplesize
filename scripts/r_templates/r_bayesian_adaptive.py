@@ -16,7 +16,7 @@ __all__ = [
 
 R_BAYESIAN = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Prior-informed sample size (CLOSED-FORM FREQUENTIST APPROXIMATION).
 # NOTE: This is NOT a full Bayesian computation. The prior (a0) is informational
@@ -51,7 +51,7 @@ if ({solve_for_power}) {{
 
 R_MAMS = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Multi-Arm Multi-Stage (MAMS) — Bonferroni-adjusted closed form.
 ss_mams <- function(n_arms, delta, alpha, power=NULL, n=NULL) {{
@@ -82,7 +82,7 @@ if ({solve_for_power}) {{
 
 R_HISTORICAL_CONTROLS = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Historical control borrowing via MAP prior (RBesT).
 ss_hist_controls <- function(p_control_cur, p_treatment, historical_response,
@@ -120,7 +120,7 @@ if ({solve_for_power}) {{
 
 R_ADAPTIVE = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Adaptive design (SSR) -- closed-form approximation.
 # SSR target sample size ~ fixed-sample n (re-estimation preserves power at ~ fixed n).
@@ -168,7 +168,7 @@ if ({solve_for_power}) {{
 
 R_ASSURANCE = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Bayesian Assurance (probability of successful trial)
 set.seed(42)
@@ -205,7 +205,7 @@ cat(t("label.assurance_note"), "\\n")
 
 R_CONDITIONAL_POWER = """
 # Source i18n translations
-source(file.path("{scriptdir}", "i18n.R"))
+# i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 
 # Conditional Power & Sample Size Re-estimation (SSR) - analytic closed-form
 set.seed(42)
