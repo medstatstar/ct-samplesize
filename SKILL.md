@@ -3,7 +3,7 @@ slug: ct-samplesize
 displayName: 临床试验样本量与检验效能计算专家 / Clinical Trial Sample Size & Power
 name: ct-samplesize
 cn_name: 临床试验样本量与检验效能计算专家
-version: 3.8.0
+version: 3.8.1
 required_commands: [Rscript, python]
 summary: 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 49 种检验。可应要求提供可复现 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
 license: MIT
@@ -46,6 +46,11 @@ permissions:
 >
 > **Output language**: By default the output language follows the OS language setting — Chinese on a Chinese-OS, English otherwise. The user may force-switch anytime via a prompt (e.g. "switch to English"). Docs are English-only (ct-base §13.2); runtime output may still be English + Chinese per OS setting. This setting does not affect code output.
 
+## Language
+
+- **English guide** → [README.md](https://github.com/medstatstar/ct-samplesize/blob/main/README.md)
+- **中文指南** → [README_zh-CN.md](https://github.com/medstatstar/ct-samplesize/blob/main/README_zh-CN.md)
+
 ### Language policy
 
 > Docs are English-only per **ct-base §13.2**; runtime output follows the OS language setting (Chinese on zh/CN OS, else English) and the user may force-switch via a prompt. Code output is always English. See `references/language_policy.md`.
@@ -54,11 +59,6 @@ permissions:
 - Runtime output for common modules may still be English + Chinese per OS setting; complex/rare modules are English-only. The user may force-switch the output language via a prompt at any time.
 - Common modules: `ttest_*`, `anova`, `proportion_*`, `odds_ratio`, `risk_ratio`, `roc`, `poisson`, `non_inferiority`, `superiority_margin`, `be_tost`, `equivalence`, `survival`, `ni_survival`, `cluster`, `dunnett`.
 - Complex/rare modules (EN-only): `group_sequential`, `gsd_proportion`, `gsd_survival`, `gsd_survival_sim`, `gsd_hazard`, `gsd_hazard_sim`, `gsd_poisson`, `adaptive`, `adaptive_simulate`, `mixed_model`, `bayesian`, `win_ratio`, `historical_controls`, `assurance`, `conditional_power`, `dose_escalation`, `vaccine_efficacy`, `mams`, `survival_exact`, `mediation` etc.
-
-## Language
-
-- **English guide** → [README.md](https://github.com/medstatstar/ct-samplesize/blob/main/README.md)
-- **中文指南** → [README_zh-CN.md](https://github.com/medstatstar/ct-samplesize/blob/main/README_zh-CN.md)
 
 ## Purpose
 

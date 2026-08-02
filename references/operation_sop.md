@@ -1,7 +1,7 @@
 # ct-samplesize Operation SOP
 
 > Agent: `ct-samplesize`
-> Version: v3.8.0
+> Version: v3.8.1
 > See `SKILL.md` for the canonical definition.
 
 ## 1. Purpose

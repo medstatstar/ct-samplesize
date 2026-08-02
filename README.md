@@ -3,7 +3,7 @@
 [🇨🇳 中文 (Chinese)](./README_zh-CN.md) | [🇺🇸 English (Current)](#)
 
 <div align="center">
-  <img src="assets/icon.svg" alt="ct-samplesize logo" width="120" height="120">
+  <img src="assets/icon.svg" alt="ct-samplesize logo" width="240" height="240">
 </div>
 
 > **Easy-to-use Clinical Sample Size & Power Calculator for Clinical Researchers**
@@ -90,7 +90,7 @@ Tests are grouped by **endpoint type** (6 categories below). Each row gives the 
 
 > The underlying R packages (rpact / gsDesign / TrialSize / PowerTOST …) are listed in Section 5 "Advanced Reference"; ordinary users don't need to care.
 
-### ① Continuous / 连续型终点
+### ① Continuous
 | Test | Clinical Scenario | Try saying in chat |
 |:---|:---|:---|
 | `ttest_ind` | Two-means comparison (parallel) | "Two-group mean comparison, d=0.5, power 0.8" |
@@ -100,7 +100,7 @@ Tests are grouped by **endpoint type** (6 categories below). Each row gives the 
 | `equivalence` | Equivalence (means) | "Mean equivalence, margin=2, effect 3" |
 | `mixed_model` | Repeated measures / longitudinal | "Repeated-measures sample size, effect 0.5" |
 
-### ② Binary / Proportions / 二分类终点
+### ② Binary / Proportions
 | Test | Clinical Scenario | Try saying in chat |
 |:---|:---|:---|
 | `proportion_two` | Two-group rate (chi-square) | "Control 20% treatment 35%, two-group rate comparison" |
@@ -114,14 +114,14 @@ Tests are grouped by **endpoint type** (6 categories below). Each row gives the 
 | `vaccine_efficacy` | Vaccine efficacy | "Vaccine efficacy, control VE=0.02 treatment 0.005" |
 | `gsd_proportion` | Group-sequential two proportions | "Group-sequential two proportions, 1 interim, p1=0.7 p2=0.5" |
 
-### ③ Count / Rates / 计数·率终点
+### ③ Count / Rates
 | Test | Clinical Scenario | Try saying in chat |
 |:---|:---|:---|
 | `poisson` | Poisson rate | "Two-group rate comparison, λ1=0.05 λ2=0.03" |
 | `recurrent_events` | Recurrent events (Andersen-Gill) | "Recurrent-event sample size, control rate 1.0" |
 | `gsd_poisson` | Group-sequential Poisson | "Group-sequential Poisson rate" |
 
-### ④ Survival / Time-to-event / 生存·时间-事件终点
+### ④ Survival / Time-to-event
 | Test | Clinical Scenario | Try saying in chat |
 |:---|:---|:---|
 | `survival` | Survival (simplified logrank) | "Survival analysis, HR=0.75, power 0.85" |
@@ -138,13 +138,13 @@ Tests are grouped by **endpoint type** (6 categories below). Each row gives the 
 | `gsd_survival_sim` | Group-sequential logrank — Monte-Carlo | "Group-sequential survival simulation, 2 interims" |
 | `gsd_hazard_sim` | Group-sequential HR — Monte-Carlo | "Group-sequential HR simulation" |
 
-### ⑤ Diagnostic / Method comparison / 诊断·方法比较
+### ⑤ Diagnostic / Method comparison
 | Test | Clinical Scenario | Try saying in chat |
 |:---|:---|:---|
 | `roc` | ROC curve / diagnostic trial | "ROC curve sample size, AUC 0.5→0.75" |
 | `bland_altman` | Bland-Altman method comparison | "Bland-Altman sample size, SDdiff=5, margin 2.5" |
 
-### ⑥ Special / Advanced designs / 特殊·高级设计
+### ⑥ Special / Advanced designs
 | Test | Clinical Scenario | Try saying in chat |
 |:---|:---|:---|
 | `group_sequential` | Group sequential / interim | "Group-sequential design, 2 interims, Pocock" |
@@ -198,7 +198,7 @@ CLI examples, bidirectional solving, curve mode, core formulas, system requireme
 
 ---
 
-**Version**: v3.8.0 | **License**: MIT | **Authors**: medstatstar, phoe-zip
+**Version**: v3.8.1 | **License**: MIT | **Authors**: medstatstar, phoe-zip
 
 For feature requests, bug reports, or other feedback, please contact the author directly at medstatstar@gmail.com (Wintone Zhang / 张文彤).
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Clinical Trial Sample Size & Power Calculator — v3.8.0
+Clinical Trial Sample Size & Power Calculator — v3.8.1
 
 Security model:
 - All R code comes from pre-defined templates (validated str args only)
@@ -464,6 +464,7 @@ def build_curve_code(args):
         tpl = _CURVE_POWER_MULTI if effects_r else _CURVE_POWER_SINGLE
     else:
         tpl = _CURVE_N_MULTI if effects_r else _CURVE_N_SINGLE
+    _main_title = ("Power curve: %s" if mode == "power" else "Sample size curve: %s") % test
     r = (tpl
          .replace("__PARAMS__", params)
          .replace("__POWER_FN__", spec["power_fn"])
@@ -472,14 +473,15 @@ def build_curve_code(args):
          .replace("__EFFECTS__", effects_r or "c()")
          .replace("__EFFECT_VAR__", spec.get("effect_var", "delta"))
          .replace("__TEST__", test)
-         .replace("__XLABEL__", xlabel)
-         .replace("__YLABEL__", ylabel)
+         .replace("__XLABEL__", "'%s'" % xlabel)
+         .replace("__YLABEL__", "'%s'" % ylabel)
+         .replace("__MAIN_TITLE__", "'%s'" % _main_title)
          .replace("__TARGET__", repr(float(target)))
          .replace("__OUT__", _safe_r_path_literal(out_png)))
     return r
 
 def main():
-    p = argparse.ArgumentParser(description="Clinical Trial Sample Size Calculator v3.8.0")
+    p = argparse.ArgumentParser(description="Clinical Trial Sample Size Calculator v3.8.1")
     p.add_argument("--test", required=False, default=None,
         choices=["ttest_ind","ttest_paired","ttest_one","anova","proportion_one","proportion_two",
                  "proportion_paired","odds_ratio","risk_ratio",
@@ -522,7 +524,7 @@ def main():
     # ── Non-inferiority / Equivalence ──
     p.add_argument("--margin", type=float)
     # ── Survival ──
-    p.add_argument("--hazard_ratio", type=float)
+    p.add_argument("--hazard_ratio", "--hr", type=float)
     # ── Mixed model ──
     p.add_argument("--effect_name", type=str)
     p.add_argument("--varcorr", type=float, default=0.5)
@@ -768,7 +770,7 @@ def main():
 
     # ── Numeric range validation ──
     _RANGE_RULES = {
-        "alpha": (0, 1), "power": (0, 1),
+        "alpha": (0, 0.5), "power": (0, 1),
         "auc0": (0, 1), "auc1": (0, 1),
         "correlation": (-1, 1), "icc": (0, 1),
         "margin": (0, None), "hazard_ratio": (0, None),
@@ -1028,7 +1030,7 @@ cat(._qt("label.implied_n_clusters"), res$n_clusters, "\\n")
             r_code = R_CLUSTER + f"""
 cat("\\n========== Cluster-Randomized Design ==========\\n")
 cat(._qt("label.deff"), round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
-res <- ss_cluster(m={args.m}, icc={args.icc}, n_indiv={args.n_indiv})
+res <- ss_cluster(m={args.m}, icc={args.icc}, n_indiv={args.n_indiv or 50})
 cat(._qt("label.adjusted_n_per_group"), res$n_adj, "\\n")
 cat(._qt("label.clusters_per_group"), res$n_clusters, ._qt("label.total_clusters"), res$total_clusters, "\\n")
 cat(._qt("label.total_sample_size"), res$total, "\\n")
@@ -1036,7 +1038,7 @@ cat(._qt("label.total_sample_size"), res$total, "\\n")
 
     elif args.test == "bland_altman":
         r_code = R_BLAND_ALTMAN.format(
-            sd_diff=args.sd_diff, w=args.w, alpha=args.alpha,
+            sd_diff=args.sd_diff or 1.0, w=args.w or 0.5, alpha=args.alpha,
             power=args.power, nobs=args.nobs,
             solve_for_power=str(solve_for_power).upper())
 
@@ -1234,14 +1236,14 @@ cat(._qt("label.achieved_power"), ss_noninf_prop(p1={p1}, p2={p2}, margin={margi
         else:
             r_code = R_NON_INFERIORITY + f"""
 cat("\\n========== Non-Inferiority (Proportions) ==========\\n")
-cat(._qt("label.control_rate_ni_short", p1=p1), "
+cat(._qt("label.control_rate_ni_short", p1={p1}), "
 ")
-cat(._qt("label.treatment_rate_ni_short", p2=p2), "
+cat(._qt("label.treatment_rate_ni_short", p2={p2}), "
 ")
 cat(._qt("label.assumed_diff"), abs({p1} - {p2}), "\\n")
-cat(._qt("label.ni_margin_short", margin=margin), "
+cat(._qt("label.ni_margin_short", margin={margin}), "
 ")
-cat(._qt("label.one_sided_alpha", alpha=args.alpha, power=args.power), "
+cat(._qt("label.one_sided_alpha", alpha={args.alpha}, power={args.power}), "
 ")
 res <- ss_noninf_prop(p1={p1}, p2={p2}, margin={margin}, alpha={args.alpha}, power={args.power})
 cat(._qt("label.result_header"), "
@@ -1441,7 +1443,7 @@ if (!is.na(res$n_per_group)) {{
         _hr = args.hazard_ratio if args.hazard_ratio is not None else 0.7
         _dir_upper = "FALSE" if _hr < 1 else "TRUE"
         _nobs_given = "TRUE" if args.nobs is not None else "FALSE"
-        _sim_seed = args.sim_seed if args.sim_seed is not None else "NULL"
+        _sim_seed = args.sim_seed if args.sim_seed is not None else 42
         r_code = R_GSD_SURVIVAL_SIM.format(
             kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
             futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
@@ -1457,7 +1459,7 @@ if (!is.na(res$n_per_group)) {{
         _hr = args.hazard_ratio if args.hazard_ratio is not None else 0.7
         _dir_upper = "FALSE" if _hr < 1 else "TRUE"
         _nobs_given = "TRUE" if args.nobs is not None else "FALSE"
-        _sim_seed = args.sim_seed if args.sim_seed is not None else "NULL"
+        _sim_seed = args.sim_seed if args.sim_seed is not None else 42
         r_code = R_GSD_HAZARD_SIM.format(
             kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
             futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,

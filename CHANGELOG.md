@@ -2,6 +2,14 @@
 
 > This file records ct-samplesize's key architecture & security changes for maintainer auditing (user-facing usage: `SKILL.md` & `references/`). / 本文件记录 ct-samplesize 的关键架构与安全变更，供维护者审计参考（用户面向的使用说明见 `SKILL.md` 与 `references/`）。
 
+## v3.8.1 — QA: 10-round red-team bug hunt (100 cases) / 质量保障：十轮红队探查（100 案例）
+
+- **QA harness built**: `qa/qa_harness.py` runs each case against the real CLI (`--yes`), classifies PASS / EXPECTED_FAIL (graceful validation) / PY_TRACE / R_ERROR / BAD_RESULT / UNEXPECTED_OK; plus `scan_i18n.py` (de-noised, supports dynamically-built keys via `.replace()`). / 搭建 QA 测试台：`qa/qa_harness.py` 对每个案例真实执行 CLI（`--yes`），分类 PASS / EXPECTED_FAIL（优雅校验）/ PY_TRACE / R_ERROR / BAD_RESULT / UNEXPECTED_OK；另含 `scan_i18n.py`（去噪，支持 `.replace()` 动态构造的 key）。
+- **Bug R8 — alpha range too loose**: numeric range rule was `alpha: (0, 1)`, silently accepting `alpha > 0.5` (e.g. 0.6). Tightened to `(0, 0.5)` so nonsensical α is rejected with a clean validation message. / alpha 范围过宽：原为 `(0,1)`，`alpha>0.5`（如 0.6）被静默放行；收紧为 `(0,0.5)`，使无意义 α 被优雅拒绝。
+- **Bug R9 — R-side i18n drift (raw keys printed)**: 7 GSD keys (`label.empirical_power`, `label.expected_events`, `label.expected_n`, `label.planned_events`, `label.stop_prob`, `header.gsd_survival_sim`, `header.gsd_hazard_sim`) existed in the Python master (`i18n._MESSAGES`) but were never synced to the R runtime dict (`I18N_R` in `r_libs.py`), so R printed the raw key strings at runtime. Added all 7 to `I18N_R`; hardened `scan_i18n.py` to also reconstruct keys built dynamically via `t("prefix.{ph}")` + `.replace("{ph}", "val")`. / R 端 i18n 漂移（打印原始 key）：7 个 GSD key 在 Python 主字典中存在却从未同步到 R 运行时字典 `I18N_R`，导致 R 运行时直接打印原始 key 字符串；已全部补入 `I18N_R`，并强化 `scan_i18n.py` 以重建经 `t("prefix.{ph}")` + `.replace("{ph}","val")` 动态构造的 key。
+- **Bug R10 — `--hr` ambiguous option**: survival analysis expected `--hazard_ratio` but the universal shorthand `--hr` collided with `--hr_expected` / `--hr_exact` (argparse "ambiguous option" error). Added `--hr` as an explicit alias of `--hazard_ratio`. / `--hr` 歧义选项：生存分析期望 `--hazard_ratio`，但通用简写 `--hr` 与 `--hr_expected`/`--hr_exact` 冲突（argparse "ambiguous option" 报错）；已将 `--hr` 显式设为 `--hazard_ratio` 的别名。
+- **Result**: Rounds 1–10 × 10 cases = 100 cases executed; all 10/10 green after fixes; no regressions in R1–R7. / 结果：第 1–10 轮 × 10 案例 = 100 案例全部执行，修复后每轮 10/10 通过；R1–R7 无回归。
+
 ## v3.8.0 — UX: friendlier menu & README / 用户体验：菜单与 README 更友好
 
 - **User menu (UI) optimized**: `references/menu.md` reorganized as scenario-first — top Triage gate (Simple / Complex / Vague) + `③ explain differences` entry, then a "find your test by research question" index (Part 0) ahead of the authoritative endpoint-type tree (Part 1); cleaner navigation for non-statistician users. / 用户菜单（界面）优化：`references/menu.md` 改为场景优先——顶部 Triage 门控（简单/复杂/模糊）+「③ 解释差异」入口，再按「研究问题找检验」索引（Part 0）置于权威终点类型树（Part 1）之前；非统计背景用户导航更顺畅。

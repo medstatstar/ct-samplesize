@@ -156,7 +156,7 @@ CURVE_SOLVERS = {
     },
 }
 
-_CURVE_POWER_SINGLE = r"""\
+_CURVE_POWER_SINGLE = r"""
 # i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 __PARAMS__
 power_given_n <- function(n) { __POWER_FN__ }
@@ -165,16 +165,16 @@ pw <- sapply(n_seq, power_given_n)
 df <- data.frame(n = n_seq, power = pw)
 png('__OUT__', width = 700, height = 500)
 plot(n_seq, pw, type = 'b', col = '#2c7fb8', lwd = 1.3, pch = 19,
-     xlab = '___N_LABEL__', ylab = ___YLABEL__,
-     main = ___MAIN_TITLE__, ylim = c(0, 1))
+     xlab = __XLABEL__, ylab = __YLABEL__,
+     main = __MAIN_TITLE__, ylim = c(0, 1))
 abline(h = __TARGET__, lty = 2, col = 'red')
 grid()
 dev.off()
 print(df)
-cat(t("label.png_saved"), '___OUT__', '\n')
+cat(t("label.png_saved"), '__OUT__', '\n')
 """
 
-_CURVE_POWER_MULTI = r"""\
+_CURVE_POWER_MULTI = r"""
 # i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 __PARAMS__
 effects <- __EFFECTS__
@@ -190,8 +190,8 @@ png('__OUT__', width = 700, height = 500)
 cols <- rainbow(length(effects))
 first <- res[res$effect == effects[1], ]
 plot(first$n, first$power, type = 'b', col = cols[1], lwd = 1.1, pch = 19,
-     xlab = '___N_LABEL__', ylab = ___YLABEL__,
-     main = ___MAIN_TITLE__, ylim = c(0, 1))
+     xlab = __XLABEL__, ylab = __YLABEL__,
+     main = __MAIN_TITLE__, ylim = c(0, 1))
 for (i in seq_along(effects)) {
   sub <- res[res$effect == effects[i], ]
   lines(sub$n, sub$power, col = cols[i], lwd = 1.1)
@@ -202,10 +202,10 @@ legend('bottomright', legend = as.character(effects), col = cols, lty = 1, pch =
 grid()
 dev.off()
 print(res)
-cat(t("label.png_saved"), '___OUT__', '\n')
+cat(t("label.png_saved"), '__OUT__', '\n')
 """
 
-_CURVE_N_SINGLE = r"""\
+_CURVE_N_SINGLE = r"""
 # i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 __PARAMS__
 n_given_power <- function(p) { __NFN__ }
@@ -214,16 +214,16 @@ ns <- sapply(pw_seq, n_given_power)
 df <- data.frame(power = pw_seq, n = ns)
 png('__OUT__', width = 700, height = 500)
 plot(pw_seq, ns, type = 'b', col = '#d95f0e', lwd = 1.3, pch = 19,
-     xlab = ___XLABEL__, ylab = ___YLABEL__,
-     main = ___MAIN_TITLE__)
+     xlab = __XLABEL__, ylab = __YLABEL__,
+     main = __MAIN_TITLE__)
 abline(v = __TARGET__, lty = 2, col = 'red')
 grid()
 dev.off()
 print(df)
-cat(t("label.png_saved"), '___OUT__', '\n')
+cat(t("label.png_saved"), '__OUT__', '\n')
 """
 
-_CURVE_N_MULTI = r"""\
+_CURVE_N_MULTI = r"""
 # i18n.R (I18N_R) is prepended by run_r() at execution time; t() is available.
 __PARAMS__
 effects <- __EFFECTS__
@@ -239,8 +239,8 @@ png('__OUT__', width = 700, height = 500)
 cols <- rainbow(length(effects))
 first <- res[res$effect == effects[1], ]
 plot(first$power, first$n, type = 'b', col = cols[1], lwd = 1.1, pch = 19,
-     xlab = ___XLABEL__, ylab = ___YLABEL__,
-     main = ___MAIN_TITLE__)
+     xlab = __XLABEL__, ylab = __YLABEL__,
+     main = __MAIN_TITLE__)
 for (i in seq_along(effects)) {
   sub <- res[res$effect == effects[i], ]
   lines(sub$power, sub$n, col = cols[i], lwd = 1.1)
@@ -251,5 +251,5 @@ legend('bottomright', legend = as.character(effects), col = cols, lty = 1, pch =
 grid()
 dev.off()
 print(res)
-cat(t("label.png_saved"), '___OUT__', '\n')
+cat(t("label.png_saved"), '__OUT__', '\n')
 """
