@@ -1,7 +1,7 @@
 # ct-samplesize Operation SOP
 
 > Agent: `ct-samplesize`
-> Version: v3.8.1
+> Version: v4.0.1
 > See `SKILL.md` for the canonical definition.
 
 ## 1. Purpose
@@ -12,17 +12,22 @@
 
 ## 2. Environment
 
-- **R 4.x**: detected by `find_rscript` (which locates `Rscript`). Search order:
-  1. `PATH` → `Rscript`
-  2. `C:\Tools\R-4.5.1\bin\x64\Rscript.exe`
-  3. `C:\Program Files\R\R-4.5.1\bin\x64\Rscript.exe`
-  4. `/usr/local/bin/Rscript` and `/usr/bin/Rscript` (macOS / Linux)
-  - If none found, emit `error.rscript_not_found`.
-- **Python 3.8+**: drives the CLI and the pure-Python fallback.
-- **R packages**: `stats`, `pwr`, `rpact`, plus base R.
-- Inline R engines: `.R` logic lives in `scripts/r_libs.py` (`I18N_R`,
-  `ADAPTIVE_SIM_R`); the CLI writes it to a temp `.R` file and `source()`s it.
-- Install helpers: `--install-all-packages`, `--run-install`.
+- **coze R service (default / production):** the skill sends trial-design params to
+  `CTSS_COZE_ENDPOINT` and gets results + optional figures back. No local R needed.
+  For a no-network demo, set `CTSS_COZE_MOCK=1`.
+- **Python 3.8+**: drives the CLI and the pure-Python fallback (5 basic tests:
+  `ttest_ind` / `ttest_one` / `ttest_paired` / `proportion_one` / `proportion_two`).
+- **R 4.x (dev / optional, NOT in published skill):** only the local-R backend
+  (`adapters/r-assets/`, `CTSS_BACKEND=local-r`) needs R. Detected by `find_rscript` (which
+  locates `Rscript`); search order: `PATH` → `C:\Tools\R-4.5.1\bin\x64\Rscript.exe`
+  → `C:\Program Files\R\R-4.5.1\bin\x64\Rscript.exe` → `/usr/local/bin/Rscript`,
+  `/usr/bin/Rscript`. If none found, emit `error.rscript_not_found`.
+- **R packages (coze-side):** `stats`, `pwr`, `rpact`, plus base R — all run
+  server-side on coze; nothing to install locally in the published skill.
+- Inline R engines: `.R` logic lives in `adapters/r-assets/local_r_backend.py` (`I18N_R`,
+  `ADAPTIVE_SIM_R`); synced to coze. The CLI shows the coze request envelope in
+  SAFE PREVIEW and computes via coze.
+- Install helpers (dev only): `--install-all-packages`, `--run-install`.
 
 ## 3. Agent invocation
 
@@ -37,17 +42,22 @@ The agent reads `SKILL.md` and runs the CLI with `--test`. Default is a
 python scripts/samplesize_power.py --test <test type> [params] [--dry-run | --yes | --show-code]
 ```
 
-- `--yes` executes; `--show-code` prints the generated R code; omitting both is a
-  dry-run that displays the R code without running it.
-- `--show-code` prints the R code (no execution).
-- `--yes` / `-y` runs `Rscript` to compute the result.
+- `--dry-run` (default) prints the coze request envelope (or R source for the
+  local-R dev backend) without sending/executing.
+- `--yes` sends the request to coze and computes (accepted but not required for
+  coze, which is a stateless compute service); for the optional local-R dev
+  backend it is required to run R locally.
+- `--show-code` prints the coze request JSON (and the R source on request).
 
 ## 4. Security model
 
-- **dry-run by default**: R code is shown but not executed.
-- allowlist: only `_validate_token`, `_safe_r_path_literal`, and `run_r` may
-  invoke R — prevents RCE via prompt injection.
-- `--yes` runs `subprocess.run([rscript, '--vanilla', tmp])` with no shell.
+- **dry-run by default**: the coze request envelope (or R source for the local-R
+  dev backend) is shown but nothing is sent/executed.
+- allowlist: every user string that could reach server-side R is validated against
+  a strict allowlist — prevents injection / RCE.
+- The published skill never runs R or a shell locally; the optional local-R dev
+  backend runs `subprocess.run([rscript, '--vanilla', tmp])` with no shell, behind
+  `--yes`.
 
 ## 5. Common flags
 
@@ -95,24 +105,31 @@ early-stop rates. Use `--sim_output results.json` and `--visualize` for artifact
 
 ## 7. Notes
 
-1. R math uses `._qt(...)` (not `._qt`); fixed in v3.7.1.
-2. Under `--yes`, R labels results `label.cohens_d` / `n per group`.
-3. `--visualize` / `--plot_effects` / `--n_seq` render PNG charts.
+1. In the published skill, R math runs server-side on coze; `CTSS_FORCE_R=1`
+   prefers coze-R (else local-R dev backend), `CTSS_RETURN_R_CODE=1` returns the
+   full R source + result.
+2. The optional local-R dev backend labels results `label.cohens_d` / `n per group`
+   under `--yes`.
+3. `--visualize` / `--plot_effects` / `--n_seq` render charts (PNG from coze,
+   SVG/HTML figures written to `CTSS_OUTPUT_DIR`).
 4. `--sim_output` writes a JSON result file.
-5. `--show-code` shows the generated R (dry-run) code, which embeds `I18N_R`.
+5. `--show-code` shows the coze request JSON (and the embedded R source on request).
 
 ## 8. Troubleshooting
 
 |Symptom|Cause|Fix|
 |------|------|------|
-|R `unexpected symbol in "_qt"`|old code used `._qt`|use `._qt`; fixed in v3.7.1+|
+|R `unexpected symbol in "_qt"`|old code used `._qt`|use `._qt`; fixed in v3.7.1+ (local-R dev backend)|
 |ROC `NameError: name 'ss_roc' is not defined`|Python path issue|fixed in v3.7.1+ (R path)|
-|`error.rscript_not_found`|Rscript missing|install R or set `RSCRIPT_PATH` / `find_rscript`|
-|`pwr` / `rpact` missing|package not installed|run `--install-all-packages`|
+|`error.rscript_not_found`|Rscript missing (local-R dev backend)|install R or set `RSCRIPT_PATH` / `find_rscript`|
+|`pwr` / `rpact` missing|package not installed (local-R dev backend)|run `--install-all-packages`|
+|coze endpoint not configured|`CTSS_COZE_ENDPOINT` unset|set `CTSS_COZE_ENDPOINT` (real) or `CTSS_COZE_MOCK=1` (demo)|
+|coze unreachable … no local Python fallback|test not in 5-test Python fallback|configure coze (or dev `adapters/r-assets/` + `CTSS_BACKEND=local-r`)|
 |locale shows zh|OS language is zh/CN|expected; output follows OS locale|
 
 ## 9. Maintenance
 
-- `.R` logic lives in `r_libs.py`, not standalone `.R` files.
-- With `--yes` the code runs (dry-run shows it first); the v3.7.1 fix renamed
-  `._qt` to `._qt` consistently.
+- In the published skill, R logic lives server-side on coze (synced from
+  `adapters/r-assets/local_r_backend.py` + `adapters/r-assets/r_templates/`), not in standalone `.R` files.
+- The optional local-R dev backend runs the code under `--yes` after a SAFE PREVIEW;
+  the v3.7.1 fix renamed `._qt` to `._qt` consistently (historical).

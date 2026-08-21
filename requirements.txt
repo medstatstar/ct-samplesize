@@ -1,7 +1,7 @@
-# Minimum versions. The Python fallback (fixed designs) and the adaptive
-# Monte-Carlo simulator (scripts/adaptive_simulator.py) both work with these
-# or newer. matplotlib is only required for --visualize.
-statsmodels>=0.14.2
-numpy>=1.24.3
-scipy>=1.11.4
-matplotlib>=3.4.0
+# ct-samplesize v5 — the published skill is stdlib-only: NO third-party runtime
+# dependencies (argparse / json / urllib / math ... standard library only).
+# The coze R engine runs server-side; local computation needs nothing extra.
+#
+# Optional extras (not required for core computation):
+#   cairosvg — only for --figure-mode png_file (local SVG→PNG rasterization).
+#              Install into your interpreter when PNG output is needed.

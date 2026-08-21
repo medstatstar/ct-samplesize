@@ -1,23 +1,25 @@
-# AGENTS.md — ct-samplesize v3.7.0
+# AGENTS.md — ct-samplesize v4.0.7
 
 ## Overview
 
-`ct-samplesize`: An easy-to-use sample size & power tool for clinical trial practitioners. Powered by R + 20+ packages (rpact/gsDesign/TrialSize/PowerTOST etc.), it performs 49+ complex calculations via natural-language prompts (output in Chinese or English per OS language setting, prompt can force-switch). The generated R code is shown in SAFE PREVIEW (not executed unless --yes) and can be provided in full on request for verification, submission, or re-run.
+`ct-samplesize`: An easy-to-use sample size & power tool for clinical trial practitioners. The **default authoritative engine is a remote coze R compute service** (rpact/gsDesign/TrialSize/PowerTOST etc., 20+ packages running server-side — no local R required); it performs all 49 test types via natural-language prompts (output in Chinese or English per OS language setting, prompt can force-switch). In the published skill **no R or shell runs locally**; only trial-design parameters are sent to coze, and full R code can be returned on request for verification, submission, or re-run. A pure-Python fallback covers 5 basic superiority tests offline.
 
 ---
 
 ## Core Rules
 
-### 1. R Environment Detection
-- Detect R via PATH or RSCRIPT_PATH env
-- Installed → report version + check packages
-- Not installed → recommend install + offer Python fallback
+### 1. Compute Backend Detection (coze primary)
+- **Default / production:** the skill calls the coze R service (`CTSS_COZE_ENDPOINT`); no local R needed. If unset, set `CTSS_COZE_MOCK=1` for a local demo.
+- **Offline fallback (published):** the 5 basic superiority tests (`ttest_ind`, `ttest_one`, `ttest_paired`, `proportion_one`, `proportion_two`) compute via the built-in pure-Python backend — clearly labeled non-authoritative.
+- **Dev / local-R backend:** only if `adapters/r-assets/` is present and `CTSS_BACKEND=local-r` (or `CTSS_FORCE_R=1` with no coze) — then R is detected via PATH/RSCRIPT_PATH and run locally behind `--yes`.
 
 ### 2. Extended Tool Selection
 
+> All rows below run **server-side on coze** in the published skill (only design params are sent). The local pure-Python fallback covers only `ttest_ind` / `ttest_one` / `ttest_paired` / `proportion_one` / `proportion_two`.
+
 |User Need|Path|
 |:----------|:-----|
-| Basic stats (t-test/ANOVA/proportion) | Python → auto gen R code |
+| Basic stats (t-test/ANOVA/proportion) | coze (R) — 5 basic superiority tests also have a local pure-Python fallback |
 | Longitudinal / Repeated measures | R: `simr` (mixed model) |
 | Diagnostic trial | R: `pROC` (ROC formula) |
 | Count data / Recurrent events | R: custom Wald test |
@@ -42,10 +44,9 @@
 | Mediation | R: `powerMediation` |
 
 ### 3. Code Execution
-- R via subprocess (Rscript), path: auto-detect (RSCRIPT_PATH env or PATH search)
-- Python via Anaconda (`C:\Tools\anaconda3\python.exe`)
-- **Default: dry-run mode.** R code is displayed; execution requires `-y`/`--yes`
-- Temp R files written to system temp dir (`tempfile.gettempdir()`), auto-cleaned after run
+- **Published skill:** no local R/shell. The orchestration layer (`scripts/samplesize_power.py`) routes to `CozeBackend` (default), `LocalPythonBackend` (5 basic tests offline), or `LocalRBackend` (dev only, in `adapters/r-assets/`).
+- **Default: safe preview.** `--dry-run` prints the exact coze request envelope (no send); `--yes` is accepted but not required for coze (it's a stateless compute service). The legacy `--yes` gate applies only to the optional local-R backend.
+- Python (orchestration + fallback) via the bundled interpreter; figures from coze are written to `CTSS_OUTPUT_DIR` (default `./outputs`).
 
 ### 4. Result Output (v3.4.4)
 
@@ -54,15 +55,15 @@ Every analysis includes:
 - Calculation result (sample size / power / effect size)
 - Dropout adjustment (if applicable)
 - Assumptions & limitations
-- **Default = SAFE PREVIEW (code shown, NOT executed)**; use `--yes`/`-y` to execute & compute, `--show-code` to display the code (no execution), or `--dry-run` to preview only
-- R code is generated and shown by default but NOT run unless `--yes` is given; `-y`/`--yes` explicitly executes and computes
-- **`--test adaptive_simulate`**: primary engine is the inlined pure base-R function library `ADAPTIVE_SIM_R` (in `scripts/r_libs.py`, no extra packages) — the CLI writes it to a temp `.R` file, sources it, and calls `run_adaptive_sim` (SAFE PREVIEW, `--yes` to run, base R only). To drive it from R directly, run the CLI with `--show-code`/`-y` and copy the printed R code. When R is unavailable, the skill automatically falls back to the equivalent pure-Python module `scripts/adaptive_simulator.py`. See `references/adaptive_simulator.md`.
+- **Default = SAFE PREVIEW (coze request envelope shown, NOT sent)**; use `--yes`/`-y` to send to coze & compute, `--show-code` to display the coze request JSON (no send), or `--dry-run` to preview only. coze is a stateless compute service, so no local code ever executes.
+- The optional local-R dev backend (adapters/r-assets) behaves like v3.x: R code is shown but NOT run unless `--yes` is given; `-y`/`--yes` explicitly executes locally.
+- **`--test adaptive_simulate`**: the authoritative engine is the inlined pure base-R function library `ADAPTIVE_SIM_R` (maintained in `adapters/r-assets/local_r_backend.py`, no extra packages) running **server-side on coze** in the published skill. A legacy pure-Python module `adapters/r-assets/legacy/adaptive_simulator.py` is retained for offline dev/testing. The CLI shows the coze request envelope in SAFE PREVIEW and computes via coze. See `references/adaptive_simulator.md`.
 
 ### 5. Language Detection
 - **Follow OS language setting**: Output language (Chinese or English) follows the OS language setting — Chinese on a Chinese-OS, English otherwise.
 - **Prompt can force-switch**: The user may override the OS-based default anytime via an explicit language request (e.g. "switch to English").
 - **Detection method**: Linux/macOS read `LANG`/`LC_ALL`/`LANGUAGE`; Windows use `Get-Culture`/`Get-WinSystemLocale` or `os` env to check if the language code starts with `zh`; if the `<response_language>` tag specifies a language, follow it.
-- **Docs are English-only (ct-base §13.2)**: The skill documentation (SKILL.md, AGENTS.md, references, etc.) is English-only. Runtime output for common modules may still be English + Chinese per OS setting; complex/rare modules are English-only.
+- **Docs are English-only (ct-base §4)**: The skill documentation (SKILL.md, AGENTS.md, references, etc.) is English-only. Runtime output for common modules may still be English + Chinese per OS setting; complex/rare modules are English-only.
 - **Complex/rare modules may be English-only**: e.g. `group_sequential`, `adaptive`, `mixed_model`, `bayesian`, `win_ratio`, `mams`, `vaccine_efficacy` etc.
 - **This policy does not affect code output**: R/Python code is always English, shown per `--show-code`.
 
@@ -79,13 +80,14 @@ Every analysis includes:
 - Rule of thumb for future extensions: any test classifiable along multiple axes (e.g. sequential/adaptive × means/proportion/survival/rate) must be listed under every relevant top-level entry — do NOT hang it on a single node.
 - **Menu structure is now formalized in `references/menu.md`** (primary tree by endpoint + design-family cross-index) and surfaced in SKILL.md `## Quick Menu`. When guiding a user to pick a test, read `references/menu.md` to stay consistent with the canonical classification.
 
-### 8. Triage (ct-base §5.2) — Three-Way Interaction
+### 8. Triage (ct-base §6.2) — Four-Way Interaction
 
-Before any user interaction, triage first (ct-base §5.2), then decide whether / how to show a menu.
+Before any user interaction, triage first (ct-base §6.2) into **Simple / Middle / Complex / Vague**, then decide whether / how to show a menu.
 
 |Class|Trigger|Action|
 |:---|:---|:---|
-|**Simple**|Direct t-test/ANOVA/proportion-style question with clear how/why|Answer directly; 1–2 turns; pick from the 49 test types|
+|**Simple**|Direct t-test/ANOVA/proportion-style question with clear how/why|Answer directly; 1–2 turns; pick from the 49 test types; no menu|
+|**Middle**|Single-point but deep (ICH guidance detail, statistical parameter, compliance gray zone; needs 3–4 points)|Still answer directly, **no menu** (same path as Simple); mark `difficulty = "middle"` for a richer multi-point answer. When Simple vs Middle is unclear, prefer **Middle**|
 |**Complex**|Multi-step or design-family question (sequential/adaptive/mixed/survival)|Consult `references/menu.md` → present the relevant menu; guide step-by-step|
 |**Vague**|Under-specified ask (missing endpoint, design, or effect size)|Use `grill-me` to ask 1–3 clarifying questions → then re-triage|
 
@@ -111,8 +113,9 @@ Before any user interaction, triage first (ct-base §5.2), then decide whether /
 
 ## Dependencies
 
-### R Packages (install on demand)
-R packages do NOT need to be pre-installed all at once. When the skill detects a missing package it prints the install command in output; the user runs it once.
+### R Packages (dev / coze-side — NOT in published skill)
+In the published skill, all R packages run **server-side on coze**; you never install them locally. This section applies only when running the optional local-R backend (`CTSS_BACKEND=local-r`, requires `adapters/r-assets/`):
+R packages do NOT need to be pre-installed all at once. When the dev backend detects a missing package it prints the install command in output; the user runs it once.
 
 |Tier|Package|Used for|
 |:---|:---|:---|

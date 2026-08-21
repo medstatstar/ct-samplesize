@@ -154,6 +154,11 @@ python scripts/samplesize_power.py --test ttest_ind --effect 0.5 --nobs 50
 # Reverse: n=20 per sequence → achieved power for bioequivalence TOST
 python scripts/samplesize_power.py --test be_tost --nobs 20
 
+# BE with custom equivalence limits (theta0=1, CV=30%, limits 0.5~2, power 0.8) — 2026-08-20
+python scripts/samplesize_power.py --test be_tost --theta0 1 --cv 0.3 --theta1 0.5 --theta2 2 --power 0.8
+# Same via --margin (margin=2 → limits 1/2 ~ 2)
+python scripts/samplesize_power.py --test be_tost --theta0 1 --cv 0.3 --margin 2 --power 0.8
+
 # Reverse: n=100 per group → achieved power for MAMS design
 python scripts/samplesize_power.py --test mams --nobs 100
 

@@ -1,4 +1,4 @@
-# ct-samplesize
+# Clinical Trial Sample Size & Power (ct-samplesize)
 
 [🇨🇳 中文 (Chinese)](./README_zh-CN.md) | [🇺🇸 English (Current)](#)
 
@@ -8,7 +8,19 @@
 
 > **Easy-to-use Clinical Sample Size & Power Calculator for Clinical Researchers**
 >
-> You don't need to code or memorize commands — just describe your trial design in **plain language inside a chat**, and the skill performs **49** professional sample-size & power calculations for you. Powered by R and 20+ professional R packages (rpact, gsDesign, TrialSize, PowerTOST, etc.), it returns results in Chinese or English depending on your OS language setting (you can force-switch via a prompt at any time). The generated R code is shown in **SAFE PREVIEW** (not executed) by default — it only computes once you confirm.
+> You don't need to code or memorize commands — just describe your trial design in **plain language inside a chat**, and the skill performs **49** professional sample-size & power calculations for you. The default authoritative engine is a **remote coze R compute service** (rpact, gsDesign, TrialSize, PowerTOST — 20+ packages running server-side, so your machine needs **no local R**); a small pure-Python fallback covers 5 basic tests offline. Results come in Chinese or English per your OS setting (force-switchable via prompt). By default the skill shows a **SAFE PREVIEW** of the exact request it would send to coze — nothing leaves your machine until you confirm; full R code can be returned on request.
+
+---
+
+## Who This Is For
+
+ct-samplesize is built for anyone who needs **defensible sample-size / power numbers** across **49 clinical-trial designs** without hand-rolling R:
+
+- **Clinical trial statisticians & biostatisticians** who need quick, auditable n / power for protocols, SAPs, or feasibility.
+- **Investigators / PIs and trial designers** drafting protocols or feasibility assessments.
+- **Medical / regulatory affairs and publication authors** who need reproducible R code for submissions or audit trails.
+- **Students and methodologists** exploring design families (group-sequential, adaptive, Bayesian, non-inferiority…).
+- **Not for**: anyone needing **patient-level data analysis** — this tool only takes aggregate design parameters, never subject data.
 
 ---
 
@@ -16,7 +28,7 @@
 
 ct-samplesize is a **conversational skill**: you simply tell the assistant your trial design in natural language — no commands, no parameter names to remember. As a WorkBuddy skill it **auto-loads with no extra installation**.
 
-Below are 5 real conversational examples ordered from simple to advanced. Each shows **"You say"** and a sketch of **"The assistant replies"**, plus how to get the actual number.
+Below are 7 real conversational examples ordered from simple to advanced. Each gives **"You say"** (a copy-ready natural-language input) plus a hint on how to get the actual number; examples 1, 2, 6, and 7 additionally show a sketch of **"The assistant replies"**.
 
 ### Example 1 · Two-means comparison (most common)
 **You say:**
@@ -25,25 +37,29 @@ Below are 5 real conversational examples ordered from simple to advanced. Each s
 **Assistant replies (sketch):**
 > Here is the sample-size calculation for a two-sample t-test (effect size d=0.5, power=0.8, two-sided α=0.05).
 > You need about **64 per group** (128 total).
+> Since this is a simple two-group solve, the assistant also auto-attaches a **sample-size curve** (n per group vs target power 0.6–0.95, SVG inline & editable); give a fixed n instead and you get the **power curve** (power vs n) automatically.
 > (Safe preview by default: the R code is shown below but not executed.)
 
-**📌 Get the actual number:** By default only the code is shown, not computed. Add **"please compute directly"** or **"execute with --yes"** and the assistant will really run it and give the number (see Section 4, "Safe Preview").
+**📌 Get the actual number:** By default only the code is shown, not computed. Say **"please compute directly"** and the assistant will really run it and give the number (on the default coze stateless engine this natural-language trigger is what fires the compute). For the local-R execution path you may also pass **--yes** to bypass the safe preview (see Section 4, "Safe Preview").
 
 ### Example 2 · Two-group proportion
 **You say:**
 > Control response 20%, treatment 35%, two-group proportion chi-square, α=0.05 two-sided, power=0.8
 
+**Assistant replies (sketch):**
+> Two-group proportion comparison (control 20% vs treatment 35%, χ², α=0.05 two-sided, power=0.8): you need about **137 per group** (274 total). A **sample-size curve** is auto-attached; ask for a power-vs-n curve at any fixed n if needed.
+
 ### Example 3 · Survival endpoint with interim
 **You say:**
-> Design a survival trial with 1 interim analysis, HR=0.75, 1:1 randomization, power 80%
+> Design a survival trial with 1 interim analysis, HR=0.75, 1:1 randomization, power 80%, and **plot the power curve** (n vs power)
 
 ### Example 4 · Non-inferiority
 **You say:**
-> Non-inferiority design, margin=0.1, control rate 85%, treatment 80%, power 80%
+> Non-inferiority design, margin=0.1, control rate 85%, treatment 80%, power 80%, and **draw the sample-size curve** (n vs target power)
 
 ### Example 5 · Bioequivalence (BE)
 **You say:**
-> Bioequivalence sample size, theta0=0.95, CV=25%, 2x2 crossover
+> Bioequivalence sample size, theta0=0.95, CV=25%, 2x2 crossover, and **plot the sample-size curve**
 
 ### Example 6 · Test selection / design-family choice (popup menu)
 **You say:**
@@ -88,7 +104,7 @@ Below are 5 real conversational examples ordered from simple to advanced. Each s
 
 Tests are grouped by **endpoint type** (6 categories below). Each row gives the typical **clinical scenario** and a line you can **copy verbatim** under "Try saying". The same test may *also* be reached from a **design-family cross-index** (group-sequential, adaptive, equivalence / non-inferiority, Bayesian, dose-escalation, MAMS, historical control, vaccine, win-statistics …) — see [`references/menu.md`](references/menu.md).
 
-> The underlying R packages (rpact / gsDesign / TrialSize / PowerTOST …) are listed in Section 5 "Advanced Reference"; ordinary users don't need to care.
+> The underlying R engine runs **server-side on coze** (rpact / gsDesign / TrialSize / PowerTOST …); the published skill ships no R locally. See Section 5 "Advanced Reference" for the architecture note — ordinary users don't need to care.
 
 ### ① Continuous
 | Test | Clinical Scenario | Try saying in chat |
@@ -97,17 +113,17 @@ Tests are grouped by **endpoint type** (6 categories below). Each row gives the 
 | `ttest_paired` | Paired t / 2×2 crossover | "Paired design sample size, effect 0.5" |
 | `ttest_one` | One-sample vs known mean | "One-sample test, difference from known mean 0.5" |
 | `anova` | Multi-group (k groups) | "3-group ANOVA, effect size f=0.25" |
-| `equivalence` | Equivalence (means) | "Mean equivalence, margin=2, effect 3" |
-| `mixed_model` | Repeated measures / longitudinal | "Repeated-measures sample size, effect 0.5" |
+| `equivalence` | Equivalence (means) | "Mean equivalence, margin=2, effect 1" |
+| `mixed_model` | Repeated measures / longitudinal (power given n) | "Repeated-measures power, n=100, effect 0.5" |
 
 ### ② Binary / Proportions
 | Test | Clinical Scenario | Try saying in chat |
 |:---|:---|:---|
 | `proportion_two` | Two-group rate (chi-square) | "Control 20% treatment 35%, two-group rate comparison" |
 | `proportion_one` | Single-group rate | "Single-group rate test, expected 30%" |
-| `proportion_paired` | Paired rate (McNemar) | "Paired rate comparison McNemar" |
-| `odds_ratio` | Odds ratio | "Sample size for OR=2" |
-| `risk_ratio` | Risk ratio (RR) | "Sample size for RR=1.5" |
+| `proportion_paired` | Paired rate (McNemar) | "Paired rate comparison McNemar, p1=0.7 p2=0.5" |
+| `odds_ratio` | Odds ratio | "Sample size for OR=2, control rate 50%" |
+| `risk_ratio` | Risk ratio (RR) | "Sample size for RR=1.5, control rate 50%" |
 | `non_inferiority` | Non-inferiority (rate) | "Non-inferiority, margin=0.1, control 85% treatment 80%" |
 | `superiority_margin` | Superiority by margin | "Superiority test, margin 0.05" |
 | `be_tost` | Bioequivalence (TOST) | "BE sample size, theta0=0.95, CV=25%" |
@@ -174,7 +190,7 @@ A: Yes. Most tests need only three things — effect size (or rate / HR) + power
 A: By default it's **per group**; paired / crossover designs report per-sequence, and survival often reports total events needed. The output always labels this clearly, so no confusion.
 
 **Q: It only shows code, not the number. How do I get the actual result?**
-A: Just add **"please compute directly"** or **"execute with --yes"** in the chat — the assistant will really run R and give you the number. This is the default safe design: see the code first, compute once you're sure.
+A: Just say **"please compute directly"** in the chat — the assistant will really run the compute and give you the number. (On the local-R fallback you can also pass **--yes** to bypass the safe preview.) This is the default safe design: see the code first, compute once you're sure.
 
 **Q: I want the reproducible R code for submission or audit — how do I ask?**
 A: Say **"give me the full R code"**. The code is also shown in safe preview by default, so you can copy, modify, and re-run it yourself.
@@ -182,12 +198,15 @@ A: Say **"give me the full R code"**. The code is also shown in safe preview by 
 **Q: On a Chinese system, is the output in Chinese?**
 A: Yes. By default the output language follows your OS language setting — Chinese on a Chinese-OS, English otherwise. You can force-switch anytime via a prompt (e.g. "用中文回复" / "switch to English").
 
+**Q: What if my data must stay confidential?**
+A: Use the same design framework but **replace the raw data** (e.g. run through the flow with placeholder values), ask the skill to output the full R code, then run that code yourself locally with your real data — the skill only ever sends design parameters and never touches your raw data.
+
 ---
 
 ## 4. Safety & Disclaimer
 
-- **What is Safe Preview:** By default the skill only **generates and shows the R code, but does not execute it** — you can inspect the logic first, then let it run once you're confident. In chat say **"please compute / execute with --yes"** to trigger the real calculation; say **"show code / --show-code"** to see just the code, or **"preview only / --dry-run"** for preview.
-- All computations are local; no data transmission.
+- **What is Safe Preview / coze compute:** The published skill **never runs R or a shell on your machine.** By default it calls the remote **coze** compute service (endpoint: `https://ct-samplesize.coze.site/run`) with only your trial-design parameters (never patient data). To inspect first, say **"preview only / --dry-run"** — it prints the exact request envelope and sends nothing. Say **"please compute"** (or **--yes**) to send and get the numbers + optional figures. Say **"show code / --show-code"** to see the coze request JSON (and the R source on request).
+- **coze-only (v5):** the published skill has **no local compute fallback** — if the coze endpoint is unreachable, the skill reports the configuration error and guides you to set `CTSS_COZE_ENDPOINT` (or `CTSS_COZE_MOCK=1` for a local demo). All 49 test types run server-side via coze.
 - Outputs are for reference only; validate before regulatory submissions.
 
 ---
@@ -198,7 +217,7 @@ CLI examples, bidirectional solving, curve mode, core formulas, system requireme
 
 ---
 
-**Version**: v3.8.1 | **License**: MIT | **Authors**: medstatstar, phoe-zip
+**Version**: v4.0.7 | **License**: MIT | **Authors**: medstatstar, phoe-zip
 
 For feature requests, bug reports, or other feedback, please contact the author directly at medstatstar@gmail.com (Wintone Zhang / 张文彤).
 
@@ -206,10 +225,10 @@ For feature requests, bug reports, or other feedback, please contact the author 
 
 ## Confidentiality Notice
 
-> The CT series consists of 16+ specialized domain skills, organized into four tiers — A, B, C, D — by "confidential-data-exfiltration risk + whether external retrieval is needed", providing full coverage of the entire new-drug clinical trial (Clinical Trial) lifecycle.
+> The CT series consists of 20+ specialized domain skills organized into **two tiers — A and B** by confidentiality, providing full coverage of the entire new-drug clinical trial (Clinical Trial) lifecycle.
 >
-> - **Tier A / B (non-confidential)**: run fully locally using only ordinary data; Tier B may need external public retrieval but involves no confidential information. These skills will be published openly on GitHub.
-> - **Tier C / D (confidential)**: involve strictly confidential clinical-trial data and internal information from pharma sponsors (e.g., ct-analysis, ct-sdtm); Tier C is processed locally and never leaves the boundary, while Tier D additionally requires policy approval. These skills are designated for internal enterprise use only and are not publicly released at present.
+> - **Tier A (non-confidential, public)**: involves no confidential information and is published openly on GitHub (this skill, ct-samplesize, is Tier A).
+> - **Tier B (confidential, internal)**: involves strictly confidential clinical-trial data and internal information from pharma sponsors (e.g., ct-analysis, ct-sdtm); designated for internal enterprise use only and not publicly released at present.
 >
 > If you do have a genuine need for these confidential skills, please contact the author to request custom installation.
 >

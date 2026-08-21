@@ -1,19 +1,20 @@
 # Adaptive-Trial Monte-Carlo Simulator
 
-Module: `--test adaptive_simulate` in the main CLI. **Primary engine: an inlined
-pure base-R function library** `ADAPTIVE_SIM_R` (defined in `scripts/r_libs.py`,
-no extra R packages) — the CLI writes it to a temp `.R` file, `source()`s it, and
-calls `run_adaptive_sim()` (SAFE PREVIEW, `--yes` to run). **Fallback engine: pure
-Python** (`scripts/adaptive_simulator.py`) runs automatically only when R is not
-installed. Ported from the ClawHub skill `adaptive-trial-simulator` (aipoch-ai) and
+Module: `--test adaptive_simulate` in the main CLI. **In the published skill, the
+authoritative engine is an inlined pure base-R function library** `ADAPTIVE_SIM_R`,
+maintained in `adapters/r-assets/local_r_backend.py` (no extra R packages), running **server-side
+on coze**. The CLI shows the coze request envelope in SAFE PREVIEW and computes via
+coze (no local R/shell). **Dev / offline:** the equivalent local-R path writes the
+inlined engine to a temp `.R` file, `source()`s it and calls `run_adaptive_sim()`
+(SAFE PREVIEW, `--yes` to run). A legacy pure-Python module
+`adapters/r-assets/legacy/adaptive_simulator.py` is retained for offline dev/testing.
+Ported from the ClawHub skill `adaptive-trial-simulator` (aipoch-ai) and
 re-implemented to fit ct-samplesize.
 
-> **No standalone `scripts/adaptive_sim.R` file is shipped.** An older version
-> provided a `source()`-able `scripts/adaptive_sim.R`; that file is **no longer
-> published** — the release pipeline strips `.R` files, so the R engine now lives
-> inline in `scripts/r_libs.py` as `ADAPTIVE_SIM_R`. To drive the engine from R
-> yourself, run the CLI with `--show-code` (or `-y`) and copy the printed R code
-> into R.
+> **No standalone `.R` file is shipped in the published skill.** The R engine lives
+> inline in `adapters/r-assets/local_r_backend.py` as `ADAPTIVE_SIM_R` (excluded from the publish
+> package; synced to coze). To drive the engine from R yourself, run the CLI with
+> `--show-code` (or `-y`) and copy the printed R code into R.
 
 ## Run the R engine via CLI
 
@@ -44,11 +45,12 @@ sample size. For **analytic** group-sequential / adaptive sample size (rpact /
 gsDesign), use `--test group_sequential` or `--test adaptive` instead — they are
 complementary.
 
-> **R is the primary output**: by default the skill generates and
-> shows the R code (SAFE PREVIEW). Re-run with `--yes` to execute it and compute
-> the result. It uses only base R (no extra packages).
-> If R is not installed, the skill automatically falls back to the pure-Python
-> engine `scripts/adaptive_simulator.py` so you still get a result.
+> **coze is the primary compute path** in the published skill: the CLI shows the
+> coze request envelope (SAFE PREVIEW) and computes via coze (server-side R, base R
+> only, no extra packages). The optional local-R dev backend (`adapters/r-assets/`) behaves
+> like v3.x — R code is generated and shown, re-run with `--yes` to execute locally.
+> If neither coze nor a local R install is available, the legacy pure-Python engine
+> (`adapters/r-assets/legacy/adaptive_simulator.py`) still gives a result offline.
 
 ## Capabilities (6)
 

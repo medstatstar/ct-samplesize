@@ -1,13 +1,14 @@
 ---
 slug: ct-samplesize
-displayName: 临床试验样本量与检验效能计算专家 / Clinical Trial Sample Size & Power
+displayName: 临床试验样本量与检验效能专家 / Clinical Trial Sample Size & Power
 name: ct-samplesize
-cn_name: 临床试验样本量与检验效能计算专家
-version: 3.8.1
-required_commands: [Rscript, python]
-summary: 为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 49 种检验。可应要求提供可复现 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
+cn_name: 临床试验样本量与检验效能专家
+version: 5.0.0
+invocable: true
+required_commands: [python]
+summary: 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，可应要求返回完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
 license: MIT
-description: "为临床试验从业者提供的易用样本量与检验效能计算工具。后台依托 R + rpact/gsDesign/TrialSize/PowerTOST 等 20+ 专业 R 包，自然语言驱动，支持 49 种检验。可应要求提供可复现 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。 / Easy-to-use sample size and power calculation tool for clinical trial practitioners. Backed by R + 20+ professional R packages including rpact/gsDesign/TrialSize/PowerTOST, natural language driven, supporting 49 test types. Reproducible R code available on request; default output in Chinese or English per OS language setting (prompt can force-switch)."
+description: "为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，可应要求返回完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。 / Sample size and power calculation tool for clinical trial practitioners. No local R install needed — a cloud R compute service covers all 49 test types and returns publication-grade SVG figures. Natural-language driven; full R code can be returned on request; default output in Chinese or English per OS language setting (prompt can force-switch)."
 triggers:
   - "clinical trial sample size"
   - "样本量计算"
@@ -15,54 +16,37 @@ triggers:
   - "检验效能计算"
   - "临床试验 设计"
   - "non-inferiority sample size"
-  - "非劣效 样本量"
   - "equivalence sample size"
-  - "等效性 样本量"
   - "survival analysis sample size"
-  - "生存分析 样本量"
   - "adaptive design"
-  - "适应性设计"
   - "group sequential design"
   - "Bayesian clinical trial"
-  - "贝叶斯 临床试验"
-metadata:
-  openclaw: { emoji: "📊" }
-  authors: ["medstatstar", "phoe-zip"]
-  license: "MIT"
-  tags: [clinical-trial, sample-size, power, R, adaptive-design, bayesian, win-ratio]
-  homepage: "https://github.com/medstatstar/ct-samplesize"
+metadata: { openclaw: { emoji: "📊" }, authors: ["medstatstar", "phoe-zip"], license: "MIT", tags: [clinical-trial, sample-size, power, coze, adaptive-design, bayesian, win-ratio], homepage: "https://github.com/medstatstar/ct-samplesize" }
 permissions:
   scope: "user-space-only"
   network: "optional"
-  network_note: "Used ONLY by --run-install to fetch R packages from CRAN. Default analysis mode is fully offline; no network is touched unless the user explicitly adds --run-install."
-  filesystem: "writes only to system temp (generated R script) and to the current working directory (generated curve PNG reports); otherwise read-only"
-  data: "no external data transmission (except CRAN download under --run-install)"
+  network_note: "Used to POST trial-design parameters to the coze compute endpoint (CTSS_COZE_ENDPOINT). The dev-only R-package install (adapters/r-assets, behind --run-install) also uses network. Default analysis sends only design parameters (no patient data). Outbound authorization gate (ct-base §5): the public endpoint is pre-whitelisted in config/config.json auto_approve_endpoints (never prompts); user-custom endpoints trigger a one-time AUTH-BLOCK user confirmation before any data leaves the machine. Payloads are sanitized (PII stripped) before sending."
+  filesystem: "writes figures to CTSS_OUTPUT_DIR (default ./outputs) and optional curve PNGs; otherwise read-only"
+  data: "no patient/external data leaves the boundary — only trial-design parameters are sent to the coze service"
 
 ---
 
 # Clinical Trial Sample Size & Power
 
-> **⚠️ Safe by default — preview, not execute**: By default the skill generates R code and shows it in a SAFE PREVIEW (no execution). Execution requires an explicit opt-in: CLI `--yes`/`-y`, or the agent adds `--yes` when it needs the actual number. `--show-code` shows code; `--dry-run` is the default preview mode.
->
-> **Output language**: By default the output language follows the OS language setting — Chinese on a Chinese-OS, English otherwise. The user may force-switch anytime via a prompt (e.g. "switch to English"). Docs are English-only (ct-base §13.2); runtime output may still be English + Chinese per OS setting. This setting does not affect code output.
-
 ## Language
 
-- **English guide** → [README.md](https://github.com/medstatstar/ct-samplesize/blob/main/README.md)
-- **中文指南** → [README_zh-CN.md](https://github.com/medstatstar/ct-samplesize/blob/main/README_zh-CN.md)
+Guides: [README.md](https://github.com/medstatstar/ct-samplesize/blob/main/README.md) · [README_zh-CN.md](https://github.com/medstatstar/ct-samplesize/blob/main/README_zh-CN.md)
 
 ### Language policy
 
-> Docs are English-only per **ct-base §13.2**; runtime output follows the OS language setting (Chinese on zh/CN OS, else English) and the user may force-switch via a prompt. Code output is always English. See `references/language_policy.md`.
-
-- This skill's documentation (SKILL.md, AGENTS.md, references/*) is English-only — no Chinese required in docs.
-- Runtime output for common modules may still be English + Chinese per OS setting; complex/rare modules are English-only. The user may force-switch the output language via a prompt at any time.
-- Common modules: `ttest_*`, `anova`, `proportion_*`, `odds_ratio`, `risk_ratio`, `roc`, `poisson`, `non_inferiority`, `superiority_margin`, `be_tost`, `equivalence`, `survival`, `ni_survival`, `cluster`, `dunnett`.
-- Complex/rare modules (EN-only): `group_sequential`, `gsd_proportion`, `gsd_survival`, `gsd_survival_sim`, `gsd_hazard`, `gsd_hazard_sim`, `gsd_poisson`, `adaptive`, `adaptive_simulate`, `mixed_model`, `bayesian`, `win_ratio`, `historical_controls`, `assurance`, `conditional_power`, `dose_escalation`, `vaccine_efficacy`, `mams`, `survival_exact`, `mediation` etc.
+- This skill's documentation (SKILL.md, AGENTS.md, references/*) is English-only per **ct-base §4** — no Chinese required in docs. The coze R engine emits **bilingual templates via an explicit `locale` parameter** (zh/en; default en = language-neutral) — numbers & standard labels come from the dictionary, never through a generative model. The **local LLM presentation layer** arranges the template narrative into natural user language, quoting stats values verbatim; auto-switch on zh/CN OS, or explicit prompt override. Code output is always English.
+- **Hybrid bilingual (mixed model).** The R engine reads `req$locale` (`zh`/`en`) and outputs the narrative in that language using the built-in bilingual dictionary; absent a `locale` field it defaults to English (language-neutral, deterministic, independent of server locale). The local CLI sends `locale` automatically (`coze_client` resolves it from OS detection); a prompt can override it. **Force-switch at CLI level:** set `CTSS_LOCALE=zh|en` (e.g. `CTSS_LOCALE=en python scripts/samplesize_power.py ...`) — required on a Chinese-Windows host where `LANG` cannot override OS detection.
+- **Numeric fidelity is a hard rule.** `stats` JSON values must be quoted verbatim by the presentation layer — never rewritten, rounded, or re-translated by the LLM.
+- **Figures are special-cased.** The SVG returned by coze is **always English**, regardless of `locale` — curve/visualize labels are hard-coded English in the R engine (server headless has no CJK fonts; a server-rendered bitmap with Chinese would be tofu). If user-supplied text (e.g. a Chinese project name) ends up in the SVG, the local LLM must, **before rendering**, detect CJK runs and extend their `font-family` with a CJK font (e.g. `"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC"`) so Chinese renders correctly client-side.
 
 ## Purpose
 
-This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. Powered by R and 20+ professional R packages (rpact, gsDesign, TrialSize, PowerTOST, etc.), users can perform 49 complex calculations through natural language prompts — output in Chinese or English per the OS language setting (prompt can force-switch). Reproducible R code is available on request.
+This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. **The default authoritative engine is a remote coze R compute service** (rpact / gsDesign / TrialSize / PowerTOST, 20+ packages — running server-side, so your machine needs **no local R**), covering all 49 test types. Results come in Chinese or English per the OS language setting (prompt can force-switch). Reproducible R code is available on request (coze returns it, or forced via `CTSS_RETURN_R_CODE`).
 
 ---
 
@@ -74,19 +58,18 @@ This skill provides clinical trial researchers with an easy-to-use, comprehensiv
 | **② Power curve** | Given a sample-size sequence, batch-compute and plot the **Power curve** (x=sample size, y=power), with a target-power reference line. | Sample-size sensitivity analysis, protocol reporting |
 | **③ Sample-size curve** | Given a power-target sequence, batch-compute and plot the **sample-size curve** (x=target power, y=required n). | Resource planning, feasibility assessment |
 
-- ②③ curve mode: list `"20,40,200"` or auto-seq `"20:20:200"` (start:step:stop); overlay multiple effect-size curves for sensitivity; default PNG + data table. All reuse the same validated formulas.
-- Full parameters & 49-test examples → `references/cli_examples.md`.
+- ②③ curve mode: list `"20,40,200"` or auto-seq `"20:20:200"` (start:step:stop); overlay multiple effect-size curves for sensitivity (continuous/survival solvers; proportion solvers plot the single p1/p2 series); returns the figure (SVG default per ct-base §19, PNG fallback) **plus the numeric series as machine-readable stats (x/y arrays)**. Full parameters & 49-test examples → `references/cli_examples.md`.
+- **★ Auto-curve on simple one/two-group solves (default, user rule 2026-08-20):** for the simple one/two-group tests (`ttest_ind` `ttest_paired` `ttest_one` `proportion_one` `proportion_two`), a curve is **auto-attached by default** when the user did NOT request a curve explicitly — forward solve (`--power`, solving n) appends the **sample-size curve** (x=target power, y=n; default `0.6:0.05:0.95`); reverse solve (`--nobs`, solving power) appends the **power curve** (x=n, y=power; auto range ±50% around the given n). Inline SVG is emitted as usual. Opt out: pass an explicit `--n_seq` / `--power_seq`, or `--dry-run`.
 
 ---
 
-## Interaction — Triage first (inherit ct-base §5.2)
+## Interaction — Triage first (inherit ct-base §6.2)
 
-Before answering, triage the request into **Simple / Complex / Vague** (ct-base §5.2):
+Before answering, triage the request into **Simple / Middle / Complex / Vague** (ct-base §6.2):
 - **Simple** (test already named, params mostly given) → answer directly, **no menu**.
-- **Complex** (pick test type / design family / many params) → show the **routing menu** below.
+- **Middle** (single-point but deep — ICH guidance detail, statistical parameter, compliance gray zone, needs 3–4 points) → still answer **directly, no menu** (same path as Simple; mark `difficulty = "middle"` for a richer multi-point answer). When Simple vs Middle is unclear, prefer **Middle**.
+- **Complex** (pick test type / design family / many params) → show the **routing menu** below (**the `## Quick Menu` is for the Complex branch only**).
 - **Vague** ("not sure which test to use") → **grill-me branch-by-branch probing**, do **not** dump the menu.
-
-> **Triage gate (inherits ct-base §5.2):** classify the request first — Simple → answer directly, no menu; Complex → show the routing menu below; Vague → use grill-me branch-by-branch probing. **The `## Quick Menu` below is for the Complex branch only.**
 
 ## Quick Menu
 
@@ -106,7 +89,7 @@ Before answering, triage the request into **Simple / Complex / Vague** (ct-base 
 
 ### Adaptive-trial Monte-Carlo simulator
 
-Beyond the 49 analytic tests, `--test adaptive_simulate` runs a Monte-Carlo simulator to **validate** adaptive / group-sequential designs empirically: power, type I error, expected sample size, early-stop probabilities. **Primary engine: an inlined pure base-R function library** (`ADAPTIVE_SIM_R` in `scripts/r_libs.py`, no extra packages) — the CLI writes it to a temp `.R` file and `source()`s it, then calls `run_adaptive_sim()` (one-shot with report) or the individual `simulate_group_sequential()` / `simulate_adaptive_reestimate()` / `simulate_drop_the_loser()` / `optimize_power()` functions directly. The CLI shows this `source(...)` + `run_adaptive_sim(...)` code in SAFE PREVIEW (like every other test) and executes it with `--yes`; it needs only base R (no extra packages). **Fallback: when R is not installed**, the skill automatically runs the equivalent pure-Python module `scripts/adaptive_simulator.py` so the user still gets results. Designs: `group_sequential`, `adaptive_reestimate` (promising-zone SSR with Cui-Hung-Wang statistic), `drop_the_loser` (multi-arm). Spending: `obrien_fleming` / `pocock` / `power_family`. Also supports `--futility`, `--optimize` (min-N search) and `--visualize`. Full guide: `references/adaptive_simulator.md`.
+`--test adaptive_simulate` validates adaptive / group-sequential designs empirically (power, type I error, expected N). Designs / spending / futility / `--optimize` / legacy fallback / full guide → [`references/adaptive_simulator.md`](references/adaptive_simulator.md).
 
 ---
 
@@ -114,64 +97,71 @@ Beyond the 49 analytic tests, `--test adaptive_simulate` runs a Monte-Carlo simu
 
 | Requirement | Details |
 |:---|:---|
-| **R** | ≥ 4.1.0 (install on demand, see `references/r_packages.md`) |
-| **Python** | ≥ 3.8 + statsmodels≥0.14.2, numpy≥1.24.3, scipy≥1.11.4. Used by the `adaptive_simulate` **no-R fallback** and `--visualize` (matplotlib≥3.4). R is the primary engine for `adaptive_simulate`. |
+| **coze compute endpoint** | **Production default.** Set `CTSS_COZE_ENDPOINT` (or `COZE_ENDPOINT`) to the coze R service; covers all 49 tests. For a no-network demo, set `CTSS_COZE_MOCK=1`. |
+| **Python** | ≥ 3.8, **stdlib only** (argparse / json / urllib). The v5 refactor removed the local pure-Python fallback and all third-party compute deps (statsmodels / numpy / scipy are no longer required). No local R required. |
+| **R (dev / optional)** | **Not shipped in the published skill.** The coze R engine source lives in `adapters/coze/src/r_engine/` (excluded from the publish package, synced to coze). The legacy local-R backend (`adapters/r-assets/local_r_backend.py`) and R templates (`adapters/r-assets/r_templates/`) are kept for offline dev / contribution only — **the v5 `select_backend` no longer routes to them**; they are not part of the published skill. |
 
 ---
 
 ## ⚠️ Safety
 
-- R code is NOT executed by default — it runs in SAFE PREVIEW (code shown, not run); use `--yes`/`-y` to explicitly execute and compute
-- All computations are local; no data transmission
-- Output for reference only; validate before regulatory submissions
+- **No local R / shell is ever executed.** The published skill never runs R or a shell on your machine. The default engine is the remote **coze** compute service: only trial-design parameters (never patient data) are sent, and results come back as numbers + optional figures — inherently safe (stateless compute, no local code execution).
+- **SAFE PREVIEW is the default for inspection.** `--dry-run` prints the exact request envelope (test, params, mode) that *would* be sent to coze, without sending anything. `--show-code` reveals the coze request JSON (and, on request, the R source coze used). The legacy `--yes` gate applies only to the optional local-R dev backend (`adapters/r-assets/`).
+- Output for reference only; validate before regulatory submissions.
 
 ### Security model (transparent disclosure)
 
-| Behavior | Description |
-|:---|:---|
-| **Local process call** | Run DYNAMICALLY GENERATED (never raw user input) R code locally via `subprocess.run([Rscript, '--vanilla', tmp])`, timeout 300s, NO shell. Execution is OPT-IN: by default the code is only previewed; it runs only when `--yes` is passed. Every user string that reaches the R code is validated against a strict allowlist first, so it cannot break out of an R string (no RCE). |
-| **R code source** | All generated by the skill's built-in templates (`scripts/r_templates/`), no static `.R` files, no remote script download. By default the skill runs in SAFE PREVIEW — generated R code is shown but NOT executed; `--yes` executes, `--show-code` reveals the code. |
-| **Output sanitization** | R stdout/stderr passes through `sanitize_output()` to strip local absolute paths and truncate over-long content before display, avoiding environment leakage or content injection. |
-| **Network access** | Default analysis is fully offline, zero network. The only network touchpoint is the optional R-package install: by default it only prints `install.packages()` commands, not executed; you must explicitly add `--run-install` to download & install from CRAN (supply-chain risk triggered only after user is informed). The permission manifest declares `network: "optional"` (used only by `--run-install`). The full install R code is printed before execution. |
-| **Filesystem** | Writes only a temp R script in the skill dir / system temp, discarded after use; never reads/writes user data files. |
+> Full disclosure table (remote compute / server-side R / output / network / outbound gate / filesystem), upload confidentiality, and the natural-language outbound guidance → [`references/security_model.md`](references/security_model.md). Key guarantees: no local R/shell; SAFE PREVIEW default; only trial-design parameters ever leave the machine.
+
+---
+
+## User-Uploaded Documents (ct-base §6.7)
+
+This skill is **parameter-driven** (design params via CLI / natural language). When the user uploads a document (protocol / SAP / design brief as `.docx` / `.pptx` / `.pdf` / `.doc`), **convert it to md/text first**, then extract the design parameters — the coze endpoint is a plain-text JSON contract and does **not** accept attachments. Converter: shared **`scripts/office_to_md.py`** (stdlib-only, single parser for docx+pptx; ct-base §6.7 / publish_inject):
+
+| Uploaded format | Handling (ct-base §6.7.1) |
+|---|---|
+| `.docx` / `.pptx` | `python scripts/office_to_md.py <file>` → md (pptx sectioned by `### Slide N`) |
+| `.pdf` / `.doc` / scanned | env `pdf` skill (OCR prompt) / word-reader / text-version prompt — never hand-write a parser |
+
+**🔔 User notice before ANY conversion (ct-base §6.7.2 — show this exact notice first):**
+> ⚠️ 所有上传文档将转换为 **md 格式**处理；**PPT 文档转换容易丢失大量信息**（图片、版式、动画、图表等非文本元素），建议用户**最好先自行转换为 md 格式并做内容检查**后再提问，以保证关键内容不丢失。
+
+**Confidentiality (ct-base §6.7.3)**: the skill does **not** judge data confidentiality — the document is converted as-is; **only the extracted design parameters** (test, effect, α, power, n …) are ever sent to coze; the raw document md is used **locally for parameter extraction only** and never forwarded. If the user requires data-not-leaving, guide them to keep computation fully local (extract params and compute manually, or use the legacy dev backend `adapters/r-assets/local_r_backend.py`) — never send document content to coze.
 
 ---
 
 ## Implementation
 
-> **Default = SAFE PREVIEW (dry-run):** generate & show R code, do NOT execute. Add `--yes`/`-y` to execute & compute; `--show-code` shows the code. Full CLI examples (all 49 tests, reverse-solve, curve mode, R-package install) → `references/cli_examples.md`. Data format guide → `references/data_format_guide.md`.
-
-**Bidirectional solve:** `--power` (default) solves required `n` given target power; `--nobs N` reverses to achievable power given fixed `n` (mutually exclusive, `--nobs` wins).
+**Bidirectional solve:** `--power` (default) solves required `n` given target power; `--nobs N` reverses to achievable power given fixed `n` (mutually exclusive, `--nobs` wins). Default = **SAFE PREVIEW**: `--dry-run` prints the coze request envelope without sending; `--show-code` reveals it (and, with `CTSS_RETURN_R_CODE=1`, the R source coze used); no `--yes` needed for coze (stateless remote compute). Full CLI examples (all 49 tests, reverse-solve, curve mode) → `references/cli_examples.md`; data format → `references/data_format_guide.md`.
 
 **Common params:**
 - `--side one|two` (default `two`): test direction; affects t-test, proportion tests, and significance level / required n in curve mode.
 - `--sd FLOAT` (optional): treats `--effect` as raw mean difference Δ and auto-computes Cohen's d = Δ / sd; when omitted, `--effect` is Cohen's d directly.
 
-**Curve mode:** `--n_seq "20:20:200"` → Power curve; `--power_seq "0.8,0.9"` → sample-size curve; `--plot_effects` overlays sensitivity curves; plotting uses base R graphics (no ggplot2), 22 test types supported.
+**Curve mode:** `--n_seq "20:20:200"` → Power curve; `--power_seq "0.8,0.9"` → sample-size curve; `--plot_effects` overlays sensitivity curves; base R graphics (no ggplot2). **8 core tests support curves** (`.curve_solvers`: `ttest_ind` `ttest_paired` `ttest_one` `anova` `proportion_one` `proportion_two` `survival` `equivalence`); others return "curve not supported".
 
-**R package install (safe):** `--install-all-packages` only prints `install.packages()` commands; append `--run-install` to actually install from CRAN. Full list → `references/cli_examples.md` and `references/r_packages.md`.
+**R package install (dev only):** `--install-all-packages` prints a notice (R packages run on coze via `adapters/coze/docker/r_packages.txt`); `--run-install` (legacy local-R dev backend) prints `install.packages()` commands. Full list → `references/cli_examples.md` / `references/r_packages.md`.
 
-> **Architecture & security:** all algorithms are pre-written R functions (`ss_*`) in `scripts/r_templates/`; the dispatcher injects params and calls `.format()` — no scattered R code. R-package tests auto-fall back to analytic approximations on package failure. Version history & hardening → `CHANGELOG.md`.
+> **Architecture & security:** orchestration (`scripts/samplesize_power.py`) contains **no R code**; `ComputeBackend` (`scripts/compute_backend.py`) routes to `CozeBackend` (default authoritative, server-side R) — the only backend in v5. All R logic (`ss_*` + `run_task.R`) lives in `adapters/coze/src/r_engine/` (synced to coze; published package excludes `adapters/coze/`). Every user string reaching server-side R is validated against a strict allowlist. History → `CHANGELOG.md`.
+
+---
+
+## Figure Output & Rendering (ct-base §19)
+
+Curves and any coze-returned `figures[].svg` follow the **ct-base §19 uniform SVG spec** (same pipeline as `meta-analysis`; no bespoke rendering).
+
+- **★ Agent rule (mandatory):** inline the returned SVG **directly into the conversation stream** (visualization channel) — file-first is forbidden; persisted files are backup/editing only. If inline fails, fall back ① HTML-wrapped preview (vector) → ② PNG. Guide users with natural-language prompts (「图形无法预览，请改用 PNG 图片格式重新出图」/ EN equivalent), never CLI flags.
+- **★ No hand-redraw:** present the skill-generated SVG as-is (axes, labels, power reference line included — the fallback generator draws the reference line itself, same `sy()` mapping as data points). Never rebuild curves with ad-hoc coordinates in the reply; charting stays under skill control.
+- Details — figure_mode, render-hint thresholds, fallback ladder, reference line rule, reference implementation → [`references/rendering_rules.md`](references/rendering_rules.md).
 
 ---
 
 ## Formulas & Reports
 
-**Formulas:** `references/formulas.md` | **Full functions:** `references/extended_functions.md`
+**Formulas:** `references/formulas.md` (all 49 types) | **Full functions:** `references/extended_functions.md`
 
-| Scenario | Formula |
-|:---|:---|
-| Independent t | $n_1 = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{d})^2$ |
-| Proportion (arcsin) | $n = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{h})^2$ |
-| Survival (Schoenfeld) | $d = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(\log HR)^2}$ |
-| Survival Equivalence (TOST/log-HR) | $D = \frac{[2(Z_{1-\alpha} + Z_{1-\beta})]^2}{(\log\delta_E)^2},\ n_{pg}=\frac{D/2}{e}$ |
-| Survival Superiority w/ margin | $\delta=\log\delta_S-\log HR;\ D = \frac{[2(Z_{1-\alpha} + Z_{1-\beta})]^2}{\delta^2}$ |
-| Cox w/ covariate (Vittinghoff) | $d = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(1-R^2)\,p(1-p)\,(\log HR)^2}$ |
-| One-sample exponential | $\lambda_j=\frac{\log2}{m_j},\ e_j=1-e^{-\lambda_j\bar t},\ n=\lceil\frac{\mu_1}{e_1}\rceil,\ \mu_1=(\frac{Z_{1-\alpha}\sqrt r+Z_{1-\beta}}{r-1})^2$ |
-| Competing risks (CIF) | $n_{pg}=\lceil\frac{(Z_{1-\alpha/2}+Z_{1-\beta})^2[\pi_C(1-\pi_C)+\pi_T(1-\pi_T)]}{(\pi_C-\pi_T)^2}\rceil$ |
-| Recurrent events (Poisson) | $n_{pg}=\lceil\frac{(Z_{1-\alpha/2}+Z_{1-\beta})^2(\lambda_1+\lambda_2)}{t(\lambda_1-\lambda_2)^2}\rceil$ |
-| Historical-control logrank | single-arm vs historical median $m_H$; same one-sample exponential structure |
-| Cluster DEFF | $DEFF = 1 + (m - 1) \times ICC$ |
+Key analytic formulas — e.g. independent t: $n_1 = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{d})^2$; Schoenfeld survival: $d = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(\log HR)^2}$; Cox w/ covariate (Vittinghoff): $d = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(1-R^2)\,p(1-p)\,(\log HR)^2}$; Cluster DEFF: $DEFF = 1 + (m - 1) \times ICC$. Full table → `references/formulas.md`.
 
 ---
 
@@ -179,19 +169,15 @@ Beyond the 49 analytic tests, `--test adaptive_simulate` runs a Monte-Carlo simu
 
 | Error | Fix |
 |:---|:---|
-| "Rscript not found" | Install R or specify path |
-| "package not found" | install.packages("xxx") |
-| ImportError: statsmodels | pip install statsmodels |
-| simr timeout | Reduce --nsim |
+| "coze 端点未配置" / "coze 不可达" | Set `CTSS_COZE_ENDPOINT` (real) or `CTSS_COZE_MOCK=1` (demo); v5 has no local compute route (dev: run the legacy backend from `adapters/r-assets/` directly) |
 
 ---
 
 ## Related skills (ct- library, agent chains as needed)
 
-- **Upstream (context)**: `ct-registry` (competitor / disease landscape, Tier B, provided by `ct-pipeline` public-intel orchestration)
-- **Downstream (handoff)**: `ct-protocol` (protocol skeleton, A default / B retrieval) → `ct-ecrf` (CRF + SDTM mapping spec, Tier A)
-- **Same category (design scope, to build)**: `ct-protocol` / `ct-ecrf` / `ct-eligibility`(D)
-- **Public-intel orchestration (Tier B, no direct dispatch dependency)**: `ct-pipeline` (`intel` / `surveillance` presets, dispatches `ct-registry` / `ct-safety` / `ct-literature`)
-- **Authoritative mapping / tier**: see `ct-base/BASE.md` §1.5 / §9
+- **Upstream (context)**: `ct-registry` (competitor / disease landscape, Tier B, via `ct-pipeline` public-intel orchestration)
+- **Downstream (handoff)**: `ct-protocol` (protocol skeleton) → `ct-ecrf` (CRF + SDTM mapping spec)
+- **Same category (design scope)**: `ct-protocol` / `ct-ecrf` / `ct-eligibility` (D)
+- **Public-intel orchestration (Tier B)**: `ct-pipeline` (dispatches `ct-registry` / `ct-safety` / `ct-literature`)
 
-**Version**: v3.8.0 | **Updated**: 2026-08-02 | **License**: MIT
+**Version**: v5.0.0 | **Updated**: 2026-08-21 | **License**: MIT

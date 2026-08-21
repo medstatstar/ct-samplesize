@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """
-Clinical Trial Sample Size & Power Calculator — v3.8.1
+Clinical Trial Sample Size & Power Calculator — v4.0.1
 
-Security model:
-- All R code comes from pre-defined templates (validated str args only)
-- Every user string that reaches generated R is validated against a strict
-  allowlist, so it can NEVER break out of an R string literal (no RCE)
-- SAFE BY DEFAULT: dry-run preview only — generated R code is shown but NOT
-  executed. Use --yes / -y to explicitly opt in to execution
-- R script path auto-detected (RSCRIPT_PATH env or PATH lookup)
-- Output is sanitized (paths stripped, length-capped)
-- String args validated against strict allowlists
+Architecture (v4.0):
+- Default authoritative engine = remote coze R compute service (CozeBackend).
+  Only trial-design params are sent (HTTP POST, no shell, no local R).
+- Local pure-Python fallback (LocalPythonBackend) for 5 basic superiority
+  tests, used only when coze is unreachable (non-authoritative).
+- Local R backend (LocalRBackend, in adapters/r-assets/) is dev/transition only and is
+  NOT shipped in the published package.
+- Safe by default: --dry-run previews the exact coze request envelope; coze is
+  a stateless compute service, so no local code is ever executed. The legacy
+  --yes gate applies only to the optional local-R backend.
+- Every user string that reaches generated R (local-R backend) is validated
+  against a strict allowlist, so it can NEVER break out of an R string literal.
+- Input args validated against strict allowlists regardless of backend.
 
-Test types (47 total):
+Test types (49 total):
   Core: ttest_ind, ttest_paired, anova, proportion_one, proportion_two,
         non_inferiority, equivalence, be_tost, mixed_model, roc, poisson,
         bland_altman, cluster, vaccine_efficacy, multiple_endpoints,
@@ -28,101 +32,22 @@ Test types (47 total):
         gsd_survival, gsd_hazard, gsd_poisson; real spending functions
         (OF/Pocock/WT/HSD-gamma/Kim-DeMets) + non-binding futility bounds
 """
-import argparse, sys, os, textwrap, subprocess, tempfile, re, json
-from r_templates import *
+import argparse, sys, os, io, tempfile, re, json, time
 from i18n import t
-from r_libs import I18N_R, ADAPTIVE_SIM_R
+from compute_backend import select_backend, Result, Figure
 
 
-def _qt(key, **kwargs):
-    """Translate a key and return an R string literal (with escapes).
-    
-    Escape order matters: backslash first, then double-quote, then newlines.
-    This ensures e.g. a literal newline in the source becomes R's \\n.
-    """
-    s = t(key, **kwargs)
-    # 1. Escape literal backslash → \\ (must be first!)
-    s = s.replace('\\', '\\\\')
-    # 2. Escape double-quote → \"
-    s = s.replace('"', '\\"')
-    # 3. Escape actual control characters → R escape sequences
-    s = s.replace('\n', '\\n')
-    s = s.replace('\r', '\\r')
-    s = s.replace('\t', '\\t')
-    return f'"{s}"'
+# ═════════════════════════════════════════════════════════════════════════════
+# 图形产物落盘与展示（coze 可能回传 SVG / HTML / PNG）
+# ═════════════════════════════════════════════════════════════════════════════
 
-
-def _r_cat(*args):
-    """Build an R cat() call string from arguments.
-
-    Moves ._qt() calls out of f-string expression context to avoid a reported
-    parser edge-case on Anaconda Python 3.13.9 where a function-call expression
-    sharing a line with a literal backslash silently fails to evaluate.
-    """
-    return "cat(" + ", ".join(str(a) for a in args) + ")"
-
-
-def find_rscript():
-    """Locate Rscript executable."""
-    env_path = os.environ.get("RSCRIPT_PATH")
-    if env_path and os.path.isfile(env_path):
-        return env_path
-    from shutil import which
-    path = which("Rscript")
-    if path:
-        return path
-    defaults = [
-        r"C:\Tools\R-4.5.1\bin\x64\Rscript.exe",
-        r"C:\Program Files\R\R-4.5.1\bin\x64\Rscript.exe",
-        "/usr/local/bin/Rscript",
-        "/usr/bin/Rscript",
-    ]
-    for d in defaults:
-        if os.path.isfile(d):
-            return d
-    return None
-
-def is_valid_rscript(path):
-    """Ensure the resolved executable is genuinely Rscript (prevent binary substitution).
-
-    Audit hardening: the caller runs generated R code via subprocess. We must guarantee
-    the binary we invoke is the real Rscript, not an attacker-supplied executable, and that
-    it is actually executable.
-    """
-    if not path or not os.path.isfile(path):
-        return False
-    try:
-        real = os.path.realpath(path)
-    except OSError:
-        return False
-    base = os.path.basename(real).lower()
-    if base not in ("rscript", "rscript.exe"):
-        return False
-    if not os.access(real, os.X_OK):
-        return False
-    return True
-
-# NOTE: RCE prevention is enforced by strict ALLOWLIST validation of every user string
-# that reaches generated R (see _validate_token / _safe_r_path_literal below). Because the
-# allowlist permits only [A-Za-z0-9_-] (tokens) and a safe path charset, dangerous R
-# constructs such as shell or process invocation can never appear in user-supplied values,
-# so no separate deny-list is needed here (and keeping the literal tokens in source would
-# only trip naive static scanners).
-
-# ── Security: strict validation of EVERY user string that reaches generated R ──
-# Goal: make it impossible for a user-supplied value to break out of an R string
-# literal and inject arbitrary R code (RCE). The generated R templates embed
-# user values inside png('...') / cat('...') (single-quoted) and "..." (double-
-# quoted) literals, so we reject any value containing characters that could
-# terminate the string or start a new R statement.
-#
-# _SAFE_TOKEN_RE : for short categorical tokens (test options, design names, ...)
-# _SAFE_PATH_RE  : for filesystem paths (allows separators, spaces, CJK names)
+# ── 输入白名单校验（编排层职责：无论送往 coze 还是本地 R，都先卡死危险字符）──
 _SAFE_TOKEN_RE = re.compile(r'^[A-Za-z0-9_\-]+$')
 _SAFE_PATH_RE = re.compile(r'^[A-Za-z0-9_.\- /\\:一-鿿]+$')
 
+
 def _validate_token(name, value):
-    """Reject categorical string args that could break out into R code."""
+    """Reject categorical string args that could break out into generated code."""
     if value is None:
         return value
     if not _SAFE_TOKEN_RE.match(value):
@@ -132,13 +57,9 @@ def _validate_token(name, value):
         )
     return value
 
-def _safe_r_path_literal(path):
-    """Return `path` safely embedded in an R (single- or double-quoted) string.
 
-    Validates against a path allowlist, then normalises Windows separators to
-    forward slashes (R accepts them on every platform). Raises ValueError on
-    any value that could escape the R string context.
-    """
+def _validate_path(path):
+    """Reject output paths containing characters that could escape a string literal."""
     if path is None:
         return None
     if not _SAFE_PATH_RE.match(path):
@@ -146,342 +67,280 @@ def _safe_r_path_literal(path):
             "Unsafe output path %r: only letters, digits, spaces and ._-:/\\ "
             "are allowed (no quotes, semicolons or parentheses)." % path
         )
-    return path.replace("\\", "/")
+    return path
 
-def sanitize_output(raw, max_lines=200, max_col=200):
-    """Strip file paths and truncate output."""
-    cleaned = re.sub(
-        r'[A-Za-z]:\\(?:[^\s:"\']+\\)*[^\s:"\']+|/(?:[^\s:"\']+/)+[^\s:"\']+',
-        lambda m: os.path.basename(m.group(0)), raw
-    )
-    lines = cleaned.split('\n')
-    if len(lines) > max_lines:
-        lines = lines[:max_lines] + [f'... ({len(lines) - max_lines} lines truncated)']
-    lines = [
-        textwrap.shorten(l, width=max_col, break_long_words=False, placeholder='…')
-        if len(l) > max_col else l for l in lines
-    ]
-    return '\n'.join(lines)
 
-def run_r(code, confirmed=False):
-    """Execute R code or return dry-run message."""
-    if not confirmed:
-        return t("dry_run.not_executed")
-    rscript = find_rscript()
-    if not is_valid_rscript(rscript):
-        return t("error.rscript_not_found")
+_FIG_EXT = {"svg": ".svg", "html": ".html", "png": ".png"}
 
-    # RCE prevention: user strings are allowlist-validated before they reach generated R
-    # (see _validate_token / _safe_r_path_literal); the generated code therefore cannot
-    # contain sandbox-escape tokens. No extra deny-list check is required here.
+# ── 渲染计时与超阈值提示（ct-base §19.10，全库统一）──
+# 界面浏览器渲染无法在 agent 侧精确计时，用 SVG 体量作代理；超阈值生成 render_hint
+RENDER_SVG_THRESHOLD = 30.0       # 本地渲染处理耗时上限（秒）
+RENDER_SVG_KB_THRESHOLD = 200.0   # 单图/合计 SVG 体量上限（KB）
 
-    # Inline i18n.R (bilingual localization) — publishes strip .R files, so the
-    # source() calls must resolve against the inline string, not disk.
-    code = code.replace('source(file.path("{scriptdir}", "i18n.R"))', '# i18n.R inlined')
 
-    # Use system temp dir to avoid residue if process is killed.
-    tmp_dir = os.path.realpath(tempfile.gettempdir())
-    with tempfile.NamedTemporaryFile(
-        suffix='.R', mode='w', delete=False, encoding='utf-8', dir=tmp_dir
-    ) as f:
-        f.write("options(echo = FALSE)\n" + I18N_R + "\n" + code)
-        tmp = f.name
+def _outputs_dir() -> str:
+    """图形落盘目录：优先 CTSS_OUTPUT_DIR，其次当前工作目录下的 outputs/。"""
+    d = os.environ.get("CTSS_OUTPUT_DIR") or os.path.join(os.getcwd(), "outputs")
+    os.makedirs(d, exist_ok=True)
+    return d
 
-    # Containment: the script must live inside the system temp dir and resolve cleanly.
-    if os.path.dirname(os.path.realpath(tmp)) != tmp_dir:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        return t("error.invalid_temp_path")
 
-    # NOTE: invoked as a list (no shell), so no command/shell injection is possible.
-    try:
-        proc = subprocess.run(
-            [rscript, '--vanilla', tmp],
-            capture_output=True, text=True, timeout=300
-        )
-        raw = (proc.stdout or '') + (proc.stderr or '')
-        return sanitize_output(raw)
-    except subprocess.TimeoutExpired:
-        return t("error.r_timeout")
-    except Exception as e:
-        return t("error.exec_failed", name=type(e).__name__)
-    finally:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
+def _resolve_figure_mode(explicit=None) -> str:
+    """出图模式（ct-base §19.9）：svg_inline 默认；png_file 用 cairosvg 转位图。
 
-def build_adaptive_sim_r_code(args):
-    """Build the R snippet for the adaptive-trial Monte-Carlo simulator.
-
-    The R engine (scripts/adaptive_sim.R) is inlined into Python publishing
-    strips .R files. We write it to a temp .R file and source() that temp
-    file. Categorical CLI strings are allowlist-validated (see main()) before
-    this runs, so the generated code has no RCE surface.
+    优先级：显式参数 > 环境变量 CTSS_FIGURE_MODE > 默认 svg_inline。
     """
-    def _num(v):
-        f = float(v)
-        if f == int(f):
-            return str(int(f))
-        return repr(f)
-
-    if args.effect_sizes:
-        effects = ", ".join(_num(float(x)) for x in args.effect_sizes.split(",") if x.strip())
-        n_arms = str(len([x for x in args.effect_sizes.split(",") if x.strip()]))
-        eff_arg = "effect_sizes = c(%s)" % effects
-    else:
-        eff_arg = "effect_size = %s" % _num(args.effect_size)
-        n_arms = str(args.n_arms)
-
-    # Write inline ADAPTIVE_SIM_R to a temp file (publishing strips .R files)
-    tmp_dir = os.path.realpath(tempfile.gettempdir())
-    with tempfile.NamedTemporaryFile(
-        suffix='_adaptive_sim.R', mode='w', delete=False, encoding='utf-8', dir=tmp_dir
-    ) as f:
-        f.write(ADAPTIVE_SIM_R)
-        r_file = f.name
-
-    parts = [
-        'source("%s")' % r_file.replace("\\", "/"),
-        "run_adaptive_sim(",
-        '  design = "%s",' % args.sim_design,
-        "  %s," % eff_arg,
-        "  n_per_arm = %s," % _num(args.sim_n),
-        "  interim_looks = %s," % _num(args.interim_looks),
-        '  spending_function = "%s",' % args.spending_function,
-        "  rho = %s," % _num(args.rho),
-        "  futility = %s," % ("TRUE" if args.futility else "FALSE"),
-        "  beta = %s," % _num(args.beta),
-        "  alpha = %s," % _num(args.alpha),
-        '  reestimate_method = "%s",' % args.reestimate_method,
-        "  interim_fraction = %s," % _num(args.interim_fraction),
-        "  target_cp = %s," % _num(args.target_cp),
-        "  max_inflation = %s," % _num(args.max_inflation),
-        "  n_arms = %s," % n_arms,
-        "  selection_fraction = %s," % _num(args.selection_fraction),
-        '  correction = "%s",' % args.correction,
-        "  optimize = %s," % ("TRUE" if args.optimize else "FALSE"),
-        "  target_power = %s," % _num(args.power),
-        "  n_min = %s," % _num(args.n_min),
-        "  n_max = %s," % _num(args.n_max),
-        "  n_simulations = %s," % _num(args.n_simulations),
-        "  seed = %s," % ("NULL" if args.sim_seed is None else _num(args.sim_seed)),
-        "  visualize = %s," % ("TRUE" if args.visualize else "FALSE"),
-        '  out_png = "%s",' % (args.out or "").replace("\\", "/"),
-        '  out_json = "%s"' % (args.sim_output or "").replace("\\", "/"),
-        ")",
-        # Clean up the temp .R file after sourcing
-        'file.remove("%s")' % r_file.replace("\\", "/"),
-    ]
-    return "\n".join(parts)
+    mode = (explicit or os.environ.get("CTSS_FIGURE_MODE") or "svg_inline").lower()
+    return mode if mode in ("svg_inline", "png_file") else "svg_inline"
 
 
-def _fallback_adaptive_sim_python(args):
-    """Run the pure-Python Monte-Carlo engine when R is unavailable.
+def render_figures(figures, test: str, figure_mode=None):
+    """把后端回传的图形写入磁盘，并打印标记供宿主渲染。
 
-    Mirrors the R path's design dispatch so the user still gets results.
+    标记格式（宿主 agent 据此调用可视化 / 文件展示能力）：
+        __FIGURE__ <format> <abs_path> caption="..."
+        __SVG_WIDGET__ <html fragment>   # SVG 图：ct-base §19 内联渲染（宿主直接内嵌对话流）
+        __RENDER_HINT__ <text>           # 超阈值提醒（ct-base §19.10），agent 必须在回复中体现
+
+    出图模式（figure_mode，ct-base §19.9）：
+        - svg_inline（默认）：__SVG_WIDGET__ 内联 + 落盘 .svg
+        - png_file：cairosvg 转 PNG 落盘，emit __FIGURE__ png（不内联 SVG；需 cairosvg，
+          未安装时优雅降级回 svg_inline 并提示）
+
+    渲染计时与超阈值提示（ct-base §19.10）：
+        - render_elapsed_seconds：本地渲染阶段耗时（拿到 SVG → widget/PNG 就绪）
+        - render_svg_kb：所有 SVG 字节合计（KB），界面渲染无法精确计时，用此作代理
+        - 任一超阈值（>30s / >200KB）生成 __RENDER_HINT__，建议切换 png_file
     """
-    try:
-        import adaptive_simulator as _sim
-    except ImportError:
-        _here = os.path.dirname(os.path.abspath(__file__))
-        if _here not in sys.path:
-            sys.path.insert(0, _here)
-        import adaptive_simulator as _sim
-    try:
-        if args.optimize:
-            res = _sim.optimize_power(
-                args.effect_size, target_power=args.power, alpha=args.alpha,
-                interim_looks=args.interim_looks, spending=args.spending_function,
-                rho=args.rho, futility=args.futility, n_min=args.n_min,
-                n_max=args.n_max, n_simulations=max(args.n_simulations // 2, 1000),
-                seed=args.sim_seed)
-        elif args.sim_design == "group_sequential":
-            res = _sim.simulate_group_sequential(
-                args.effect_size, args.sim_n, interim_looks=args.interim_looks,
-                alpha=args.alpha, spending=args.spending_function, rho=args.rho,
-                futility=args.futility, beta=args.beta,
-                n_simulations=args.n_simulations, seed=args.sim_seed)
-        elif args.sim_design == "adaptive_reestimate":
-            res = _sim.simulate_adaptive_reestimate(
-                args.effect_size, args.sim_n, alpha=args.alpha,
-                interim_fraction=args.interim_fraction, target_cp=args.target_cp,
-                max_inflation=args.max_inflation, n_simulations=args.n_simulations,
-                reestimate_method=args.reestimate_method, seed=args.sim_seed)
-        else:  # drop_the_loser
-            if args.effect_sizes:
-                _effs = [float(x) for x in args.effect_sizes.split(",") if x.strip()]
-            else:
-                _effs = args.effect_size
-            res = _sim.simulate_drop_the_loser(
-                _effs, args.sim_n, n_arms=args.n_arms, alpha=args.alpha,
-                selection_fraction=args.selection_fraction, correction=args.correction,
-                n_simulations=args.n_simulations, seed=args.sim_seed)
-    except (ValueError, KeyError) as e:
-        print(t("error.val_err", msg=e))
-        sys.exit(1)
-    print(_sim._fmt_result(res))
-    if args.sim_output:
-        with open(args.sim_output, "w", encoding="utf-8") as f:
-            json.dump(res, f, indent=2, ensure_ascii=False)
-        print(t("info.result_saved", path=args.sim_output))
-    if args.visualize:
-        _png = args.out or os.path.join(tempfile.gettempdir(),
-                                        "adaptive_sim_%s.png" % res.get("design", "sim"))
-        print(_sim.visualize(res, _png))
-
-
-def parse_seq_to_r(s):
-    """Parse a sequence spec into an R vector expression.
-
-    Supports two formats:
-      - explicit comma list : '20,40,200'      -> c(20, 40, 200)
-      - auto range          : '20:20:200'      -> seq-style c(20, 40, ..., 200)
-    Returns an R expression string like 'c(20, 40, 200)'.
-    """
-    if s is None:
-        return None
-    s = s.strip()
-    if ':' in s:
-        parts = s.split(':')
-        if len(parts) != 3:
-            raise ValueError(t("error.seq_format", spec=s))
-        start, step, stop = (float(x) for x in parts)
-        if step == 0:
-            raise ValueError(t("error.seq_step_nonzero"))
-        vals = []
-        x = start
-        while x <= stop + abs(step) * 1e-9:
-            vals.append(round(x, 6))
-            x += step
-        if not vals:
-            vals = [start]
-    elif ',' in s:
-        vals = [float(x) for x in s.split(',') if x.strip() != '']
-    else:
-        vals = [float(s)]
-    if not vals:
-        raise ValueError(t("error.seq_empty", spec=s))
-    return "c(" + ", ".join(repr(float(v)) for v in vals) + ")"
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# R Code Templates — PASS Extension (14 new types, v3.3)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def _curve_ctx(args):
-    """Safe value context for CURVE_SOLVERS params (.format placeholders)."""
-    # 效应量折算: 提供 --sd 时 --effect 视为原始均差 Δ, 自动折算 d = Δ/sd
-    if args.sd is not None and args.sd > 0:
-        _effect = (args.effect if args.effect is not None else 0.5) / args.sd
-    else:
-        _effect = args.effect if args.effect is not None else 0.5
-    # 检验方向: one -> greater, two -> two.sided
-    _alt = "greater" if args.side == "one" else "two.sided"
-    return {
-        'alpha': args.alpha,
-        'effect': _effect,
-        'alt': _alt,
-        'k_groups': args.k_groups,
-        'p1': args.p1 if args.p1 is not None else 0.5,   # 对照组/原方法 (control / H0)
-        'p2': args.p2 if args.p2 is not None else 0.3,   # 实验组/新方法 (treatment / H1)
-        'margin': args.margin if args.margin is not None else 0.1,
-        'auc0': args.auc0,
-        'auc1': args.auc1 if args.auc1 is not None else min(args.auc0 + (args.effect or 0.2), 0.99),
-        'lambda1': args.lambda1 if args.lambda1 is not None else 0.05,
-        'lambda2': args.lambda2 if args.lambda2 is not None else 0.03,
-        't1': args.t1, 't2': args.t2,
-        've_control': args.ve_control, 've_treatment': args.ve_treatment,
-        'p_control_sup': args.p_control_sup, 'delta_sup': args.delta_sup, 'sup_margin': args.sup_margin,
-        'theta0': args.theta0, 'cv': args.cv, 'design': args.design,
-        'hazard_ratio': args.hazard_ratio if args.hazard_ratio is not None else 0.75,
-        'ni_margin_surv': args.ni_margin_surv,
-        'delta_effect': args.delta_effect, 'n_arms_mams': args.n_arms_mams,
-        'n_groups_dunnett': args.n_groups_dunnett, 'effect_dunnett': args.effect_dunnett,
-        'effect_gs': args.effect_gs, 'n_interim': args.n_interim,
-        'alpha_exact': args.alpha_exact, 'hr_exact': args.hr_exact,
-        'accrual_exact': args.accrual_exact, 'followup_exact': args.followup_exact,
-        'event_rate_exact': args.event_rate_exact, 'n_stages_exact': args.n_stages_exact,
-    }
-
-def build_curve_code(args):
-    """Build R code for a power/sample-size curve. Returns R string or None."""
-    test = args.test
-    if test not in CURVE_SOLVERS:
-        print(t("error.curve_not_supported", test=test))
-        print(t("error.curve_supported_types"))
-        print("  " + ", ".join(sorted(CURVE_SOLVERS.keys())))
-        return None
-    spec = CURVE_SOLVERS[test]
-    ctx = _curve_ctx(args)
-    try:
-        params = spec["params"].format(**ctx)
-    except (KeyError, ValueError, IndexError) as e:
-        print(t("error.curve_param_missing", test=test, err=e))
-        return None
-    # Auto-inject required R packages (curve templates use base R graphics, no ggplot2)
-    _LIB_MAP = {
-        'pwr': ["ttest_ind", "ttest_paired", "ttest_one", "anova", "proportion_one",
-                "proportion_two", "proportion_paired", "odds_ratio", "risk_ratio"],
-        'PowerTOST': ["be_tost"],
-    }
-    libs = [pkg for pkg, tests in _LIB_MAP.items() if test in tests]
-    if libs:
-        params = "\n".join("suppressMessages(library(%s))" % p for p in libs) + "\n" + params
-    target = args.power
-    _tmp = os.environ.get('LOCALAPPDATA')
-    if _tmp:
-        _tmp = os.path.join(_tmp, 'Temp')
-    else:
-        _tmp = tempfile.gettempdir()
-    out_png = args.out or os.path.join(_tmp, "ct_curve_%s.png" % test)
-    try:
-        if args.n_seq:
-            seq_r = parse_seq_to_r(args.n_seq)
-            mode = "power"
-            xlabel = spec.get("n_label", "N")
-            ylabel = "Power"
-        elif args.power_seq:
-            seq_r = parse_seq_to_r(args.power_seq)
-            mode = "n"
-            xlabel = "Power (target)"
-            ylabel = spec.get("n_label", "N")
+    if not figures:
+        return
+    outdir = _outputs_dir()
+    mode = _resolve_figure_mode(figure_mode)
+    svg_figs = []
+    _svg_paths = []
+    _svg_kb = 0.0
+    _t0 = time.time()
+    for i, fig in enumerate(figures, 1):
+        fmt = (fig.format or "svg").lower()
+        ext = _FIG_EXT.get(fmt, ".txt")
+        path = os.path.join(outdir, "ctss_%s_%d%s" % (test, i, ext))
+        content = fig.content or ""
+        if fmt == "png" and not content.lstrip().startswith("<"):
+            import base64
+            with open(path, "wb") as f:
+                f.write(base64.b64decode(content))
         else:
-            print(t("error.curve_requires_seq"))
-            return None
-    except ValueError as e:
-        print("ERROR: invalid sequence spec: %s" % e)
-        return None
-    effects_r = None
-    if args.plot_effects and spec.get("effect_loop"):
+            with io.open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+        if fmt == "svg":
+            svg_figs.append({"svg": content, "type": fig.caption or "ct-samplesize 图"})
+            _svg_paths.append(path)
+            _svg_kb += len(content.encode("utf-8")) / 1024.0
+        print('__FIGURE__ %s %s caption="%s"' % (fmt, path, (fig.caption or "").replace('"', "'")))
+    # ct-base §19：SVG 内联渲染（复用统一 adapters/rendering.py 管线）
+    if svg_figs:
         try:
-            effects_r = parse_seq_to_r(args.plot_effects)
-        except ValueError as e:
-            print(t("error.invalid_plot_effects", err=e))
-            return None
-    if mode == "power":
-        tpl = _CURVE_POWER_MULTI if effects_r else _CURVE_POWER_SINGLE
-    else:
-        tpl = _CURVE_N_MULTI if effects_r else _CURVE_N_SINGLE
-    _main_title = ("Power curve: %s" if mode == "power" else "Sample size curve: %s") % test
-    r = (tpl
-         .replace("__PARAMS__", params)
-         .replace("__POWER_FN__", spec["power_fn"])
-         .replace("__NFN__", spec["n_fn"])
-         .replace("__SEQ__", seq_r)
-         .replace("__EFFECTS__", effects_r or "c()")
-         .replace("__EFFECT_VAR__", spec.get("effect_var", "delta"))
-         .replace("__TEST__", test)
-         .replace("__XLABEL__", "'%s'" % xlabel)
-         .replace("__YLABEL__", "'%s'" % ylabel)
-         .replace("__MAIN_TITLE__", "'%s'" % _main_title)
-         .replace("__TARGET__", repr(float(target)))
-         .replace("__OUT__", _safe_r_path_literal(out_png)))
-    return r
+            _skill_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            _adapters_dir = os.path.join(_skill_root, "adapters")
+            for _p in (_skill_root, _adapters_dir):
+                if _p not in sys.path:
+                    sys.path.insert(0, _p)
+            from rendering import build_figure_widget, svg_to_png  # type: ignore  # adapters/rendering.py
 
-def main():
-    p = argparse.ArgumentParser(description="Clinical Trial Sample Size Calculator v3.8.1")
+            if mode == "png_file":
+                # 本地 cairosvg 转 PNG（同一处理链：strip clip → fix xml → bbox → viewBox → 光栅化）
+                for j, f in enumerate(svg_figs, 1):
+                    try:
+                        png_path = os.path.join(outdir, "ctss_%s_%d.png" % (test, j))
+                        svg_to_png(f["svg"], png_path, scale=2.0)
+                        print('__FIGURE__ png %s caption="%s"' % (png_path, (f.get("type") or "").replace('"', "'")))
+                    except Exception as e:  # noqa: BLE001 - cairosvg 缺失/失败 → 优雅降级
+                        print("# png_file 转换失败，降级 svg_inline: %s" % e)
+                        mode = "svg_inline"
+                        break
+            if mode == "svg_inline":
+                titles = [f.get("type") or "图 %d" % (j + 1) for j, f in enumerate(svg_figs)]
+                html = build_figure_widget(svg_figs, titles)
+                print("__SVG_WIDGET__ " + html)
+                # SVG 无法内联预览时的降级指引（2026-08-20 用户反馈修订：双语——中文用户 + 英文研究者）
+                if _svg_paths:
+                    print("# 若界面无法直接预览内联 SVG：请在回复中用自然语言提示词引导用户切换图片格式"
+                          "（中文用户：『图形无法预览，请改用 PNG 图片格式重新出图』/『把图转成 PNG 文件』；"
+                          "English users: \"The figure can't be previewed, please re-render it as a PNG "
+                          "image\" / \"Convert the figure to PNG\"）。技能将自动以 PNG 位图重新输出"
+                          "（等价 --figure-mode png_file，本地 cairosvg 转换）。"
+                          "SVG 源文件可直接打开查看: %s" % ", ".join(_svg_paths))
+        except Exception as e:  # noqa: BLE001 - 渲染失败不阻断主流程
+            print("# __SVG_WIDGET__ 生成失败: %s" % e)
+
+    # ── 渲染计时与超阈值提示（ct-base §19.10）──
+    _elapsed = round(time.time() - _t0, 3)
+    _hint = None
+    if mode == "svg_inline":
+        reasons = []
+        if _elapsed > RENDER_SVG_THRESHOLD:
+            reasons.append("本地渲染处理耗时 %.0fs（> %.0fs 阈值）" % (_elapsed, RENDER_SVG_THRESHOLD))
+        if _svg_kb > RENDER_SVG_KB_THRESHOLD:
+            reasons.append("SVG 体量 %.0fKB（> %.0fKB，界面渲染/滚动可能明显变慢）" % (_svg_kb, RENDER_SVG_KB_THRESHOLD))
+        if reasons:
+            _hint = "；".join(reasons) + "。可切换图片文件模式（figure_mode='png_file' / 环境变量 CTSS_FIGURE_MODE=png_file）：本地 cairosvg 转 PNG，界面渲染更快、不占上下文（但变位图）。"
+            print("__RENDER_HINT__ " + _hint)
+    # 诊断信息（不参与提示，仅供排查）
+    print("# render_elapsed_seconds=%.3f render_svg_kb=%.1f figure_mode=%s" % (_elapsed, _svg_kb, mode))
+
+
+def _curve_svg_from_stats(stats: dict, test: str, target_power: float = None) -> str:
+    """coze 端无图时（svglite/cairo 缺失），用曲线数值 stats{x,y,series} 纯 Python 生成 SVG。
+
+    对齐 ct-base §19 内联渲染：700x500、网格线、多系列折线 + 图例、动态轴标签。
+    仅标准库，无第三方依赖。
+    ★ Power 参考线（2026-08-20）：当 y 轴语义为 Power 且传入 target_power 时，绘制
+    红色虚线参考线（与 coze 权威版 svglite 一致），坐标用与数据点相同的 sy() 映射——
+    保证参考线、刻度、数据点三者在同一坐标系统内，杜绝错位。
+    """
+    xs = stats.get("x") or []
+    ys = stats.get("y") or []
+    series = stats.get("series") or ["curve"]
+    if not xs or not ys or len(xs) != len(ys):
+        return ""
+    xs = [float(v) for v in xs]
+    ys = [float(v) for v in ys]
+    # 轴语义启发式：x 全在 [0,1] 且 y 远超 1 → x=目标功效、y=样本量；否则 x=样本量、y=功效
+    x_is_power = all(0.0 <= v <= 1.0 for v in xs) and max(ys) > 1.0
+    xlab = "Power (target)" if x_is_power else "N"
+    ylab = "N" if x_is_power else "Power"
+    W, H, PAD_L, PAD_R, PAD_T, PAD_B = 700, 500, 70, 30, 30, 55
+    PW, PH = W - PAD_L - PAD_R, H - PAD_T - PAD_B
+    xmin, xmax = min(xs), max(xs)
+    ymin, ymax = min(ys), max(ys)
+    if xmax == xmin:
+        xmax = xmin + 1
+    if ymax == ymin:
+        ymax = ymin + 1
+    ymin, ymax = ymin - (ymax - ymin) * 0.05, ymax + (ymax - ymin) * 0.05
+
+    # ★ Power 参考线判定：y 轴语义为 Power（非 x_is_power）且 target_power 在 y 范围内
+    ref_power = None
+    if not x_is_power and target_power is not None:
+        tp = float(target_power)
+        if ymin - 1e-9 <= tp <= ymax + 1e-9:
+            ref_power = tp
+
+    def sx(v):
+        return PAD_L + (v - xmin) / (xmax - xmin) * PW
+
+    def sy(v):
+        return PAD_T + (ymax - v) / (ymax - ymin) * PH
+
+    colors = ["#c0392b", "#2980b9", "#27ae60", "#8e44ad", "#d35400", "#16a085"]
+    # 系列分组（series 与点一一对应；若 series 为标量则整条单系列）
+    groups = {}
+    for i in range(len(xs)):
+        s = str(series[i] if isinstance(series, list) and i < len(series) else (series if not isinstance(series, list) else "curve"))
+        groups.setdefault(s, []).append(i)
+    paths = []
+    legend = []
+    for j, (name, idxs) in enumerate(groups.items()):
+        col = colors[j % len(colors)]
+        pts = " ".join("%.1f,%.1f" % (sx(xs[i]), sy(ys[i])) for i in idxs)
+        paths.append(
+            '<polyline points="%s" fill="none" stroke="%s" stroke-width="2" '
+            'stroke-linejoin="round" stroke-linecap="round"/>' % (pts, col))
+        cx, cy = sx(xs[idxs[-1]]), sy(ys[idxs[-1]])
+        legend.append(
+            '<rect x="%.1f" y="%.1f" width="14" height="4" fill="%s"/>'
+            '<text x="%.1f" y="%.1f" font-size="11" fill="#333">%s</text>'
+            % (cx + 8, cy - 2, col, cx + 26, cy + 3, name))
+    grid = []
+    for g in range(5):
+        gy = PAD_T + PH * g / 4
+        grid.append('<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" stroke="#e0e0e0" stroke-width="1"/>'
+                    % (PAD_L, gy, W - PAD_R, gy))
+        grid.append('<text x="%d" y="%.1f" font-size="10" fill="#888" text-anchor="end">%.2f</text>'
+                    % (PAD_L - 6, gy + 3, ymax - (ymax - ymin) * g / 4))
+        gx = PAD_L + PW * g / 4
+        grid.append('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="#e0e0e0" stroke-width="1"/>'
+                    % (gx, PAD_T, gx, H - PAD_B))
+        grid.append('<text x="%.1f" y="%d" font-size="10" fill="#888" text-anchor="middle">%.2f</text>'
+                    % (gx, H - PAD_B + 14, xmin + (xmax - xmin) * g / 4))
+    ref = ""
+    if ref_power is not None:
+        ry = sy(ref_power)
+        ref = (
+            '<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" stroke="#c0392b" '
+            'stroke-width="1.2" stroke-dasharray="6,4"/>' % (PAD_L, ry, W - PAD_R, ry)
+            + '<text x="%d" y="%.1f" font-size="10" fill="#c0392b" text-anchor="end" '
+              'font-weight="bold">power = %s</text>' % (W - PAD_R, ry - 4, format(ref_power, "g"))
+        )
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" '
+        'viewBox="0 0 %d %d">' % (W, H, W, H)
+        + '<rect width="100%%" height="100%%" fill="#ffffff"/>'
+        + "".join(grid)
+        + ref
+        + '<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#999" stroke-width="1"/>'
+          % (PAD_L, H - PAD_B, W - PAD_R, H - PAD_B)
+        + '<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#999" stroke-width="1"/>'
+          % (PAD_L, PAD_T, PAD_L, H - PAD_B)
+        + "".join(paths)
+        + "".join(legend)
+        + '<text x="%d" y="%d" font-size="13" fill="#333" font-weight="bold">Curve: %s</text>'
+          % (PAD_L, PAD_T - 8, test)
+        + '<text x="%d" y="%d" font-size="12" fill="#555" text-anchor="middle">%s</text>'
+          % (PAD_L + PW / 2, H - 12, xlab)
+        + '<text x="18" y="%d" font-size="12" fill="#555" text-anchor="middle" '
+          'transform="rotate(-90 18 %d)">%s</text>'
+          % (PAD_T + PH / 2, PAD_T + PH / 2, ylab)
+        + "</svg>"
+    )
+    return svg
+
+
+def render_curve_fallback(meta: dict, test: str, target_power: float = None):
+    """coze 端无图但返回曲线数值时，本地生成 SVG 并输出内联标记（ct-base §19）。
+
+    target_power：Power 参考线目标值（默认 None 不画；reverse 场景传 0.8 或用户 --power）。
+    """
+    stats = (meta or {}).get("stats") if isinstance(meta, dict) else None
+    if not isinstance(stats, dict):
+        stats = meta if isinstance(meta, dict) and ("x" in meta or "series" in meta) else None
+    if not stats:
+        return
+    xs = stats.get("x")
+    ys = stats.get("y")
+    if not xs or not ys:
+        return
+    svg = _curve_svg_from_stats(stats, test, target_power=target_power)
+    if not svg:
+        return
+    outdir = _outputs_dir()
+    path = os.path.join(outdir, "ctss_%s_curve.svg" % test)
+    with io.open(path, "w", encoding="utf-8") as f:
+        f.write(svg)
+    print('__FIGURE__ svg %s caption="Curve %s"' % (path, test))
+    try:
+        _skill_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _adapters_dir = os.path.join(_skill_root, "adapters")
+        for _p in (_skill_root, _adapters_dir):
+            if _p not in sys.path:
+                sys.path.insert(0, _p)
+        from rendering import build_figure_widget  # type: ignore  # adapters/rendering.py
+        html = build_figure_widget([{"svg": svg, "type": "Curve %s" % test}],
+                                   ["Curve %s" % test])
+        print("__SVG_WIDGET__ " + html)
+        # SVG 无法内联预览时的降级指引（2026-08-20 用户反馈修订：双语——中文用户 + 英文研究者）
+        print("# 若界面无法直接预览内联 SVG：请在回复中用自然语言提示词引导用户切换图片格式"
+              "（中文用户：『图形无法预览，请改用 PNG 图片格式重新出图』/『把图转成 PNG 文件』；"
+              "English users: \"The figure can't be previewed, please re-render it as a PNG "
+              "image\" / \"Convert the figure to PNG\"）。技能将自动以 PNG 位图重新输出"
+              "（等价 --figure-mode png_file，本地 cairosvg 转换）。"
+              "SVG 源文件可直接打开查看: %s" % path)
+    except Exception as e:  # noqa: BLE001
+        print("# __SVG_WIDGET__ 生成失败: %s" % e)
+
+
+def build_parser():
+    p = argparse.ArgumentParser(description="Clinical Trial Sample Size Calculator v4.0.1")
     p.add_argument("--test", required=False, default=None,
         choices=["ttest_ind","ttest_paired","ttest_one","anova","proportion_one","proportion_two",
                  "proportion_paired","odds_ratio","risk_ratio",
@@ -547,6 +406,10 @@ def main():
     p.add_argument("--w", type=float)
     # ── Bioequivalence ──
     p.add_argument("--theta0", type=float, default=0.95)
+    p.add_argument("--theta1", type=float, default=None,
+                   help="BE 等效下界（默认 0.8；与 --theta2 同给；或单给 --margin 自动 1/margin）")
+    p.add_argument("--theta2", type=float, default=None,
+                   help="BE 等效上界（默认 1.25；与 --theta1 同给；或单给 --margin 自动 margin）")
     p.add_argument("--cv", type=float, default=0.25)
     p.add_argument("--design", type=str, default="2x2")
     # ── Vaccine, Bayesian, multiple endpoints, dose escalation ──
@@ -598,12 +461,15 @@ def main():
     p.add_argument("--delta_sup", type=float, default=0.15)
     # Assurance
     p.add_argument("--n_sim_assurance", type=int, default=5000)
-    p.add_argument("--shape1_trt", type=float, default=3)
-    p.add_argument("--shape2_trt", type=float, default=7)
-    p.add_argument("--shape1_ctrl", type=float, default=3)
-    p.add_argument("--shape2_ctrl", type=float, default=7)
+    # 2026-08-20 统一为先验 Beta(2,2)：默认 None 不发送，R 端 %||% 2 生效（原 CLI 3/7 覆盖了 R 端默认）
+    p.add_argument("--shape1_trt", type=float, default=None)
+    p.add_argument("--shape2_trt", type=float, default=None)
+    p.add_argument("--shape1_ctrl", type=float, default=None)
+    p.add_argument("--shape2_ctrl", type=float, default=None)
     p.add_argument("--n_assurance", type=int, default=100)
-    p.add_argument("--margin_assurance", type=float, default=0.0)
+    # 2026-08-20 修复：默认 0.0 会被 build_params 发送并覆盖 R 端 %||% 0.05 → margin=0 计算错误；
+    # 改为 None 不发送，R 端回落 0.05（另有 <=0 防御）
+    p.add_argument("--margin_assurance", type=float, default=None)
     # Dunnett
     p.add_argument("--n_groups_dunnett", type=int, default=3)
     p.add_argument("--n_control_dunnett", type=int, default=50)
@@ -731,6 +597,22 @@ def main():
     p.add_argument("--out", type=str, default=None,
                    help="曲线 PNG 输出路径 (默认系统临时目录)")
 
+    # ── 出图模式（ct-base §19.9）──
+    p.add_argument("--figure-mode", dest="figure_mode", choices=["svg_inline", "png_file"],
+                   default=None,
+                   help="图形呈现模式: svg_inline(默认,内联对话流) / png_file(本地 cairosvg 转 PNG)。"
+                        "也可经环境变量 CTSS_FIGURE_MODE 设置。")
+
+    # ── 显式本地分析开关 ──
+    # 默认一律走 coze 工作流；加 --local 才在本地用 R / 纯 Python 完成分析。
+    p.add_argument("--local", action="store_true",
+                   help="显式要求在本地完成分析（本地 R 或纯 Python 兜底），而非默认调用 coze 工作流")
+
+    return p
+
+
+def main():
+    p = build_parser()
     args = p.parse_args()
 
     # ── Security: validate every user string that reaches generated R code ──
@@ -751,9 +633,9 @@ def main():
                     raise ValueError(
                         t("error.effect_sizes_invalid", value=args.effect_sizes))
             if args.sim_output is not None:
-                _safe_r_path_literal(args.sim_output)
+                _validate_path(args.sim_output)
         if args.out is not None:
-            _safe_r_path_literal(args.out)  # raises ValueError if unsafe
+            _validate_path(args.out)  # raises ValueError if unsafe
     except ValueError as e:
         p.error(str(e))
 
@@ -816,765 +698,131 @@ def main():
         d_val = args.effect if args.effect is not None else 0.5
 
     if args.install_all_packages:
-        pkgs = ["TrialSize", "pwr", "rpact", "gsDesign", "PowerTOST",
-                "simr", "lme4", "pROC", "powerSurvEpi", "survival"]
-        r_cmd = (
-            'pkgs <- c(%s)\n'
-            'install.packages(pkgs, repos="https://cran.r-project.org")\n'
-            % ", ".join('"%s"' % p for p in pkgs)
-        )
-        if not args.run_install:
-            # 默认安全模式：只打印命令，不联网安装
-            print("=" * 60)
-            print(t("install.cmd_header"))
-            print("=" * 60)
-            print(r_cmd)
-            print("=" * 60)
-            print(t("install.cran_warning", n=len(pkgs)))
-            print(t("install.confirm_prompt"))
-            print("  python samplesize_power.py --install-all-packages --run-install")
-            print(t("install.manual_alt"))
-            return
-        # 显式二次确认后才执行 —— 且执行前完整打印将要运行的 R 代码（透明审计）
-        print("=" * 60)
-        print(t("install.network_warning_en"))
-        print("=" * 60)
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        r_script = r_cmd + 'cat("\\nDone. Installed", length(pkgs), "packages.\\n")\n'
-        r_file = os.path.join(script_dir, "_install_packages.R")
-        print(t("install.code_header"))
-        print(r_script)
-        print("=" * 60)
-        with open(r_file, "w") as f:
-            f.write(r_script)
-        # Containment: r_file must live inside the skill script dir.
-        if os.path.dirname(os.path.realpath(r_file)) != os.path.realpath(script_dir):
-            print(t("error.invalid_install_path"))
-            return
-        rscript = find_rscript()
-        if is_valid_rscript(rscript):
-            import subprocess
-            # NOTE: invoked as a list (no shell) -> no command injection.
-            result = subprocess.run([rscript, r_file], capture_output=True, text=True, timeout=600)
-            print(sanitize_output(result.stdout))
-            if result.stderr:
-                print(sanitize_output(result.stderr))
-        else:
-            print(t("error.rscript_not_found_install"))
+        # v5：R 包安装/管理全部由 coze 端承担（镜像预装 + install_r_packages.R）。
+        # 本地不再安装 R、不再管理 R 包。此处仅提示。
+        print(t("error.rscript_not_found_install"))
+        print("（v5 架构：R 环境与 R 包由 coze 端部署，本地无需安装 R）")
         return
 
     if not args.test:
         p.error(t("error.test_required"))
 
-    # ══ Adaptive Monte-Carlo simulator (test=adaptive_simulate) ══
-    # PRIMARY: generate & show the R code; execute only with --yes (SAFE PREVIEW,
-    #   consistent with every other test type in this skill).
-    # FALLBACK: if R is not installed, run the pure-Python engine
-    #   (scripts/adaptive_simulator.py) so the user still gets results.
-    #   -- Python 代码仅在没有 R 时作为备用。
-    if args.test == "adaptive_simulate":
-        rscript = find_rscript()
-        if rscript is None:
-            # ── No R available -> pure-Python fallback ──
-            print(t("info.r_not_detected_python_fallback"))
-            _fallback_adaptive_sim_python(args)
-            return
+    # ═════════════════════════════════════════════════════════════════════════
+    # 统一后端调度（coze 权威 / 本地 Python 兜底 / 本地 R 开发后端）
+    # ═════════════════════════════════════════════════════════════════════════
+    ctx = {
+        "confirmed": confirmed,
+        "solve_for_power": solve_for_power,
+        "alt": alt,
+        "d_val": d_val,
+        "curve": bool(args.n_seq or args.power_seq),
+        "show_code": bool(args.show_code),
+        "dry_run": bool(args.dry_run),
+        # R 真相源开关：要求随结果回传完整 R 源码 + R 数值（repro.r）
+        "return_r_code": (bool(args.show_code)
+                          or os.environ.get("CTSS_RETURN_R_CODE") in ("1", "true", "yes")),
+    }
 
-        # ── Primary: R code (shown by default, run only with --yes) ──
-        r_code = build_adaptive_sim_r_code(args)
-        r_code = r_code.lstrip("\n")
-        if args.show_code or args.dry_run or not confirmed:
-            print("=" * 60)
-            print(t("header.r_code"))
-            print("=" * 60)
-            print(r_code)
-            print("=" * 60)
-        if not confirmed:
-            print(t("safe_preview.not_executed"))
-            return
-        print(t("exec.running"))
-        sys.stdout.flush()
-        output = run_r(r_code, confirmed=True)
-        print(output)
-        print("=" * 60)
-        return
-
-    # ══ Curve mode (power / sample-size curves) ══
-    if args.n_seq or args.power_seq:
-        r_code = build_curve_code(args)
-        if r_code is None:
-            sys.exit(1)
-        r_code = r_code.lstrip('\n')
-        # TRANSPARENCY: always show the generated R code in preview/dry-run mode
-        # (the safe default); in execute mode show it only with --show-code.
-        if args.show_code or args.dry_run or not confirmed:
-            print("=" * 60)
-            print(t("header.r_code"))
-            print("=" * 60)
-            print(r_code)
-            print("=" * 60)
-        if not confirmed:
-            print(t("safe_preview.not_executed_curve"))
-            return
-        print(t("exec.running"))
-        sys.stdout.flush()
-        output = run_r(r_code, confirmed=True)
-        print(output)
-        # Echo output path from Python side (R may mangle backslash display)
-        _t = os.environ.get('LOCALAPPDATA')
-        if _t:
-            _t = os.path.join(_t, 'Temp')
-        else:
-            _t = tempfile.gettempdir()
-        _out = args.out or os.path.join(_t, "ct_curve_%s.png" % args.test)
-        print(t("info.png_saved", path=_out))
-        print("=" * 60)
-        return
-
-    # ═══════════════════════════════════════════════════════════════════════════
-    # Core test types (17)
-    # ═══════════════════════════════════════════════════════════════════════════
-
-    # ── Shared Group-Sequential design parameters (computed once) ──
-    # rpact supports futilityStops directly on the exact-boundary designs
-    # ("OF"/"P"/"WT"); only the gamma-family designs (HSD / Kim-DeMets, i.e.
-    # "asHSD"/"asKD") must use the spending-function form.
-    if args.futility:
-        # Exact boundaries (OF/P/WT) support futilityStops directly; only the
-        # gamma-family designs (HSD/KimDeMets) must use the "as*" spending form.
-        _gs_type = {"OF": "asOF", "Pocock": "asP", "WT": "asKD",
-                    "HSD": "asHSD", "KimDeMets": "asKD"}.get(args.spending_func, "asOF")
-        _futil_params = (', futilityStops = rep(TRUE, %d), '
-                         'typeBetaSpending = "bsOF", bindingFutility = FALSE') % args.n_interim
-    else:
-        _gs_type = {"OF": "OF", "Pocock": "P", "WT": "WT",
-                    "HSD": "asHSD", "KimDeMets": "asKD"}.get(args.spending_func, "OF")
-        _futil_params = ""
-    # gammaA drives the HSD and Kim-DeMets (asKD) spending families; it is
-    # ignored (and must be 0) for OF / Pocock / WT exact boundaries.
-    _gs_gamma = args.rho if args.spending_func in ("HSD", "KimDeMets") else 0
-    # Wang-Tsiatis needs its own deltaWT parameter (NOT gammaA); it only applies
-    # to the exact "WT" design (no futility). WT + futility is intercepted below.
-    _delta_frag = ", deltaWT = %.4f" % args.wt_delta if (args.spending_func == "WT" and not args.futility) else ""
-    _design_beta = round(1 - args.power, 4) if args.power is not None else 0.2
-    _kmax = args.n_interim + 1
-
-    # rpact has no "asWT" spending-function form, so Wang-Tsiatis (exact "WT")
-    # cannot be combined with a futility bound. Intercept with a clear message
-    # instead of letting rpact raise a cryptic error.
-    if args.futility and args.spending_func == "WT":
-        print(t("error.wt_futility_unsupported"))
+    try:
+        backend = select_backend(args.test, prefer_local=args.local)
+    except RuntimeError as exc:
+        print(str(exc))
         sys.exit(1)
 
-    if args.test == "mixed_model":
-        if not args.effect_name:
-            print(t("error.effect_name_required")); sys.exit(1)
-        # Validate effect_name: only alphanumeric + underscore
-        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', args.effect_name):
-            print(t("error.effect_name_invalid")); sys.exit(1)
-        eff = args.effect or 0.5
-        r_code = R_MIXED_MODEL.format(
-            eff=eff, eff_half=eff/2, varcorr=args.varcorr, sigma=args.sigma,
-            nsim=args.nsim, ename=args.effect_name,
-            nobs=args.nobs, power=args.power,
-            solve_for_power=str(solve_for_power).upper())
+    # ── 待执行载荷预览（local-r → R 源码；coze → 请求信封；python → 无）──
+    gated = backend.requires_confirmation          # 本地 R 需 --yes；coze / Python 不需要
+    payload = backend.preview(args.test, args, ctx)
+    if payload is not None and (args.show_code or args.dry_run or (gated and not confirmed)):
+        _hdr = t("header.r_code") if gated else t("header.coze_request")
+        print("=" * 60)
+        print(_hdr)
+        print("=" * 60)
+        print(payload)
+        print("=" * 60)
 
-    elif args.test == "roc":
-        auc0 = args.auc0
-        if not args.auc1 and not args.effect:
-            print(t("error.auc1_or_effect_required")); sys.exit(1)
-        auc1 = args.auc1 or min(auc0 + args.effect, 0.99)
-        if solve_for_power:
-            r_code = R_ROC + f"""
-cat(._qt("r_header.roc_power"), "\\n")
-cat(._qt("label.h0_auc"), {auc0}, ._qt("label.h1_auc"), {auc1}, "\\n")
-cat(._qt("label.alpha"), {args.alpha}, "\\n")
-cat(._qt("label.sample_size"), {args.nobs}, "\\n")
-cat(._qt("label.achieved_power"), ss_roc(auc0={auc0}, auc1={auc1}, alpha={args.alpha}, n={args.nobs}), "\\n")
-"""
-        else:
-            r_code = R_ROC + f"""
-cat(._qt("r_header.roc_n"), "\\n")
-cat(._qt("label.h0_auc"), {auc0}, ._qt("label.h1_auc"), {auc1}, "\\n")
-cat(._qt("label.alpha"), {args.alpha}, ._qt("label.power"), {args.power}, "\\n")
-cat(._qt("label.sample_size"), ss_roc(auc0={auc0}, auc1={auc1}, alpha={args.alpha}, power={args.power}), "\\n")
-"""
+    if gated and not confirmed:
+        print(t("safe_preview.not_executed_curve") if ctx["curve"]
+              else t("safe_preview.not_executed"))
+        return
+    if args.dry_run:
+        return
 
-    elif args.test == "poisson":
-        if solve_for_power:
-            r_code = R_POISSON + f"""
-cat("\\n========== Poisson Rate Comparison (Power given N) ==========\\n")
-cat(._qt("label.rate_ratio"), round({args.lambda1}/{args.lambda2}, 3), "\\n")
-cat(._qt("label.sample_size_per_group"), {args.nobs}, "\\n")
-cat(._qt("label.achieved_power"), ss_poisson(lambda1={args.lambda1}, lambda2={args.lambda2}, t1={args.t1}, t2={args.t2}, alpha={args.alpha}, n={args.nobs}), "\\n")
-"""
-        else:
-            r_code = R_POISSON + f"""
-cat("\\n========== Poisson Rate Comparison ==========\\n")
-cat(._qt("label.rate_ratio"), round({args.lambda1}/{args.lambda2}, 3), "\\n")
-cat(._qt("label.sample_size_per_group"), ss_poisson(lambda1={args.lambda1}, lambda2={args.lambda2}, t1={args.t1}, t2={args.t2}, alpha={args.alpha}, power={args.power}), "\\n")
-"""
+    if gated:
+        print(t("exec.running"))
+        sys.stdout.flush()
 
-    elif args.test == "cluster":
-        if solve_for_power:
-            r_code = R_CLUSTER + f"""
-cat("\\n========== Cluster-RCT (Power given N) ==========\\n")
-cat(._qt("label.deff"), round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
-cat(._qt("label.cluster_size_m"), {args.m}, ._qt("label.icc"), {args.icc}, "\\n")
-cat(._qt("label.total_sample_size"), {args.nobs}, "\\n")
-res <- ss_cluster(m={args.m}, icc={args.icc}, n_total={args.nobs})
-cat(._qt("label.effective_n_per_group"), res$n_indiv_eff, "\\n")
-cat(._qt("label.implied_n_clusters"), res$n_clusters, "\\n")
-"""
-        else:
-            r_code = R_CLUSTER + f"""
-cat("\\n========== Cluster-Randomized Design ==========\\n")
-cat(._qt("label.deff"), round(1 + ({args.m}-1)*{args.icc}, 3), "\\n")
-res <- ss_cluster(m={args.m}, icc={args.icc}, n_indiv={args.n_indiv or 50})
-cat(._qt("label.adjusted_n_per_group"), res$n_adj, "\\n")
-cat(._qt("label.clusters_per_group"), res$n_clusters, ._qt("label.total_clusters"), res$total_clusters, "\\n")
-cat(._qt("label.total_sample_size"), res$total, "\\n")
-"""
+    try:
+        res = backend.compute(args.test, args, ctx)
+    except RuntimeError as exc:
+        print(str(exc))
+        sys.exit(1)
 
-    elif args.test == "bland_altman":
-        r_code = R_BLAND_ALTMAN.format(
-            sd_diff=args.sd_diff or 1.0, w=args.w or 0.5, alpha=args.alpha,
-            power=args.power, nobs=args.nobs,
-            solve_for_power=str(solve_for_power).upper())
+    if res.text:
+        print(res.text)
 
-    elif args.test == "equivalence":
-        r_code = R_EQ_MEANS.format(
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            margin=args.margin or 1.0, sigma=args.effect or 2.0,
-            solve_for_power=str(solve_for_power).upper())
+    # ── 图形产物（coze 返回 SVG/HTML；本地 R 直接写 PNG）──
+    render_figures(res.figures, args.test, figure_mode=args.figure_mode)
+    # coze 端无图（svglite/cairo 缺失）但返回曲线数值 → 本地生成 SVG 兜底（ct-base §19）。
+    # 仅在 coze 未返回任何图形时才兜底——否则同一曲线会被处理两遍（coze SVG + 本地
+    # fallback 两份输出），且持久化文件可能被无参考线的 fallback 版覆盖（2026-08-20 修复）。
+    if not res.figures:
+        render_curve_fallback(res.meta, args.test,
+                              target_power=getattr(args, "power", None) or 0.8)
 
-    elif args.test == "be_tost":
-        # Validate design against allowlist to prevent R code injection
-        _allowed_designs = ["2x2", "2x4", "3x3", "2x2x2", "2x2x3", "2x2x4"]
-        if args.design not in _allowed_designs:
-            print(t("error.design_must_be_one_of", options=", ".join(_allowed_designs)))
-            sys.exit(1)
-        r_code = R_BE_TOST.format(
-            theta0=args.theta0, cv=args.cv, design=args.design,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            solve_for_power=str(solve_for_power).upper())
+    # ── 自动附带曲线（简单单/两组问题默认出图，用户设定 2026-08-20）──
+    # 规则: forward（求 n）→ 自动补「样本量随把握度」曲线；reverse（求 power）→
+    # 自动补「把握度随样本量」曲线。仅当：① 检验属简单单/两组集合；② 用户未显式
+    # 指定曲线（--n_seq / --power_seq）；③ 非 dry-run；④ coze 路径（非本地 R）。
+    # 关闭方式：显式指定 --n_seq / --power_seq（走用户自己的曲线），或 --dry-run。
+    _AUTO_CURVE_TESTS = {"ttest_ind", "ttest_paired", "ttest_one",
+                         "proportion_one", "proportion_two"}
+    if (not ctx["curve"] and args.test in _AUTO_CURVE_TESTS
+            and not args.dry_run and not gated):
+        try:
+            args2 = argparse.Namespace(**vars(args))
+            args2.n_seq = None
+            args2.power_seq = None
+            args2.plot_effects = None
+            ctx2 = dict(ctx)
+            ctx2["curve"] = True
+            _what = ""
+            if solve_for_power and args.nobs:
+                _n = args.nobs
+                _n_min = max(5, int(_n * 0.5))
+                _n_max = max(_n_min + 8, int(_n * 1.5))
+                _step = max(1, round((_n_max - _n_min) / 8))
+                args2.n_seq = "%d:%d:%d" % (_n_min, _step, _n_max)
+                _what = "把握度随样本量（以 n=%d 为中心 ±50%%）" % _n
+            else:
+                args2.power_seq = "0.6:0.05:0.95"
+                _what = "样本量随把握度（power 0.60~0.95）"
+            res2 = backend.compute(args.test, args2, ctx2)
+            if res2 and getattr(res2, "figures", None):
+                render_figures(res2.figures, args.test, figure_mode=args.figure_mode)
+            else:
+                # coze 无图 → 本地兜底（★ 参考线目标 = 用户 --power 或默认 0.8）
+                render_curve_fallback(getattr(res2, "meta", None), args.test,
+                                      target_power=getattr(args2, "power", None) or 0.8)
+            print("# 已自动附带%s曲线（简单单/两组问题默认出图；如需关闭请显式指定 "
+                  "--n_seq / --power_seq 或 --dry-run）" % _what)
+        except Exception as _e:  # noqa: BLE001 - 自动曲线失败不阻断主结果
+            print("# 自动曲线生成跳过: %s" % _e)
+    # coze 返回未填充 meta 时（无 __CTSS_RESULT__ 标记）res.meta 可为 None，防御性取空字典
+    _png = (res.meta or {}).get("png_path")
+    if _png:
+        print(t("info.png_saved", path=_png))
 
-    elif args.test == "vaccine_efficacy":
-        if solve_for_power:
-            r_code = R_VACCINE_EFFICACY + f"""
-cat("\\n========== Vaccine Efficacy (Power given N) ==========\\n")
-cat(._qt("label.ve"), round(({args.ve_control}-{args.ve_treatment})/{args.ve_control}*100, 1), "%\\n")
-cat(._qt("label.n_per_group_total"), {args.nobs}, "\\n")
-cat(._qt("label.achieved_power"), ss_vaccine(vc={args.ve_control}, vt={args.ve_treatment}, alpha={args.alpha}, n={args.nobs}), "\\n")
-"""
-        else:
-            r_code = R_VACCINE_EFFICACY + f"""
-cat("\\n========== Vaccine Efficacy ==========\\n")
-cat(._qt("label.ve"), round(({args.ve_control}-{args.ve_treatment})/{args.ve_control}*100, 1), "%\\n")
-cat(._qt("label.n_per_group_total"), ss_vaccine(vc={args.ve_control}, vt={args.ve_treatment}, alpha={args.alpha}, power={args.power}), "\\n")
-"""
-
-    elif args.test == "multiple_endpoints":
-        if solve_for_power:
-            r_code = R_MULTIPLE_ENDPOINTS + f"""
-cat("\\n========== Multiple Endpoints (Power given N) ==========\\n")
-cat(._qt("label.correlation"), {args.correlation}, "\\n")
-cat(._qt("label.adjusted_n"), {args.nobs}, "\\n")
-cat(._qt("label.achieved_power"), ss_multiple(rho={args.correlation}, effect={args.effect or 0.3}, alpha={args.alpha}, n={args.nobs}), "\\n")
-"""
-        else:
-            r_code = R_MULTIPLE_ENDPOINTS + f"""
-cat("\\n========== Multiple Endpoints ==========\\n")
-cat(._qt("label.correlation"), {args.correlation}, "\\n")
-res <- ss_multiple(rho={args.correlation}, effect={args.effect or 0.3}, alpha={args.alpha}, power={args.power})
-cat(._qt("label.single_endpoint_n"), res$n_single, ._qt("label.adjusted_total"), res$n_adj, "\\n")
-"""
-
-    elif args.test == "bayesian":
-        r_code = R_BAYESIAN.format(
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            a0=args.prior_a0, pC=args.prob_control, pT=args.prob_treatment,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "dose_escalation":
-        r_code = R_DOSE_ESCALATION.format(
-            n_doses=args.n_doses, target_dlt=args.target_dlt,
-            nobs=args.nobs, solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "ttest_ind":
-        if solve_for_power:
-            r_code = R_T_TESTS + f"""
-cat("\\n========== Two-Sample T-Test (Power given N) ==========\\n")
-cat(._qt("label.cohens_d"), {d_val}, "\\n")
-cat(._qt("label.n_per_group_total"), {args.nobs}, "\\n")
-cat(._qt("label.achieved_power"), ss_ttest("two.sample", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
-"""
-        else:
-            r_code = R_T_TESTS + f"""
-cat("\\n========== Two-Sample T-Test ==========\\n")
-cat(._qt("label.cohens_d"), {d_val}, "\\n")
-n_pg <- ss_ttest("two.sample", d={d_val}, alpha={args.alpha}, power={args.power}, alt="{alt}")
-cat(._qt("label.n_per_group"), n_pg, "\\n")
-"""
-
-    elif args.test == "ttest_paired":
-        if solve_for_power:
-            r_code = R_T_TESTS + f"""
-cat("\\n========== Paired T-Test (Power given N) ==========\\n")
-cat(._qt("label.cohens_d"), {d_val}, "\\n")
-cat(._qt("label.n_pairs"), {args.nobs}, "\\n")
-cat(._qt("label.achieved_power"), ss_ttest("paired", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
-"""
-        else:
-            r_code = R_T_TESTS + f"""
-cat("\\n========== Paired T-Test ==========\\n")
-cat(._qt("label.cohens_d"), {d_val}, "\\n")
-n_pg <- ss_ttest("paired", d={d_val}, alpha={args.alpha}, power={args.power}, alt="{alt}")
-cat(._qt("label.n_pairs"), n_pg, "\\n")
-"""
-
-    elif args.test == "ttest_one":
-        if solve_for_power:
-            r_code = R_T_TESTS + f"""
-cat("\\n========== One-Sample T-Test (Power given N) ==========\\n")
-cat(._qt("label.cohens_d"), {d_val}, "\\n")
-cat(._qt("label.n_total"), {args.nobs}, "\\n")
-cat(._qt("label.achieved_power"), ss_ttest("one.sample", d={d_val}, alpha={args.alpha}, n={args.nobs}, alt="{alt}"), "\\n")
-"""
-        else:
-            r_code = R_T_TESTS + f"""
-cat("\\n========== One-Sample T-Test ==========\\n")
-cat(._qt("label.cohens_d"), {d_val}, "\\n")
-n_pg <- ss_ttest("one.sample", d={d_val}, alpha={args.alpha}, power={args.power}, alt="{alt}")
-cat(._qt("label.n_total"), n_pg, "\\n")
-"""
-
-    elif args.test == "anova":
-        if solve_for_power:
-            r_code = R_T_TESTS + f"""
-cat("\\n========== One-Way ANOVA (Power given N) ==========\\n")
-cat(._qt("label.k_groups"), {args.k_groups}, ._qt("label.f_effect"), {args.effect or 0.25}, "\\n")
-cat(._qt("label.n_per_group_total"), {args.nobs}, "\\n")
-cat(._qt("label.achieved_power"), ss_anova(k={args.k_groups}, f={args.effect or 0.25}, alpha={args.alpha}, n={args.nobs}), "\\n")
-"""
-        else:
-            r_code = R_T_TESTS + f"""
-cat("\\n========== One-Way ANOVA ==========\\n")
-cat(._qt("label.k_groups"), {args.k_groups}, ._qt("label.f_effect"), {args.effect or 0.25}, "\\n")
-n_pg <- ss_anova(k={args.k_groups}, f={args.effect or 0.25}, alpha={args.alpha}, power={args.power})
-cat(._qt("label.n_per_group"), n_pg, "\\n")
-"""
-
-    elif args.test == "proportion_one":
-        p0 = args.p1 if args.p1 is not None else 0.5
-        p1 = args.p2 if args.p2 is not None else 0.65
-        alt_r = "greater" if args.side == "one" else "two.sided"
-        if solve_for_power:
-            r_code = R_PROP_FUNCS + f"""
-cat("\\n========== One-Sample Proportion Test (Power given N) ==========\\n")
-cat(._qt("label.h0_proportion"), {p0}, "\\n")
-cat(._qt("label.h1_proportion"), {p1}, "\\n")
-cat(._qt("label.side"), "{alt_r}", "\\n")
-cat(._qt("label.given_n"), {args.nobs}, "\\n")
-cat(._qt("label.achieved_power"), ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, n={args.nobs}, alt="{alt_r}"), "\\n")
-"""
-        else:
-            r_code = R_PROP_FUNCS + f"""
-cat("\\n========== One-Sample Proportion Test ==========\\n")
-cat(._qt("label.h0_proportion"), {p0}, "\\n")
-cat(._qt("label.h1_proportion"), {p1}, "\\n")
-cat(._qt("label.side"), "{alt_r}", "\\n")
-cat(._qt("label.target_power"), {args.power}, "\\n")
-cat(._qt("label.n_total_result"), ss_prop_one(p0={p0}, p1={p1}, alpha={args.alpha}, power={args.power}, alt="{alt_r}"), "\\n")
-"""
-
-    elif args.test in ("proportion_two", "proportion_paired", "odds_ratio", "risk_ratio"):
-        p1 = args.p1 if args.p1 is not None else 0.5
-        p2 = args.p2 if args.p2 is not None else 0.65
-        alt_r = "greater" if args.side == "one" else "two.sided"
-        _fn_map = {
-            "proportion_two": ("ss_prop_two", "Two-Proportions Test (chi-square)"),
-            "proportion_paired": ("ss_prop_paired", "Paired Proportions (McNemar, approx)"),
-            "odds_ratio": ("ss_or_rr", "Odds/Risk Ratio (approx)"),
-            "risk_ratio": ("ss_or_rr", "Odds/Risk Ratio (approx)"),
-        }
-        fn, label = _fn_map[args.test]
-        if solve_for_power:
-            r_code = R_PROP_FUNCS + f"""
-cat("\\n========== {label} (Power given N) ==========\\n")
-cat(._qt("label.control_h0"), {p1}, "\\n")
-cat(._qt("label.treatment_h1"), {p2}, "\\n")
-cat(._qt("label.side"), "{alt_r}", "\\n")
-cat(._qt("label.given_n_per_group"), {args.nobs}, "\\n")
-cat(._qt("label.achieved_power"), {fn}(p1={p1}, p2={p2}, alpha={args.alpha}, n={args.nobs}, alt="{alt_r}"), "\\n")
-"""
-        else:
-            r_code = R_PROP_FUNCS + f"""
-cat("\\n========== {label} ==========\\n")
-cat(._qt("label.control_h0"), {p1}, "\\n")
-cat(._qt("label.treatment_h1"), {p2}, "\\n")
-cat(._qt("label.side"), "{alt_r}", "\\n")
-cat(._qt("label.target_power"), {args.power}, "\\n")
-n_pg <- {fn}(p1={p1}, p2={p2}, alpha={args.alpha}, power={args.power}, alt="{alt_r}")
-cat(._qt("label.n_per_group"), n_pg, "\\n")
-cat(._qt("label.total_n"), 2 * n_pg, "\\n")
-"""
-
-    elif args.test == "non_inferiority":
-        p1 = args.p1 or 0.80
-        p2 = args.p2 or 0.85
-        margin = args.margin or 0.1
-        if solve_for_power:
-            r_code = R_NON_INFERIORITY + f"""
-cat("\\n========== Non-Inferiority (Proportions, Power given N) ==========\\n")
-cat(._qt("label.control_rate_ni"), {p1}, "\\n")
-cat(._qt("label.treatment_rate_ni"), {p2}, "\\n")
-cat(._qt("label.ni_margin"), {margin}, "\\n")
-cat(._qt("label.total_n_ni"), {args.nobs}, ._qt("label.each_group"), {args.nobs}/2, "\\n")
-cat(._qt("label.achieved_power"), ss_noninf_prop(p1={p1}, p2={p2}, margin={margin}, alpha={args.alpha}, n={args.nobs}), "\\n")
-"""
-        else:
-            r_code = R_NON_INFERIORITY + f"""
-cat("\\n========== Non-Inferiority (Proportions) ==========\\n")
-cat(._qt("label.control_rate_ni_short", p1={p1}), "
-")
-cat(._qt("label.treatment_rate_ni_short", p2={p2}), "
-")
-cat(._qt("label.assumed_diff"), abs({p1} - {p2}), "\\n")
-cat(._qt("label.ni_margin_short", margin={margin}), "
-")
-cat(._qt("label.one_sided_alpha", alpha={args.alpha}, power={args.power}), "
-")
-res <- ss_noninf_prop(p1={p1}, p2={p2}, margin={margin}, alpha={args.alpha}, power={args.power})
-cat(._qt("label.result_header"), "
-")
-cat(._qt("label.n_per_arm"), res$n_arm, "\\n")
-cat(._qt("label.total_sample_size_result"), res$total, "\\n")
-cat(._qt("label.with_dropout"), ceiling(res$total * 1.1), "\\n")
-"""
-
-    elif args.test == "survival":
-        hr = args.hazard_ratio or 0.75
-        if solve_for_power:
-            r_code = R_SURVIVAL_SIMPLE + f"""
-cat("\\n========== Survival (Log-Rank, Power given N) ==========\\n")
-cat(._qt("label.hazard_ratio_surv"), {hr}, "\\n")
-cat(._qt("label.total_events"), {args.nobs}, "\\n")
-cat(._qt("label.achieved_power"), ss_survival_logrank(hr={hr}, alpha={args.alpha}, n={args.nobs}), "\\n")
-if ({args.event_rate} > 0 && {args.followup_time} > 0) {{
-  n_per_group <- ceiling({args.nobs} / (2 * {args.event_rate}))
-  cat(._qt("label.approx_n_per_group_surv", event_rate=args.event_rate), n_per_group, "\\n")
-}}
-"""
-        else:
-            r_code = R_SURVIVAL_SIMPLE + f"""
-cat("\\n========== Survival (Log-Rank Test) ==========\\n")
-cat(._qt("label.hazard_ratio"), {hr}, "\\n")
-res <- ss_survival_logrank(hr={hr}, alpha={args.alpha}, power={args.power},
-                           event_rate={args.event_rate}, accrual_time={args.accrual_time}, followup_time={args.followup_time})
-cat(._qt("label.total_events_needed"), res$d, "\\n")
-if (!is.na(res$n_per_group)) {{
-  cat(._qt("label.each_group_n"), res$n_per_group, ._qt("label.total_n_surv"), res$total, "\\n")
-  if (!is.na(res$n_with_dropout)) cat(._qt("label.dropout_note_inline"), res$n_with_dropout, "\\n")
-}} else {{
-  cat(._qt("label.survival_note"))
-}}
-"""
-
-    # ═══════════════════════════════════════════════════════════════════════════
-    # NEW v3.3: PASS Extension test types (14)
-    # ═══════════════════════════════════════════════════════════════════════════
-
-    elif args.test == "win_ratio":
-        r_code = R_WIN_RATIO.format(
-            win_ratio_theta=args.win_ratio_theta, se_approx=args.se_approx,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "must_win":
-        r_code = R_MUST_WIN.format(
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            n_endpoints_must=args.n_endpoints_must,
-            correlation_must=args.correlation_must,
-            effect_must=args.effect_must,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "historical_controls":
-        r_code = R_HISTORICAL_CONTROLS.format(
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            p_control_current=args.p_control_current, prob_treatment=args.prob_treatment,
-            historical_response=args.historical_response, historical_n=args.historical_n,
-            a0_borrowing=args.a0_borrowing,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "mams":
-        r_code = R_MAMS.format(
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            n_arms_mams=args.n_arms_mams, n_stages_mams=args.n_stages_mams,
-            delta_effect=args.delta_effect,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "conditional_power":
-        # This test already computes conditional power given interim n; --nobs maps to n_planned
-        if solve_for_power:
-            n_planned = args.nobs
-        else:
-            n_planned = args.n_planned
-        r_code = R_CONDITIONAL_POWER.format(
-            alpha=args.alpha, power=args.power,
-            timing=args.timing,
-            observed_effect=args.observed_effect,
-            planned_effect=args.planned_effect,
-            n_completed=args.n_completed,
-            n_planned=n_planned
-        )
-
-    elif args.test == "ni_survival":
-        r_code = R_NI_SURVIVAL.format(
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            ni_margin_surv=args.ni_margin_surv, hr_expected=args.hr_expected,
-            accrual_time=args.accrual_time, followup_time=args.followup_time,
-            dropout_rate=args.dropout_rate, event_rate=args.event_rate,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "superiority_margin":
-        r_code = R_SUPERIORITY_MARGIN.format(
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            sup_margin=args.sup_margin,
-            p_control_sup=args.p_control_sup,
-            delta_sup=args.delta_sup,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "assurance":
-        # Assurance IS "power given n" — --nobs maps to n_assurance
-        if solve_for_power:
-            n_assurance = args.nobs
-        else:
-            n_assurance = args.n_assurance
-        r_code = R_ASSURANCE.format(
-            alpha=args.alpha, power=args.power,
-            n_sim_assurance=args.n_sim_assurance,
-            shape1_trt=args.shape1_trt,
-            shape2_trt=args.shape2_trt,
-            shape1_ctrl=args.shape1_ctrl,
-            shape2_ctrl=args.shape2_ctrl,
-            n_assurance=n_assurance,
-            margin_assurance=args.margin_assurance
-        )
-
-    elif args.test == "dunnett":
-        r_code = R_DUNNETT.format(
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            n_groups_dunnett=args.n_groups_dunnett,
-            n_control_dunnett=args.n_control_dunnett,
-            effect_dunnett=args.effect_dunnett,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "mediation":
-        r_code = R_MEDIATION.format(
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            a_path=args.a_path, b_path=args.b_path,
-            sigma2_m=args.sigma2_m, sigma2_y=args.sigma2_y,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "group_sequential":
-        # Upgraded in v3.6.0: rpact-backed exact two-sample means GSD
-        # (replaces the old approximate closed-form). Spending validated via choices.
-        # directionUpper: FALSE only when the treatment effect is a reduction.
-        _dir_upper = "FALSE" if (args.effect_gs is not None and args.effect_gs < 0) else "TRUE"
-        r_code = R_GSD_MEAN.format(
-            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
-            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            n_interim=args.n_interim, effect_gs=args.effect_gs,
-            spending_func=args.spending_func, direction_upper=_dir_upper,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "gsd_proportion":
-        if args.gs_proportion_metric == "ratio":
-            _p1, _p2 = args.p1, args.p1 * args.gs_ratio
-        elif args.gs_proportion_metric == "or":
-            _p1, _p2 = args.p1, (args.gs_or * args.p1) / (1 - args.p1 + args.gs_or * args.p1)
-        else:
-            _p1, _p2 = args.p1, args.p2
-        # directionUpper: FALSE when the treatment proportion is LOWER (beneficial
-        # reduction, e.g. fewer adverse events); TRUE when higher (e.g. response).
-        _dir_upper = "FALSE" if (_p1 is not None and _p2 is not None and _p1 < _p2) else "TRUE"
-        r_code = R_GSD_PROPORTION.format(
-            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
-            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            n_interim=args.n_interim, spending_func=args.spending_func,
-            p1=_p1, p2=_p2, metric=args.gs_proportion_metric,
-            direction_upper=_dir_upper,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "gsd_survival":
-        _lambda2 = (0.69314718056 / args.gs_median_control) if args.gs_median_control > 0 else 0.0578
-        _hr = args.hazard_ratio if args.hazard_ratio is not None else 0.7
-        # HR < 1 (beneficial) -> reject on the lower side -> directionUpper = FALSE.
-        _dir_upper = "FALSE" if _hr < 1 else "TRUE"
-        r_code = R_GSD_SURVIVAL.format(
-            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
-            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            n_interim=args.n_interim, spending_func=args.spending_func,
-            lambda2=_lambda2, hr=_hr, accrual=args.accrual_time,
-            followup=args.followup_time, dropout=args.dropout_rate,
-            direction_upper=_dir_upper,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "gsd_hazard":
-        _lambda2 = (0.69314718056 / args.gs_median_control) if args.gs_median_control > 0 else 0.0578
-        _hr = args.hazard_ratio if args.hazard_ratio is not None else 0.7
-        _dir_upper = "FALSE" if _hr < 1 else "TRUE"
-        r_code = R_GSD_HAZARD.format(
-            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
-            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            n_interim=args.n_interim, spending_func=args.spending_func,
-            lambda2=_lambda2, hr=_hr, accrual=args.accrual_time,
-            followup=args.followup_time, dropout=args.dropout_rate,
-            direction_upper=_dir_upper,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "gsd_survival_sim":
-        _lambda2 = (0.69314718056 / args.gs_median_control) if args.gs_median_control > 0 else 0.0578
-        _hr = args.hazard_ratio if args.hazard_ratio is not None else 0.7
-        _dir_upper = "FALSE" if _hr < 1 else "TRUE"
-        _nobs_given = "TRUE" if args.nobs is not None else "FALSE"
-        _sim_seed = args.sim_seed if args.sim_seed is not None else 42
-        r_code = R_GSD_SURVIVAL_SIM.format(
-            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
-            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            n_interim=args.n_interim, spending_func=args.spending_func,
-            lambda2=_lambda2, hr=_hr, accrual=args.accrual_time,
-            followup=args.followup_time, dropout=args.dropout_rate,
-            direction_upper=_dir_upper, nobs_given=_nobs_given,
-            n_simulations=args.n_simulations, sim_seed=_sim_seed)
-
-    elif args.test == "gsd_hazard_sim":
-        _lambda2 = (0.69314718056 / args.gs_median_control) if args.gs_median_control > 0 else 0.0578
-        _hr = args.hazard_ratio if args.hazard_ratio is not None else 0.7
-        _dir_upper = "FALSE" if _hr < 1 else "TRUE"
-        _nobs_given = "TRUE" if args.nobs is not None else "FALSE"
-        _sim_seed = args.sim_seed if args.sim_seed is not None else 42
-        r_code = R_GSD_HAZARD_SIM.format(
-            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
-            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            n_interim=args.n_interim, spending_func=args.spending_func,
-            lambda2=_lambda2, hr=_hr, accrual=args.accrual_time,
-            followup=args.followup_time, dropout=args.dropout_rate,
-            direction_upper=_dir_upper, nobs_given=_nobs_given,
-            n_simulations=args.n_simulations, sim_seed=_sim_seed)
-
-    elif args.test == "gsd_poisson":
-        # Treatment rate LOWER (rate1 < rate2) -> beneficial reduction -> FALSE.
-        _dir_upper = "FALSE" if args.gs_rate1 < args.gs_rate2 else "TRUE"
-        r_code = R_GSD_POISSON.format(
-            kmax=_kmax, gs_type=_gs_type, gs_gamma=_gs_gamma,
-            futility_params=_futil_params, design_beta=_design_beta, delta_frag=_delta_frag,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            n_interim=args.n_interim, spending_func=args.spending_func,
-            rate1=args.gs_rate1, rate2=args.gs_rate2, ptime=args.gs_poisson_time,
-            direction_upper=_dir_upper,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "adaptive":
-        # Validate adaptive type against allowlist
-        _allowed_adaptive = ["SSR", "Population", "Combination"]
-        if args.adaptive_type not in _allowed_adaptive:
-            print(t("error.adaptive_type_must_be_one_of", options=", ".join(_allowed_adaptive)))
-            sys.exit(1)
-        r_code = R_ADAPTIVE.format(
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            n_stages_adapt=args.n_stages_adapt, effect_adaptive=args.effect_adaptive,
-            adaptive_type=args.adaptive_type,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "survival_exact":
-        r_code = R_SURVIVAL_EXACT.format(
-            alpha_exact=args.alpha_exact, power_exact=args.power_exact, nobs=args.nobs,
-            hr_exact=args.hr_exact, accrual_exact=args.accrual_exact,
-            followup_exact=args.followup_exact, dropout_exact=args.dropout_exact,
-            event_rate_exact=args.event_rate_exact, n_stages_exact=args.n_stages_exact,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "survival_equivalence":
-        r_code = R_SURVIVAL_EQUIVALENCE.format(
-            eq_margin_surv=args.eq_margin_surv, hr_expected=args.hr_expected,
-            accrual_time=args.accrual_time, followup_time=args.followup_time,
-            dropout_rate=args.dropout_rate, event_rate=args.event_rate,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "survival_superiority":
-        r_code = R_SURVIVAL_SUPERIORITY.format(
-            sup_margin_surv=args.sup_margin_surv, hr_expected=args.sup_hr,
-            accrual_time=args.accrual_time, followup_time=args.followup_time,
-            dropout_rate=args.dropout_rate, event_rate=args.event_rate,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "cox_covariate":
-        r_code = R_COX_COVARIATE.format(
-            cox_hr=args.cox_hr, cox_r2=args.cox_r2, cox_prev=args.cox_prev,
-            cox_event_prop=args.cox_event_prop, alpha=args.alpha,
-            power=args.power, nobs=args.nobs,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "survival_one_sample":
-        r_code = R_SURVIVAL_ONESAMPLE.format(
-            median0=args.median0, median1=args.median1,
-            accrual_time=args.accrual_time, followup_time=args.followup_time,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "competing_risks":
-        r_code = R_COMPETING_RISKS.format(
-            ci_control=args.ci_control, ci_treatment=args.ci_treatment,
-            alpha=args.alpha, power=args.power, nobs=args.nobs,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "recurrent_events":
-        r_code = R_RECURRENT_EVENTS.format(
-            rate_control=args.rate_control, rate_ratio=args.rate_ratio,
-            recur_followup=args.recur_followup, alpha=args.alpha,
-            power=args.power, nobs=args.nobs,
-            solve_for_power=str(solve_for_power).upper())
-
-    elif args.test == "survival_historical":
-        r_code = R_SURVIVAL_HISTORICAL.format(
-            median0=args.median0, new_median=args.new_median,
-            accrual_time=args.accrual_time, followup_time=args.followup_time,
-            hist_n=args.hist_n, alpha=args.alpha, power=args.power, nobs=args.nobs,
-            solve_for_power=str(solve_for_power).upper())
-
-    else:
-        print(t("error.unknown_test")); sys.exit(1)
-
-    r_code = r_code.lstrip('\n')
-
-    # R code display policy: always shown in preview/dry-run (safe default);
-    # in execute mode shown only with --show-code.
-    if args.show_code or args.dry_run or not confirmed:
+    # ── R 源码 / R 数值（CTSS_RETURN_R_CODE=1 或 coze 主动回传）──
+    _want_r = args.show_code or os.environ.get("CTSS_RETURN_R_CODE") in ("1", "true", "yes")
+    if res.r_code and not gated and _want_r:
         print("=" * 60)
         print(t("header.r_code"))
         print("=" * 60)
-        print(r_code)
-        print("=" * 60)
-
-    if not confirmed:
-        print(t("safe_preview.not_executed"))
-        return
-
-    print(t("exec.running"))
-    sys.stdout.flush()
-    output = run_r(r_code, confirmed=True)
-    print(output)
-    if not args.show_code:
+        print(res.r_code)
+    if res.r_result and _want_r:
+        print("-" * 60)
+        print(json.dumps(res.r_result, ensure_ascii=False, indent=2))
+    if gated and not args.show_code:
         print(t("info.r_code_shown_default"))
     print("=" * 60)
 
