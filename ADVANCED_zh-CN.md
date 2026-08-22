@@ -116,7 +116,7 @@ python scripts/samplesize_power.py --test ttest_ind --n_seq "20:20:200" --plot_e
 python scripts/samplesize_power.py --test ttest_ind --power_seq "0.6:0.05:0.95" --out n_curve.png
 ```
 
-**曲线模式支持 22 种检验类型**：ttest_ind、ttest_paired、ttest_one、anova、proportion_one、proportion_two、proportion_paired、odds_ratio、risk_ratio、roc、poisson、non_inferiority、superiority_margin、be_tost、survival、ni_survival、mams、dunnett、group_sequential、survival_exact、equivalence、vaccine_efficacy。曲线复用与单点求解**同一套已验证公式**，数值完全一致；`group_sequential`、`survival_exact` 采用固定设计 / Schoenfeld 近似（输出已标注）。其余类型（mixed_model、bayesian、win_ratio、must_win、historical_controls、assurance、conditional_power、adaptive、dose_escalation、bland_altman、cluster）曲线模式暂未覆盖，运行时会给出清晰提示。
+**曲线模式支持 9 种核心检验类型**：ttest_ind、ttest_paired、ttest_one、anova、proportion_one、proportion_two、survival、equivalence、be_tost（与 R 引擎 `.curve_solvers` 一致）。曲线复用与单点求解**同一套已验证公式**，数值完全一致。其余所有检验类型（含 odds_ratio、risk_ratio、roc、poisson、non_inferiority、superiority_margin、ni_survival、vaccine_efficacy、group_sequential、survival_exact、mams、dunnett、mixed_model、bayesian、win_ratio 等）仅支持单点求解，曲线请求会返回清晰的「curve not supported」提示。
 
 ### 5.4 核心公式
 
@@ -182,11 +182,15 @@ ct-samplesize/
 │   ├── icon_4x.png / icon_8x.png
 │   └── ct-samplesize_4x.png / ct-samplesize_8x.png
 ├── scripts/
-│   ├── samplesize_power.py   ← CLI：49 种检验计算 + 自动 R 代码生成
-│   ├── adaptive_simulator.py ← --test adaptive_simulate 的纯 Python 备用路径
+│   ├── samplesize_power.py   ← CLI：49 种检验计算（coze 后端；v5，纯标准库）
+│   ├── compute_backend.py    ← 后端抽象：CozeBackend（唯一后端，无本地兜底）
 │   ├── i18n.py               ← 中英切换 helper（复制自 ct-base）
-│   ├── r_libs.py             ← R 调用 / 白名单校验 / 脱敏（来自 ct-base）
-│   └── r_templates/          ← 各检验族的预编写 R 函数（ss_*）
+│   └── office_to_md.py       ← 用户上传 docx/pptx → md（ct-base §6.7）
+├── adapters/
+│   ├── coze_client.py        ← coze 出站计算客户端（仅试验设计参数）
+│   ├── coze_token_embedded.py← 公共凭据库（XOR+base64，§5）
+│   ├── bug_report.py         ← 技能错误报告客户端（11 键信封，§20.3）
+│   └── rendering.py          ← 图形渲染管线（SVG 内联 / PNG 兜底）
 └── references/
     ├── language_policy.md    ← 双语策略（复制自 ct-base）
     ├── report_template.md    ← 报告骨架（复制自 ct-base）

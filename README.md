@@ -8,7 +8,7 @@
 
 > **Easy-to-use Clinical Sample Size & Power Calculator for Clinical Researchers**
 >
-> You don't need to code or memorize commands — just describe your trial design in **plain language inside a chat**, and the skill performs **49** professional sample-size & power calculations for you. The default authoritative engine is a **remote coze R compute service** (rpact, gsDesign, TrialSize, PowerTOST — 20+ packages running server-side, so your machine needs **no local R**); a small pure-Python fallback covers 5 basic tests offline. Results come in Chinese or English per your OS setting (force-switchable via prompt). By default the skill shows a **SAFE PREVIEW** of the exact request it would send to coze — nothing leaves your machine until you confirm; full R code can be returned on request.
+> You don't need to code or memorize commands — just describe your trial design in **plain language inside a chat**, and the skill performs **49** professional sample-size & power calculations for you. The default authoritative engine is a **remote coze R compute service** (rpact, gsDesign, TrialSize, PowerTOST — 20+ packages running server-side, so your machine needs **no local R**; the published skill has **no local compute fallback**). Results come in Chinese or English per your OS setting (force-switchable via prompt). By default the skill shows a **SAFE PREVIEW** of the exact request it would send to coze — nothing leaves your machine until you confirm; full R code can be returned on request.
 
 ---
 
@@ -38,9 +38,9 @@ Below are 7 real conversational examples ordered from simple to advanced. Each g
 > Here is the sample-size calculation for a two-sample t-test (effect size d=0.5, power=0.8, two-sided α=0.05).
 > You need about **64 per group** (128 total).
 > Since this is a simple two-group solve, the assistant also auto-attaches a **sample-size curve** (n per group vs target power 0.6–0.95, SVG inline & editable); give a fixed n instead and you get the **power curve** (power vs n) automatically.
-> (Safe preview by default: the R code is shown below but not executed.)
+> (Safe preview by default: the exact coze request envelope is shown, nothing sent or computed — say "please compute directly" to actually run it.)
 
-**📌 Get the actual number:** By default only the code is shown, not computed. Say **"please compute directly"** and the assistant will really run it and give the number (on the default coze stateless engine this natural-language trigger is what fires the compute). For the local-R execution path you may also pass **--yes** to bypass the safe preview (see Section 4, "Safe Preview").
+**📌 Get the actual number:** By default the skill shows a **SAFE PREVIEW** — the exact coze request envelope, nothing sent or computed. Say **"please compute directly"** and the assistant will really run it and give the number (on the default coze stateless engine this natural-language trigger is what fires the compute; **no `--yes` needed** — the legacy `--yes` flag applies only to the optional local-R dev backend, see Section 4, "Safe Preview").
 
 ### Example 2 · Two-group proportion
 **You say:**
@@ -190,7 +190,7 @@ A: Yes. Most tests need only three things — effect size (or rate / HR) + power
 A: By default it's **per group**; paired / crossover designs report per-sequence, and survival often reports total events needed. The output always labels this clearly, so no confusion.
 
 **Q: It only shows code, not the number. How do I get the actual result?**
-A: Just say **"please compute directly"** in the chat — the assistant will really run the compute and give you the number. (On the local-R fallback you can also pass **--yes** to bypass the safe preview.) This is the default safe design: see the code first, compute once you're sure.
+A: Just say **"please compute directly"** in the chat — the assistant will really run the compute and give you the number. (On the coze engine this natural-language trigger fires the compute, **no `--yes` needed**; the legacy `--yes` flag applies only to the optional local-R dev backend.) This is the default safe design: see the request envelope first, compute once you're sure.
 
 **Q: I want the reproducible R code for submission or audit — how do I ask?**
 A: Say **"give me the full R code"**. The code is also shown in safe preview by default, so you can copy, modify, and re-run it yourself.
@@ -205,8 +205,10 @@ A: Use the same design framework but **replace the raw data** (e.g. run through 
 
 ## 4. Safety & Disclaimer
 
-- **What is Safe Preview / coze compute:** The published skill **never runs R or a shell on your machine.** By default it calls the remote **coze** compute service (endpoint: `https://ct-samplesize.coze.site/run`) with only your trial-design parameters (never patient data). To inspect first, say **"preview only / --dry-run"** — it prints the exact request envelope and sends nothing. Say **"please compute"** (or **--yes**) to send and get the numbers + optional figures. Say **"show code / --show-code"** to see the coze request JSON (and the R source on request).
-- **coze-only (v5):** the published skill has **no local compute fallback** — if the coze endpoint is unreachable, the skill reports the configuration error and guides you to set `CTSS_COZE_ENDPOINT` (or `CTSS_COZE_MOCK=1` for a local demo). All 49 test types run server-side via coze.
+- **What is Safe Preview / coze compute:** The published skill **never runs R or a shell on your machine.** By default it calls the remote **coze** compute service (endpoint: `https://ct-samplesize.coze.site/run`) with only your trial-design parameters (never patient data). To inspect first, say **"preview only / --dry-run"** — it prints the exact request envelope and sends nothing. Say **"please compute"** to send and get the numbers + optional figures — on the coze stateless engine this natural-language trigger fires the compute, **no `--yes` needed** (the legacy `--yes` flag applies only to the optional local-R dev backend, not the published skill). Say **"show code / --show-code"** to see the coze request JSON (and the R source on request).
+- **What leaves the machine (metadata disclosure):** each coze request carries (1) your trial-design parameters (test type, effect size, α, power, n …), (2) `locale` derived from your OS language (for bilingual output), and (3) a **hostname hash** `query_origin` (SHA-256 of your computer's hostname — not the hostname itself; used by the author only for server attribution / abuse rate-limiting). No patient data, file content, or personally identifiable information is sent.
+- **Bug reports (optional, opt-in only):** if a likely skill defect is detected (e.g. engine error after retry), the assistant may ask whether to send a **sanitized** bug report to the author via the unified report endpoint (`https://ct-bugreport.coze.site/run`). It contains skill name/version/error type plus a **problem description you review and approve** — you may include the algorithm/function used, values and study design if needed; only identifiable person/institution/subject info is avoided. Nothing is sent without your confirmation; you can always decline, and in fully local sessions the report is saved as a file with the author's email instead.
+- **coze-only (v5):** the published skill has **no local compute fallback** — if the cloud compute service (`https://ct-samplesize.coze.site/run`) is unreachable, the skill reports the configuration error and guides you to set `CTSS_COZE_ENDPOINT` (or `CTSS_COZE_MOCK=1` for a local demo). All 49 test types run server-side via coze.
 - Outputs are for reference only; validate before regulatory submissions.
 
 ---
@@ -217,7 +219,7 @@ CLI examples, bidirectional solving, curve mode, core formulas, system requireme
 
 ---
 
-**Version**: v4.0.7 | **License**: MIT | **Authors**: medstatstar, phoe-zip
+**Version**: v5.1.0 | **License**: MIT | **Authors**: medstatstar, phoe-zip
 
 For feature requests, bug reports, or other feedback, please contact the author directly at medstatstar@gmail.com (Wintone Zhang / 张文彤).
 

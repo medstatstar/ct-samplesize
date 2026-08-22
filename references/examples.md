@@ -1,6 +1,6 @@
 # Examples
 
-> By default the skill runs in SAFE PREVIEW: generated R code is shown but NOT executed. Use `--yes` to execute & compute, `--show-code` to display the code (no execution), or `--dry-run` to preview only. **** R **** `--yes` `--show-code` `--dry-run`
+> By default the skill runs in SAFE PREVIEW: the exact coze request envelope is shown but NOT sent/computed. On the coze engine the natural-language trigger ("please compute directly" / 请直接计算) fires the compute — **no `--yes` needed**; `--show-code` displays the coze request JSON (no send), `--dry-run` previews only. The legacy `--yes` flag applies only to the optional local-R dev backend. **** R **** `--yes`(legacy local-R only) `--show-code` `--dry-run`
 
 ---
 

@@ -14,9 +14,10 @@
 
 - **coze R service (default / production):** the skill sends trial-design params to
   `CTSS_COZE_ENDPOINT` and gets results + optional figures back. No local R needed.
-  For a no-network demo, set `CTSS_COZE_MOCK=1`.
-- **Python 3.8+**: drives the CLI and the pure-Python fallback (5 basic tests:
-  `ttest_ind` / `ttest_one` / `ttest_paired` / `proportion_one` / `proportion_two`).
+  For a no-network demo, set `CTSS_COZE_MOCK=1`. **v5: no local compute fallback** —
+  coze unreachable → error + config guidance.
+- **Python 3.8+**: stdlib only, drives the CLI / orchestration (no third-party compute
+  deps; the v5 local pure-Python fallback was removed).
 - **R 4.x (dev / optional, NOT in published skill):** only the local-R backend
   (`adapters/r-assets/`, `CTSS_BACKEND=local-r`) needs R. Detected by `find_rscript` (which
   locates `Rscript`); search order: `PATH` → `C:\Tools\R-4.5.1\bin\x64\Rscript.exe`
@@ -27,14 +28,14 @@
 - Inline R engines: `.R` logic lives in `adapters/r-assets/local_r_backend.py` (`I18N_R`,
   `ADAPTIVE_SIM_R`); synced to coze. The CLI shows the coze request envelope in
   SAFE PREVIEW and computes via coze.
-- Install helpers (dev only): `--install-all-packages`, `--run-install`.
+- Install helpers (dev only, removed from published CLI in v5.0.2): R packages run server-side on coze; the legacy `--install-all-packages` / `--run-install` flags exist only in the dev backend (`adapters/r-assets/`, not shipped) — use the printed `install.packages()` snippet instead.
 
 ## 3. Agent invocation
 
 ### 3.1 Agent entry
 
 The agent reads `SKILL.md` and runs the CLI with `--test`. Default is a
-**dry-run**; pass `--yes` to execute.
+**SAFE PREVIEW (dry-run)**; on coze the compute is fired by the natural-language trigger, **not** by `--yes` (the legacy `--yes` flag applies only to the optional local-R dev backend).
 
 ### 3.2 CLI shape
 
@@ -122,9 +123,9 @@ early-stop rates. Use `--sim_output results.json` and `--visualize` for artifact
 |R `unexpected symbol in "_qt"`|old code used `._qt`|use `._qt`; fixed in v3.7.1+ (local-R dev backend)|
 |ROC `NameError: name 'ss_roc' is not defined`|Python path issue|fixed in v3.7.1+ (R path)|
 |`error.rscript_not_found`|Rscript missing (local-R dev backend)|install R or set `RSCRIPT_PATH` / `find_rscript`|
-|`pwr` / `rpact` missing|package not installed (local-R dev backend)|run `--install-all-packages`|
+|`pwr` / `rpact` missing|package not installed (local-R dev backend)|run `install.packages("rpact")` etc. (legacy `--install-all-packages` removed in v5.0.2)|
 |coze endpoint not configured|`CTSS_COZE_ENDPOINT` unset|set `CTSS_COZE_ENDPOINT` (real) or `CTSS_COZE_MOCK=1` (demo)|
-|coze unreachable … no local Python fallback|test not in 5-test Python fallback|configure coze (or dev `adapters/r-assets/` + `CTSS_BACKEND=local-r`)|
+|coze unreachable (no local fallback in v5)|test requires coze|configure coze (`CTSS_COZE_ENDPOINT` / `CTSS_COZE_MOCK=1`); dev-only alternative: `adapters/r-assets/` + `CTSS_BACKEND=local-r`|
 |locale shows zh|OS language is zh/CN|expected; output follows OS locale|
 
 ## 9. Maintenance

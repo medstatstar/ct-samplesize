@@ -55,8 +55,7 @@
 
 ### 7. Methodological Limits
 ```
-[Python fallback: simplified formula vs R exact]
-[R exact: approximation conditions]
+[R exact engine (server-side coze): approximation conditions]
 ```
 
 ### 8. Sensitivity
@@ -81,7 +80,7 @@
 # ============================================================
 # Sample Size Calculation — Standalone R Script
 # Generated: [YYYY-MM-DD]
-# Path: [R exact or Python fallback equivalent]
+# Path: [R exact — engine runs server-side on coze]
 # ============================================================
 
 # ---- 0. Setup (uncomment first run) ----

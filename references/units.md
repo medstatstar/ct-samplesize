@@ -9,7 +9,7 @@
 - **Input**: `--test <type>` (required) + effect-size / rate / HR params + `--power` (target, default) + optional `--side` / `--sd` / design flags.
 - **Output**: Required sample size `n` (per-arm or total), with reproducible R code shown in SAFE PREVIEW.
 - **Depends on**: none (entry unit).
-- **AI autonomy**: 🟨 semi-auto (confirm params; `--yes` to execute).
+- **AI autonomy**: 🟨 semi-auto (confirm params; coze compute fires on the natural-language trigger — no `--yes` needed; legacy `--yes` is local-R dev only).
 - **Compose interface**: → U2 (reverse check) / U3 (curve) / U6 (report).
 
 ## U2 — Reverse Power (fixed n → achieved power)
@@ -31,18 +31,18 @@
 ## U4 — Adaptive Monte-Carlo Simulator
 
 - **Input**: `--test adaptive_simulate` + design (`group_sequential` / `adaptive_reestimate` / `drop_the_loser`) + spending function + optional `--futility` / `--optimize` / `--visualize` + `--n_sim`.
-- **Output**: Empirical power, type-I error, expected sample size, early-stop probabilities. Primary engine = inlined pure-base-R `ADAPTIVE_SIM_R` (no extra packages); pure-Python fallback `adaptive_simulator.py` when R is absent.
-- **Depends on**: none (entry unit); R optional (Python fallback covers it).
+- **Output**: Empirical power, type-I error, expected sample size, early-stop probabilities. Primary engine = inlined pure-base-R `ADAPTIVE_SIM_R` (no extra packages), running **server-side on coze** in the published skill. Dev/offline legacy: `adapters/r-assets/legacy/adaptive_simulator.py` (pure Python, not shipped).
+- **Depends on**: none (entry unit). Published skill requires coze (no local fallback).
 - **AI autonomy**: 🟨 semi-auto.
 - **Compose interface**: → U6 (report) / feeds design validation.
 
-## U5 — R Package Install (on-demand)
+## U5 — R Package Management (coze-side, v5)
 
-- **Input**: `--install-all-packages` (prints `install.packages()` commands, safe default) or `--run-install` (downloads & installs from CRAN).
-- **Output**: Installed R packages, or printed install commands (default, no network execution).
+- **Input**: none — all R packages run **server-side on coze** (image pre-installed). The published skill never installs R locally; the legacy `--install-all-packages` / `--run-install` flags were **removed in v5.0.2**.
+- **Output**: coze R engine serves all 49 test types; no local install step.
 - **Depends on**: none.
-- **AI autonomy**: ⬜ assist (user must explicitly opt-in `--run-install`; supply-chain risk disclosed).
-- **Compose interface**: prerequisite for R-backed tests in U1–U4.
+- **AI autonomy**: ⬜ none (no local install capability in the published skill; dev backend `adapters/r-assets/` uses printed `install.packages()` snippets instead).
+- **Compose interface**: prerequisite handled by coze deployment (r_packages.txt).
 
 ## U6 — Report Generation
 

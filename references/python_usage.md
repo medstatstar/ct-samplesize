@@ -63,7 +63,7 @@ python scripts/samplesize_power.py --test survival --hazard_ratio 0.7 --power 0.
 
 ## Auto R Code Generation
 
-**English:** The Python script has built-in R code templates. Default mode prints the R code for review; execution of the generated R code requires explicit `-y`/`--yes` confirmation (see dry-run behavior).
+**English:** The Python script is the orchestrator for the remote coze R engine. Default mode is SAFE PREVIEW — it prints the exact coze request envelope without sending. On coze, computing is fired by the natural-language trigger ("please compute directly"), **no `-y`/`--yes` needed**; the legacy `--yes` confirmation applies only to the optional local-R dev backend.
 
 ---
 

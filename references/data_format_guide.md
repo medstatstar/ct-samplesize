@@ -11,7 +11,7 @@
 |:-----|:-----|:-----|:---------|
 | `α` (alpha) | Significance level, two-sided | 0.05 | 0.05 |
 | `Power` | Test power | 0.8 | 0.8 / 0.85 / 0.9 |
-| `--show-code` | Show generated R code (no execution) | SAFE PREVIEW by default: code shown, not executed | Reveals the code; `--yes` executes |
+| `--show-code` | Show the coze request JSON (no send) | SAFE PREVIEW by default: envelope shown, nothing sent | coze needs no `--yes` — natural-language trigger fires compute; `--yes` is legacy local-R dev only |
 
 ---
 

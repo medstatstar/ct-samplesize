@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
-Clinical Trial Sample Size & Power Calculator — v4.0.1
+Clinical Trial Sample Size & Power Calculator — v5.0.2
 
-Architecture (v4.0):
+Architecture (v5):
 - Default authoritative engine = remote coze R compute service (CozeBackend).
   Only trial-design params are sent (HTTP POST, no shell, no local R).
-- Local pure-Python fallback (LocalPythonBackend) for 5 basic superiority
-  tests, used only when coze is unreachable (non-authoritative).
+- v5 removed the local pure-Python fallback (LocalPythonBackend) and all
+  third-party compute deps (statsmodels / numpy / scipy no longer required).
+  select_backend() returns ONLY CozeBackend; coze unreachable → error, no fallback.
 - Local R backend (LocalRBackend, in adapters/r-assets/) is dev/transition only and is
   NOT shipped in the published package.
 - Safe by default: --dry-run previews the exact coze request envelope; coze is
   a stateless compute service, so no local code is ever executed. The legacy
   --yes gate applies only to the optional local-R backend.
-- Every user string that reaches generated R (local-R backend) is validated
-  against a strict allowlist, so it can NEVER break out of an R string literal.
+- Every user string that reaches server-side R is validated against a strict
+  allowlist, so it can NEVER break out of an R string literal.
 - Input args validated against strict allowlists regardless of backend.
 
 Test types (49 total):
@@ -360,10 +361,6 @@ def build_parser():
                    help="安全预览：仅生成并展示 R 代码、不执行（默认即此模式）")
     p.add_argument("--show-code", action="store_true", default=False,
                    help="执行并展示生成的 R 代码（默认不展示，仅按需提供）")
-    p.add_argument("--install-all-packages", action="store_true",
-                   help="打印(默认)本技能所需 R 包的 install.packages() 命令供人工审阅；不联网安装")
-    p.add_argument("--run-install", action="store_true",
-                   help="配合 --install-all-packages 使用：显式确认后才真正联网执行 install.packages()")
     # ── Common ──
     p.add_argument("--alpha", type=float, default=0.05)
     p.add_argument("--power", type=float, default=0.8, help="目标检验效能 (与 --nobs 互斥)")
@@ -603,11 +600,6 @@ def build_parser():
                    help="图形呈现模式: svg_inline(默认,内联对话流) / png_file(本地 cairosvg 转 PNG)。"
                         "也可经环境变量 CTSS_FIGURE_MODE 设置。")
 
-    # ── 显式本地分析开关 ──
-    # 默认一律走 coze 工作流；加 --local 才在本地用 R / 纯 Python 完成分析。
-    p.add_argument("--local", action="store_true",
-                   help="显式要求在本地完成分析（本地 R 或纯 Python 兜底），而非默认调用 coze 工作流")
-
     return p
 
 
@@ -697,13 +689,6 @@ def main():
     else:
         d_val = args.effect if args.effect is not None else 0.5
 
-    if args.install_all_packages:
-        # v5：R 包安装/管理全部由 coze 端承担（镜像预装 + install_r_packages.R）。
-        # 本地不再安装 R、不再管理 R 包。此处仅提示。
-        print(t("error.rscript_not_found_install"))
-        print("（v5 架构：R 环境与 R 包由 coze 端部署，本地无需安装 R）")
-        return
-
     if not args.test:
         p.error(t("error.test_required"))
 
@@ -724,7 +709,7 @@ def main():
     }
 
     try:
-        backend = select_backend(args.test, prefer_local=args.local)
+        backend = select_backend(args.test)  # v5: 唯一后端 = coze（无本地回退）
     except RuntimeError as exc:
         print(str(exc))
         sys.exit(1)

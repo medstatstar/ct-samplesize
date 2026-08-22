@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-compute_backend.py — ct-samplesize v4.0 计算后端抽象层
+compute_backend.py — ct-samplesize v5.0 计算后端抽象层
 
-架构原则（v4.0.1，来自用户需求）：
-  1. **默认一律优先调用 coze 工作流**（CozeBackend，权威引擎，覆盖全部 test）。
-     未显式指定后端时，coze 可用即走 coze；coze 不可达则报错并提示配置，
-     绝不静默回退到本地计算。
-  2. **本地分析（本地 R / 本地 Python 兜底）仅当用户明确要求时才启用**，
-     三种显式方式：CLI `--local`、环境变量 `CTSS_BACKEND=local-r`（或 r）、
-     或 `CTSS_FORCE_R=1`（坚持用 R 真相源）。
-  3. 本地 R 后端（LocalRBackend）位于 adapters/r-assets/，发布包剔除；仅开发/过渡期或
-     用户显式请求本地时使用，非默认路径。
-  4. R 永远是真相源：用户可经环境变量要求「完全用 R 实现」(CTSS_FORCE_R) 或
-     「返回完整 R 代码 + R 结果」(CTSS_RETURN_R_CODE)。
+架构原则（v5.0.0，2026-08-19 重构）：
+  1. **唯一后端 = coze 工作流**（CozeBackend，权威引擎，覆盖全部 49 种 test）。
+     未配置 coze（且未设 CTSS_COZE_MOCK=1）时直接报错并提示配置，**绝不静默回退**。
+  2. v5 已移除本地计算：本地 R 后端（LocalRBackend，adapters/r-assets/）与
+     本地 Python 兜底均不再参与运行期路由，仅 dev/过渡期维护（发布包剔除）。
+  3. R 永远是真相源：用户可经环境变量要求「返回完整 R 代码 + R 结果」
+     (CTSS_RETURN_R_CODE)。
+  4. `--local` / `CTSS_BACKEND` / `CTSS_FORCE_R` 等旧本地开关在 v5 一律忽略
+     （等价于走 coze），CLI 已移除 --local 参数，避免「本地算」的误解。
 
 向后端统一的契约：
   - 入参：test(str), args(argparse.Namespace), ctx(dict)
         ctx = {
-          "confirmed": bool,        # --yes 显式确认执行（否则安全预览）
+          "confirmed": bool,        # --yes 显式确认执行（否则安全预览；coze 无需 --yes）
           "solve_for_power": bool,  # True=给定 n 求 power；False=给定 power 求 n
           "alt": str,               # "greater" | "two.sided"
           "d_val": float,           # 折算后的效应量（Cohen's d 等）
@@ -40,8 +38,7 @@ if _SKILL_ROOT not in sys.path:
     sys.path.insert(0, _SKILL_ROOT)
 
 
-# ── 本地 Python 兜底覆盖的 test 集合（仅单/两样本优效性基础检验）──
-# 这些 test 在 R 端同样完整实现（保留于 adapters/r-assets/），本地 Python 只是 coze 不可达时的应急。
+# ── 兼容常量（v5 已移除本地 Python 兜底；保留供 dev 引用/文档对齐，不参与路由）──
 PY_FALLBACK_SET = {
     "ttest_ind", "ttest_one", "ttest_paired",
     "proportion_one", "proportion_two",
@@ -117,10 +114,6 @@ def coze_available() -> bool:
     return os.environ.get("CTSS_COZE_MOCK") in ("1", "true", "yes")
 
 
-def _force_r() -> bool:
-    return os.environ.get("CTSS_FORCE_R") in ("1", "true", "yes")
-
-
 def _return_r_code() -> bool:
     return os.environ.get("CTSS_RETURN_R_CODE") in ("1", "true", "yes")
 
@@ -145,6 +138,11 @@ def _load_local_r_backend() -> ComputeBackend:
     r_assets = os.path.join(os.path.dirname(here), "adapters/r-assets")
     if not os.path.isdir(r_assets):
         raise RuntimeError("adapters/r-assets directory not found (published skill has no local R)")
+    # Security note (audit 2026-08-21): the exec_module below loads the **dev-only**
+    # local-R backend from adapters/r-assets/. That directory is excluded from the
+    # published skill (.clawhubignore/.gitignore), so this path is unreachable in the
+    # published package — the isdir guard above raises first. No external input reaches
+    # this loader; it exists solely for local development (legacy backend).
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "local_r_backend", os.path.join(r_assets, "local_r_backend.py"))

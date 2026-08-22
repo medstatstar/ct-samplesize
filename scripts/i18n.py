@@ -164,8 +164,8 @@ _MESSAGES = {
         "zh": "[错误] 未找到 Rscript 或路径无效。是否已安装 R？]",
     },
     "error.test_required": {
-        "en": "--test is required (unless using --install-all-packages)",
-        "zh": "--test 为必选参数（--install-all-packages 除外）",
+        "en": "--test is required.",
+        "zh": "--test 为必选参数",
     },
     "error.generic": {
         "en": "ERROR: {msg}",
@@ -260,12 +260,6 @@ _MESSAGES = {
         "en": "⚠️ [ct-samplesize] needs to send your calculation parameters to an external server for intelligent analysis. Target server: {endpoint}. Content sent: your sample-size parameters (no personal identifying information). Note: most computation relies on the cloud R engine. If you decline, cloud computation will be unavailable. Allow this send? You will not be asked again this session.",
         "zh": "⚠️ [ct-samplesize] 需要把您的计算参数发送到外部服务器进行智能分析：目标服务器：{endpoint} / 发送内容：您的样本量计算参数（不含任何个人身份信息）/ 注意：本技能大部分计算依赖云端 R 引擎；如不同意发送，将无法使用云端计算。是否允许本次发送？确认后本会话内不再重复询问。",
     },
-    "info.local_python_fallback": {
-        "en": "[Local Python fallback — closed-form approximation. "
-              "Set CTSS_FORCE_R=1 or configure coze for the authoritative R result.]",
-        "zh": "[本地 Python 兜底 — 闭式近似解。"
-              "如需权威 R 结果，请设置 CTSS_FORCE_R=1 或配置 coze 端点。]",
-    },
 
     # ── Sequence parsing / 序列解析 ──
     "error.seq_format": {
@@ -281,8 +275,8 @@ _MESSAGES = {
         "zh": "空序列：{spec}",
     },
     "error.coze_unreachable": {
-        "en": "coze endpoint unreachable (neither CTSS_COZE_ENDPOINT nor CTSS_COZE_MOCK=1 set). Production: set CTSS_COZE_ENDPOINT=<service url>; Demo: set CTSS_COZE_MOCK=1. (v5: local R/Python analysis removed — all computation runs server-side via coze.)",
-        "zh": "coze 端点不可达（未配置 CTSS_COZE_ENDPOINT，且未设 CTSS_COZE_MOCK=1）。生产：设置 CTSS_COZE_ENDPOINT=<coze 服务地址>；演示：设置 CTSS_COZE_MOCK=1。注（v5）：本地已不再提供 R/Python 分析能力，所有计算都在 coze 端完成。",
+        "en": "cloud compute service unreachable (neither CTSS_COZE_ENDPOINT nor CTSS_COZE_MOCK=1 set). Production: set CTSS_COZE_ENDPOINT=<service url>; Demo: set CTSS_COZE_MOCK=1. (v5: local R/Python analysis removed — all computation runs server-side via coze.)",
+        "zh": "云端计算服务不可达（未配置 CTSS_COZE_ENDPOINT，且未设 CTSS_COZE_MOCK=1）。生产：设置 CTSS_COZE_ENDPOINT=<云端服务地址>；演示：设置 CTSS_COZE_MOCK=1。注（v5）：本地已不再提供 R/Python 分析能力，所有计算都在云端（coze）完成。",
     },
 
     # ── Python fallback section headers / 纯 Python 备用引擎分节标题 ──

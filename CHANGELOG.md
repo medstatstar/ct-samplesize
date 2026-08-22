@@ -1,12 +1,63 @@
 # Changelog / 版本历史
 
+## v5.1.0 (2026-08-22) · 增加 bug report 功能（ct-base §20.3 接入完成）
+
+- **🔴 发布前检查修正**：`config/config.json` `auto_approve_endpoints` 补齐统一 bug-report 端点 `https://ct-bugreport.coze.site/run`（此前仅含计算端点，违反 §20.3.5——各技能接入须一并加入 bugreport 公共端点）。
+- bugreport 接入点全绿（发布前检查无待确认项）：`adapters/bug_report.py`（内嵌公共 token + `DEFAULT_ENDPOINT` 统一端点 + 历史回执 `confirm_thanks`/`build_followup`）、SKILL.md Bug Reporting 节（双向触发 + 两阶段确认 + 脱敏铁律 + 历史回执）、README 出站披露（§16.6）均已就位。
+- 三道发布闸门：publish_secret_scan（0 P0/0 P1）、shared_sync_check（无漂移）、clawhub_security_audit（仅预已发布技能的既有审计项，无新增阻断）。
+
+## v5.0.5 (2026-08-22) · Bug Report 发送后历史回执约定（ct-base §20.3.7 同步）
+
+- **SKILL.md Bug Reporting 节**：新增 Post-send history回执 bullet——endpoint 返回 `history`，回复由 `confirm_thanks(locale)` + `build_followup(history, locale)` 双语拼接（空 history→结束；`resultstr=="done"`→展示 memo；否则"未修复"）。所有用户提示 `_MSGS` 中英成对、按 `_current_locale()` 自动检测。
+- 同步源：ct-base `docs/07-coze-engine.md` §20.3.7 + `adapters/bug_report.py`（v1.1.58）。
+- 客户端落地（2026-08-22 cont.）：`adapters/bug_report.py` 副本补齐 `confirm_thanks`/`build_followup`/`parse_history` + `_MSGS` thank/done/pending 双语文案 + `send_to_endpoint` 透传 `history`；SKILL.md Trigger 补「主动触发」独立路径（用户显式说 report a bug 直接走两阶段，不受每会话 1 次限制）；docstring「三阶段确认」→「两阶段确认」。
+
+## v5.0.4 (2026-08-21) · bugreport 两阶段确认简化（ct-base §20.3.3 同步）
+
+- **SKILL.md Bug Reporting 节**：Three-stage confirmation（① propose → ② show → ③ send）→ **Two-stage confirmation（① propose-with-preview → ② consent→send）**——提议时连同 `render_report_text` 脱敏报告全文一并给出，用户一次明确确认即发送（用户补充 description 则重渲染再确认）；检视把关从 stage ② 移至 stage ① 预览。ct-base `docs/07-coze-engine.md` §20.3.3 已同步（三阶段→两阶段），`adapters/bug_report.py` 代码零改动（`confirm_prompt` 一次性提议 + `render_report_text` 全文渲染照用）。
+
+## v5.0.3 (2026-08-21) · v5 升级遗漏全面清理（文档/代码一致性）
+
+- **🔴 `--local` 死参数删除（v5 已忽略但 CLI 帮助文本误导）**：`scripts/samplesize_power.py` 移除 `--local` 参数及 `select_backend(test, prefer_local=...)` 调用（v5 `select_backend` 只返回 CozeBackend，旧开关全部忽略）；`--help` 验证零残留。
+- **🔴 头部 docstring 更新为 v5**：`samplesize_power.py`（v4.0.1 → v5.0.2，去掉 LocalPythonBackend 描述）、`compute_backend.py`（v4.0 → v5.0，明确唯一后端 = coze、旧开关忽略）。
+- **🔴 死代码清理**：`compute_backend.py` 删除 `_force_r()`（无调用，CTSS_FORCE_R 在 v5 忽略）；`i18n.py` 删除 `info.local_python_fallback` 死键（无引用）。
+- **🔴 README 双份第 11 行**：仍声称「5 种基础检验的纯 Python 兜底可离线使用」（v5.0.0 升级遗漏）→ 改为「发布版没有本地计算兜底」。
+- **🔴 AGENTS.md 依赖段**：仍声明 `statsmodels==0.14.2/numpy==1.24.3/scipy==1.11.4`（v5 已移除第三方计算依赖）→ 改为「stdlib only」说明。
+- **文档同步**：`references/operation_sop.md`（环境段 + 错误表）、`references/units.md`（U4 adaptive Python fallback → server-side coze + dev legacy）、`references/report_template.md`（Methodological Limits / Path 注释去 Python fallback）、`ADVANCED.md` + `ADVANCED_zh-CN.md`（目录图 v4 → v5：scripts/adapters 实际结构）。
+- **保留（dev-only 合理项）**：`references/adaptive_simulator.md` 的 dev 后端 Python fallback 代码示例（标注 legacy）；`PY_FALLBACK_SET` 常量（兼容注释，不参与路由）。
+- **验证**：全量 py_compile ✓；`--help` 无 `--local` ✓；dry-run 管线正常（coze 信封）✓；全库「Python 兜底/5 种/--local」无残留 ✓；SKILL.md 193 行 ✓。
+
+## v5.0.2 (2026-08-21) · ClawHub 安全审计整改（NVIDIA SkillSpector 25 项发现）
+
+- **🔴 移除废弃本地 R 安装参数（审计 Tp12/Tp3）**：发布集 `scripts/samplesize_power.py` 删除 `--install-all-packages` / `--run-install`（v5 纯 coze 引擎下为死参数；R 包由 coze 镜像预装）。`i18n.py` `error.test_required` 措辞同步（去 "--install-all-packages 除外"）。**注意**：`scripts/i18n_r_messages.json` 的 `install.*` 键保留（dev-only `adapters/r-assets/` 后端仍引用，§16.3 允许独立 R 键文件）。
+- **🔴 权限声明与行为对齐（审计 Tp23）**：SKILL.md frontmatter `network: optional → required`（v5 发布版无本地兜底、必须 coze）；network_note 补 `query_origin`（hostname SHA-256 哈希）+ `locale`（OS 语言）元数据披露。
+- **🔴 SAFE PREVIEW / --yes 语义全库统一（审计 Tp2/Tp10/Tp11/Tp22）**：v5 事实 = coze 下默认 dry-run 展示请求信封，**自然语言触发**（please compute directly / 请直接计算）才发送；`--yes` 仅 legacy local-R dev 后端。统一 8 处：README 双份（Get the actual number / FAQ / Safety 段 / 示例 1 注）、references/{cli_examples, data_format_guide, examples, python_usage, operation_sop, units}.md。
+- **✅ 首次出站口头披露（审计 Tp13/Tp20）**：SKILL.md Safety 段新增 First-use outbound disclosure——公共端点虽预置白名单不弹窗，agent 每会话首次出站仍须一句话说明发送内容。
+- **✅ Triage 路由收紧（审计 Tp17/Tp18/Tp19）**：SKILL.md + AGENTS.md 新增 Routing gate——**仅明确样本量/效能计算意图才触发 coze 出站**；一般咨询/方法论/ICH 指导本地回答不发任何数据。
+- **✅ Critical 误报处置（compute_backend.py:152 exec_module）**：该动态加载仅服务 dev-only `adapters/r-assets/`（已排除发布、isdir 守卫先 raise），发布版不可达——补注释说明，消除静态分析疑虑。
+- **验证**：py_compile ✓；发布集 `run-install/install_all_packages` 零残留 ✓；`--yes` 无矛盾表述 ✓；SKILL.md 193 行（≤200）✓。
+
+## v5.0.1 (2026-08-21) · 错误报告增强：description 问题描述 + 治理动作归属（用户指令）
+
+- **报告可 debug（用户「现在发送的报告内容根本无法协助 debug…需要自然语言描述」）**：报告信封 10 键 → **11 键**，新增 `description`（唯一自由文本字段）协助作者定位。**内容边界（用户追加「需要提供具体用的什么算法或函数，必要时可以提供数值和研究设计内容，反正用户会最后把关」）**：写「现象 / 复现步骤 / 期望 vs 实际 / 所用算法或函数（如 Schoenfeld 公式）/ 错误消息原文」，**必要时可含数值与研究设计**（如 HR=0.75、power=0.85、1:1 分配比）——以能复现为准；**唯一硬边界：不写可识别个人/机构/受试者的身份信息**；由用户三阶段确认②检视把关（用户同意才发送）。`build_report` 新增 `description` 参数；`render_report_text` / `save_local_report` description 独立段落展示；`confirm_prompt` 附加补充描述提示（双语 `desc_hint`，明确可含算法/数值、仅避免身份信息）。
+- **治理动作归属（用户「发布的 ct 技能不需要有清理功能，这个功能是 ct-update 专用的」）**：明确 `get / update / download / delete` 为**治理动作**，仅 `ct-update` 技能（作者侧）调用；本技能 `bug_report.py` 为**客户端只发 `report`**，不实现、不调用治理动作（docstring + SKILL.md Bug Reporting 节 + README 同步）。
+- **端点侧同步（ct-base 镜像，需重新部署 coze）**：`report_store.py` + `validate_node.py` 双 `REPORT_SCHEMA` 加 `description`；SQLite dev 表/INSERT（report_store + report_node 两处）加 `description` 列；coze_contract / AGENTS / README / state.py / main.py 「10 键」→「11 键」+ 治理归属。
+- **兼容性设计（实测发现）**：空/纯空白 `description` 在 `sanitize_report` 省略该键 → 无描述报告仍为 10 键、与线上旧端点完全兼容（实测 send→ok(feishu)）；有描述报告为 11 键，需部署 v2 增量包后端点接受（旧端点实测 `extra keys rejected: description`，已打包 `coze_update_bugreport_v2_description.zip`）。
+- **验证**：py_compile ✓；脱敏（description 透传、白名单仍拒额外键）✓；渲染含 description 段落 ✓；空描述省略键 ✓；端到端（无描述 send→ok(feishu)→get 可见→update/delete 清理）✓；SKILL.md 189 行。
+
 ## v5.0.0 (2026-08-21) · 从本地计算版本升级为云服务器版本
+
+- **错误报告功能接入（ct-base §20.3，2026-08-21）**：复制共享适配器 `ct-base/adapters/bug_report.py` → 本技能 `adapters/bug_report.py`（§16.9 出站目录），直连统一报告端点 `https://ct-bugreport.coze.site/run`（**ct-base 镜像不动，仅客户端调用 coze 工作流**）。改动：① payload 补 `action: "report"`（线上协议）；② **端点 token 为公共凭据（§5）**，XOR+base64 混淆内嵌（`_EMBEDDED_SECRETS` + `_obf_decode` + `get_endpoint_token()`，与 ct-base 镜像同密钥 `ct-bugreport-coze-obf-v1-3c9e` 同 blob）；③ **send_to_endpoint 必须带 `Authorization: Bearer <token>` 头**（2026-08-21 线上实测：coze 平台网关入口校验 Bearer 头，缺头 401）；④ SKILL.md 新增「Bug Reporting」节（§20.3.1 强信号 + 每会话最多提议 1 次 + 三阶段确认 + 脱敏 10 键硬白名单 + 无 coze 调用走本地 md+邮箱兜底）；⑤ 两份 README 出站披露补统一报告端点（§16.6，含"未经确认不发送、可拒绝、本地会话存文件"）。验证：py_compile ✓；单测（脱敏剔除用户键/双语 confirm/render）✓；**端到端实测**（send→ok(feishu)→get 落库可见→清理）✓；SKILL.md 189 行（≤200）。
 
 - **架构升级（v5）**：计算引擎由「本地 Python 兜底 + coze 远程」混合模式，升级为**纯云端 R 计算服务**——49 种检验全部由远程 coze R 引擎权威计算（rpact / gsDesign / TrialSize / PowerTOST 等 20+ 包，服务器端运行），本机**无需安装 R**。
 - **本地计算路径移除**：v4 的本地纯 Python 兜底（5 种基础检验）与本地 R 后端不再参与运行期路由；`ComputeBackend` 唯一后端 = `CozeBackend`（stateless remote compute，SAFE PREVIEW 默认）。
 - **发布包瘦身**：本地 R 运行时 / 模板（`r-assets/`）与 coze 镜像（`adapters/coze/`）不再随技能发布，发布集仅含 Python 编排层 + 文档。
 - **locale 显式参数混合方案**：coze R 引擎支持 `locale` 参数（zh/en），数字与标准标签直接来自内建双语词典（不经生成模型），数值保真与术语一致；本地 CLI 按 OS 检测自动发送。
 - **ct-base §16 发布前检查整改**：SKILL.md 瘦身至 200 行、ignore 文件补 tests/ 与 Coze 接口文档排除、README 补出站端点披露、对话示例与场景索引 49 条实测全过（留痕 `outputs/`）。
+- **🔴 be_tost 曲线模式 bug 修复（用户 bug 报告 D:/be_tost_curve_bug_report.md，2026-08-21）**：
+  - **文档 over-claim 修正**：`ADVANCED.md` / `ADVANCED_zh-CN.md` / `references/cli_examples.md` 三处宣称"曲线模式支持 22 种检验（含 be_tost）"，但 coze 服务端 `run_task.R` 的 `.curve_solvers` 实际仅 8 种（ttest_ind/paired/one、anova、proportion_two/one、survival、equivalence）→ 已统一修正为 **8 种**（与 SKILL.md 一致），其余检验标注"仅单点求解，曲线请求返回明确提示"。实测复现：`be_tost --power_seq` 走 coze 返回 `status: error`。
+  - **be_tost 曲线求解器实现（根治，本地完成待部署）**：`run_task.R` `.curve_solvers` 新增 `be_tost` 条目——正向 `sampleN.TOST(power=pp)`、反向 `power.TOST(n=n)`，等效界值 theta1/theta2 显式优先、`--margin`（>1）兜底 1/m~m、否则 PowerTOST 默认 0.8~1.25（与单点分支同逻辑）。本地 R 4.5.1 + PowerTOST 验证：PARSE_OK；回归1 CV30%/margin=2 → power 0.6–0.85 总 N=6（与单点结案值一致）；回归2 默认界值 0.8→32（与 bug 报告一致）；反向 n→power 正常。⚠️ **需部署 coze 镜像后线上生效**（部署动作待用户确认）。
+  - **🔔 "Sample size 列语义错位"误判澄清**：v4.0.7 条目中"PowerTOST `sampleN.TOST` 的 Sample size 列为每序列数、label.n_total_be 显示总 N 语义错位"的怀疑**不成立**——PowerTOST 返回列即**总样本量**（R 输出标注 `Sample size (total)`）；上一轮 BE 预试验 N 值（CV20%→4/25%→6/30%→6/35%→8/40%→8）经本地 R 逐档验证**全部正确**，无需修正。
 
 ## v4.0.7 (2026-08-20) · 发布前检查对齐 ct-base §16（自 v4.0.4 增量合并记录）
 

@@ -3,7 +3,7 @@ slug: ct-samplesize
 displayName: 临床试验样本量与检验效能专家 / Clinical Trial Sample Size & Power
 name: ct-samplesize
 cn_name: 临床试验样本量与检验效能专家
-version: 5.0.0
+version: 5.1.0
 invocable: true
 required_commands: [python]
 summary: 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，可应要求返回完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
@@ -24,10 +24,10 @@ triggers:
 metadata: { openclaw: { emoji: "📊" }, authors: ["medstatstar", "phoe-zip"], license: "MIT", tags: [clinical-trial, sample-size, power, coze, adaptive-design, bayesian, win-ratio], homepage: "https://github.com/medstatstar/ct-samplesize" }
 permissions:
   scope: "user-space-only"
-  network: "optional"
-  network_note: "Used to POST trial-design parameters to the coze compute endpoint (CTSS_COZE_ENDPOINT). The dev-only R-package install (adapters/r-assets, behind --run-install) also uses network. Default analysis sends only design parameters (no patient data). Outbound authorization gate (ct-base §5): the public endpoint is pre-whitelisted in config/config.json auto_approve_endpoints (never prompts); user-custom endpoints trigger a one-time AUTH-BLOCK user confirmation before any data leaves the machine. Payloads are sanitized (PII stripped) before sending."
+  network: "required"
+  network_note: "v5 requires the remote coze compute endpoint (CTSS_COZE_ENDPOINT, or CTSS_COZE_MOCK=1 for a local demo) — the published skill has no local compute fallback. Only trial-design parameters leave the machine (no patient data); every request also carries a hostname hash `query_origin` (sha256, for server attribution/rate-limit, ct-base §8.6) and the OS-language-derived `locale`. Outbound authorization gate (ct-base §5): the public endpoint is pre-whitelisted in config/config.json auto_approve_endpoints (never prompts, but the assistant states what is sent on first use); user-custom endpoints trigger a one-time AUTH-BLOCK user confirmation before any data leaves the machine. Payloads are sanitized (PII stripped) before sending."
   filesystem: "writes figures to CTSS_OUTPUT_DIR (default ./outputs) and optional curve PNGs; otherwise read-only"
-  data: "no patient/external data leaves the boundary — only trial-design parameters are sent to the coze service"
+  data: "no patient/external data leaves the boundary — only trial-design parameters plus the hostname hash (query_origin) and locale metadata are sent to the coze service"
 
 ---
 
@@ -71,6 +71,8 @@ Before answering, triage the request into **Simple / Middle / Complex / Vague** 
 - **Complex** (pick test type / design family / many params) → show the **routing menu** below (**the `## Quick Menu` is for the Complex branch only**).
 - **Vague** ("not sure which test to use") → **grill-me branch-by-branch probing**, do **not** dump the menu.
 
+**Routing gate (audit follow-up — avoid accidental remote compute):** a **remote coze compute** (data leaves the machine) happens **only** when the user's intent is explicitly a sample-size / power / curve **calculation**. General consulting — "help me figure out my trial design", methodology questions, ICH guidance, "what test should I use" — must be answered **locally without sending anything**, and may use the menu / grill-me flow. Do not fire a coze request on vague or advisory phrasing; ask for the calculation intent first.
+
 ## Quick Menu
 
 > Authoritative layered menu: [`references/menu.md`](references/menu.md) · CLI examples & bidirectional solve: [`references/cli_examples.md`](references/cli_examples.md) · Operation SOP: [`references/operation_sop.md`](references/operation_sop.md).
@@ -107,6 +109,7 @@ Before answering, triage the request into **Simple / Middle / Complex / Vague** 
 
 - **No local R / shell is ever executed.** The published skill never runs R or a shell on your machine. The default engine is the remote **coze** compute service: only trial-design parameters (never patient data) are sent, and results come back as numbers + optional figures — inherently safe (stateless compute, no local code execution).
 - **SAFE PREVIEW is the default for inspection.** `--dry-run` prints the exact request envelope (test, params, mode) that *would* be sent to coze, without sending anything. `--show-code` reveals the coze request JSON (and, on request, the R source coze used). The legacy `--yes` gate applies only to the optional local-R dev backend (`adapters/r-assets/`).
+- **First-use outbound disclosure (audit follow-up):** even though the public coze endpoint is pre-whitelisted (never prompts), the assistant MUST state on first outbound use in a session — in one line: "This will send your trial-design parameters plus a hostname hash (query_origin) and locale to the cloud service https://ct-samplesize.coze.site/run for computation — proceed?" (zh: 本次将把您的试验设计参数连同主机名哈希与系统语言发送至云端服务 https://ct-samplesize.coze.site/run 进行计算，继续吗？). Custom endpoints still trigger the one-time AUTH-BLOCK confirmation.
 - Output for reference only; validate before regulatory submissions.
 
 ### Security model (transparent disclosure)
@@ -139,9 +142,9 @@ This skill is **parameter-driven** (design params via CLI / natural language). W
 - `--side one|two` (default `two`): test direction; affects t-test, proportion tests, and significance level / required n in curve mode.
 - `--sd FLOAT` (optional): treats `--effect` as raw mean difference Δ and auto-computes Cohen's d = Δ / sd; when omitted, `--effect` is Cohen's d directly.
 
-**Curve mode:** `--n_seq "20:20:200"` → Power curve; `--power_seq "0.8,0.9"` → sample-size curve; `--plot_effects` overlays sensitivity curves; base R graphics (no ggplot2). **8 core tests support curves** (`.curve_solvers`: `ttest_ind` `ttest_paired` `ttest_one` `anova` `proportion_one` `proportion_two` `survival` `equivalence`); others return "curve not supported".
+**Curve mode:** `--n_seq "20:20:200"` → Power curve; `--power_seq "0.8,0.9"` → sample-size curve; `--plot_effects` overlays sensitivity curves; base R graphics (no ggplot2). **9 tests support curves** (`.curve_solvers`: `ttest_ind` `ttest_paired` `ttest_one` `anova` `proportion_one` `proportion_two` `survival` `equivalence` `be_tost`); others return "curve not supported".
 
-**R package install (dev only):** `--install-all-packages` prints a notice (R packages run on coze via `adapters/coze/docker/r_packages.txt`); `--run-install` (legacy local-R dev backend) prints `install.packages()` commands. Full list → `references/cli_examples.md` / `references/r_packages.md`.
+**R package management (v5):** all R packages run **server-side on coze** (image pre-installs via `adapters/coze/docker/r_packages.txt`) — the published skill never installs R packages locally, and the legacy local-R install flags (`--install-all-packages` / `--run-install`) were **removed in v5.0.2** (dev-only backend uses `adapters/r-assets/`, not shipped). Full test list → `references/cli_examples.md`.
 
 > **Architecture & security:** orchestration (`scripts/samplesize_power.py`) contains **no R code**; `ComputeBackend` (`scripts/compute_backend.py`) routes to `CozeBackend` (default authoritative, server-side R) — the only backend in v5. All R logic (`ss_*` + `run_task.R`) lives in `adapters/coze/src/r_engine/` (synced to coze; published package excludes `adapters/coze/`). Every user string reaching server-side R is validated against a strict allowlist. History → `CHANGELOG.md`.
 
@@ -169,7 +172,15 @@ Key analytic formulas — e.g. independent t: $n_1 = 2(\frac{Z_{1-\alpha/2} + Z_
 
 | Error | Fix |
 |:---|:---|
-| "coze 端点未配置" / "coze 不可达" | Set `CTSS_COZE_ENDPOINT` (real) or `CTSS_COZE_MOCK=1` (demo); v5 has no local compute route (dev: run the legacy backend from `adapters/r-assets/` directly) |
+| "云端服务未配置" / "云端服务不可达" | Set `CTSS_COZE_ENDPOINT` (real) or `CTSS_COZE_MOCK=1` (demo); v5 has no local compute route (dev: run the legacy backend from `adapters/r-assets/` directly) |
+
+## Bug Reporting (ct-base §20.3, adapter: `adapters/bug_report.py`)
+
+- **Trigger:** two paths — (A) **explicit user request** ("report a bug" / "反馈问题" / "提交错误报告"): go straight to two-stage confirmation, no strong signal needed, unlimited per session; (B) **strong signal** (CLI non-zero exit / engine error / user questions correctness) **and** the same test was retried ≥1 → at most 1 unsolicited proposal/session. Weak signal (just repeated tuning) never triggers.
+- **Two-stage confirmation (2026-08-21, from three-stage):** ① propose-with-preview — give the bilingual `confirm_prompt` **together with** the full report (`render_report_text`, state "sanitized, no input data", invite a problem description; if the user adds a description, re-render and re-show before consent) → ② on explicit consent, `send_to_endpoint` (auto action=report, endpoint `https://ct-bugreport.coze.site/run`, token = embedded §5 public credential). If the user declines, never re-propose this session.
+- **Sanitization is hard:** report contains only the 11-key whitelist (skill/version/test/error_type/error_code/engine_status/**description**/locale/query_origin/session_hash/attempts) — never raw data files or subject records. `description` is the single free-text field for debugging, **user-reviewed disclosure**: write the symptom / reproduction / expected vs actual / **algorithm or function used** (e.g. Schoenfeld formula) / error message; values and study design (HR, power, allocation ratio) are OK if needed to reproduce. The one hard boundary: no identifiable person/institution/subject info. The user reviews it in the stage ① preview before consent; empty description omits the key (old-endpoint compatible). If the session had **no** coze call, use `save_local_report()` (local md + author email, data never leaves the machine).
+- **Client-only:** this adapter sends `report` only. The governance actions (get/update/download/delete — pull pending, mark done, download all, clean up) are reserved for the `ct-update` skill (author side); never call them from here.
+- **Post-send history回执 (2026-08-22):** after a successful send, the endpoint returns `history` (last submission for the same `query_origin`, or `""`). Compose the reply from `confirm_thanks(locale)` + `build_followup(history, locale)` — bilingual, auto-switched by `locale`: empty `history` → end; `history.resultstr == "done"` → also show the fix note from `history.memo`; otherwise show "not yet fixed". All user-facing strings are bilingual via `_MSGS` and `_current_locale()` auto-detection.
 
 ---
 
@@ -180,4 +191,4 @@ Key analytic formulas — e.g. independent t: $n_1 = 2(\frac{Z_{1-\alpha/2} + Z_
 - **Same category (design scope)**: `ct-protocol` / `ct-ecrf` / `ct-eligibility` (D)
 - **Public-intel orchestration (Tier B)**: `ct-pipeline` (dispatches `ct-registry` / `ct-safety` / `ct-literature`)
 
-**Version**: v5.0.0 | **Updated**: 2026-08-21 | **License**: MIT
+**Version**: v5.1.0 | **Updated**: 2026-08-22 | **License**: MIT

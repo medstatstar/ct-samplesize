@@ -119,11 +119,13 @@ python scripts/samplesize_power.py --test ttest_ind --n_seq "20:20:200" --plot_e
 python scripts/samplesize_power.py --test ttest_ind --power_seq "0.6:0.05:0.95" --out n_curve.png
 ```
 
-Supported for 22 test types (ttest_*, anova, proportion_*, odds_ratio, risk_ratio,
-roc, poisson, non_inferiority, superiority_margin, be_tost, survival, ni_survival,
-mams, dunnett, group_sequential, survival_exact, equivalence, vaccine_efficacy).
-Curves reuse the same validated formulas as single-point solving; `group_sequential`
-and `survival_exact` use fixed-design / Schoenfeld approximations (noted in output).
+Supported for 9 core test types (`ttest_ind`, `ttest_paired`, `ttest_one`, `anova`,
+`proportion_one`, `proportion_two`, `survival`, `equivalence`, `be_tost`) — matching
+the R engine's `.curve_solvers`. Curves reuse the same validated formulas as
+single-point solving. All other test types (incl. `odds_ratio`, `risk_ratio`, `roc`,
+`poisson`, `non_inferiority`, `superiority_margin`, `ni_survival`, `vaccine_efficacy`,
+`group_sequential`, `survival_exact`, `mams`, `dunnett`, …) support single-point
+solving only; a curve request returns a clear "curve not supported" notice.
 
 ### 5.4 Core Formulas
 
@@ -189,11 +191,15 @@ ct-samplesize/
 │   ├── icon_4x.png / icon_8x.png
 │   └── ct-samplesize_4x.png / ct-samplesize_8x.png
 ├── scripts/
-│   ├── samplesize_power.py   ← CLI: 49-test calculator + auto R code generation
-│   ├── adaptive_simulator.py ← Pure-Python fallback for --test adaptive_simulate
+│   ├── samplesize_power.py   ← CLI: 49-test calculator (coze backend; v5, stdlib only)
+│   ├── compute_backend.py    ← Backend abstraction: CozeBackend (unique, no local fallback)
 │   ├── i18n.py               ← EN/ZH switch helper (copied from ct-base)
-│   ├── r_libs.py             ← R invocation / allowlist validation / sanitize (from ct-base)
-│   └── r_templates/          ← Pre-written R functions (ss_*) per test family
+│   └── office_to_md.py       ← User-uploaded docx/pptx → md (ct-base §6.7)
+├── adapters/
+│   ├── coze_client.py        ← Outbound coze compute client (trial-design params only)
+│   ├── coze_token_embedded.py← Public credential store (XOR+base64, §5)
+│   ├── bug_report.py         ← Skill bug-report client (11-key envelope, §20.3)
+│   └── rendering.py          ← Figure rendering pipeline (SVG inline / PNG fallback)
 └── references/
     ├── language_policy.md    ← Bilingual policy (copied from ct-base)
     ├── report_template.md    ← Report skeleton (copied from ct-base)

@@ -1,7 +1,7 @@
 # Command-Line Examples
 
 > This file collects all common CLI examples for `scripts/samplesize_power.py`, referenced by `SKILL.md`.
-> By default the skill runs in SAFE PREVIEW: generated R/Python code is shown but NOT executed. Pass `--yes`/`-y` to actually execute and compute; `--show-code` displays the code (no execution); `--dry-run` is the default preview mode (code shown, not run).
+> By default the skill runs in SAFE PREVIEW: the exact coze request envelope is shown but NOT sent/computed. On the coze engine the natural-language trigger ("please compute directly" / 请直接计算) fires the compute — **no `--yes` needed**; the legacy `--yes`/`-y` flag applies only to the optional local-R dev backend (`adapters/r-assets/`). `--show-code` displays the coze request JSON (no send); `--dry-run` is the default preview mode (envelope shown, not sent).
 > Sequences support two formats: comma list `"20,40,200"` or auto-generated `"20:20:200"` (start:step:stop).
 
 ---
@@ -85,8 +85,8 @@
 | `--power_seq "0.6:0.05:0.95"` | Power sequence → sample-size curve (x=power, y=n) |
 | `--plot_effects "0.3,0.5,0.8"` | Overlay multiple effect-size curves (sensitivity; some types) |
 | `--out path.png` | Curve PNG output path (default: system temp) |
-| `-y/--yes` | Explicitly execute R code and compute the result (default is SAFE PREVIEW, no execution) |
-| `--dry-run` | Show generated R code only, no execution (safe preview) |
+| `-y/--yes` | Explicitly execute R code and compute (legacy local-R dev backend only; coze engine needs no `--yes` — the natural-language trigger fires the compute) |
+| `--dry-run` | Show the exact coze request envelope only, nothing sent (safe preview, default) |
 
 ---
 
@@ -185,18 +185,19 @@ python scripts/samplesize_power.py --test ttest_ind --n_seq "20:20:200" --plot_e
 python scripts/samplesize_power.py --test ttest_ind --power_seq "0.6:0.05:0.95" --out n_curve.png
 ```
 
-**Curve mode supports 22 test types:** ttest_ind, ttest_paired, ttest_one, anova, proportion_one, proportion_two, proportion_paired, odds_ratio, risk_ratio, roc, poisson, non_inferiority, superiority_margin, be_tost, survival, ni_survival, mams, dunnett, group_sequential, survival_exact, equivalence, vaccine_efficacy.
+**Curve mode supports 9 core test types:** ttest_ind, ttest_paired, ttest_one, anova, proportion_one, proportion_two, survival, equivalence, be_tost.
 
-Curve mode reuses the same validated formulas as single-point solving (pwr, PowerTOST, analytic inverse) — numerically identical; `group_sequential`, `survival_exact` use fixed-design Schoenfeld approximation (noted in plot).
+Curve mode reuses the same validated formulas as single-point solving (pwr, PowerTOST, analytic inverse) — numerically identical.
 
-Other types (mixed_model, bayesian, win_ratio, must_win, historical_controls, assurance, conditional_power, adaptive, dose_escalation, bland_altman, cluster) are not yet covered by curve mode and print a clear notice at runtime.
+All other test types (incl. odds_ratio, risk_ratio, roc, poisson, non_inferiority, superiority_margin, ni_survival, vaccine_efficacy, group_sequential, survival_exact, mams, dunnett, mixed_model, bayesian, win_ratio, …) support single-point solving only; a curve request returns a clear "curve not supported" notice at runtime.
 
 ---
 
 ## R Package Install
 
-- **Install on demand:** when the skill prints `Warning: 'xxx' package not found.`, run `install.packages("xxx")`.
-- **One-click install:** `python scripts/samplesize_power.py --install-all-packages`
+> v5: R packages run **server-side on coze** — the published skill never installs R locally. The legacy CLI flags (`--install-all-packages` / `--run-install`) were **removed in v5.0.2**. The notes below apply only to the optional local-R dev backend (`adapters/r-assets/`, not shipped).
+
+- **Install on demand (dev backend):** when the skill prints `Warning: 'xxx' package not found.`, run `install.packages("xxx")`.
 - **No R package needed:** `poisson`, `cluster`, `bland_altman`, `survival` (Schoenfeld only), `vaccine_efficacy`, `bayesian`, `dose_escalation` etc.
 
 Full R package list: `references/r_packages.md`.
