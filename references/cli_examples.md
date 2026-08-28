@@ -84,6 +84,10 @@
 | `--n_seq "20:20:200"` | Sample-size sequence → Power curve (x=n, y=power) |
 | `--power_seq "0.6:0.05:0.95"` | Power sequence → sample-size curve (x=power, y=n) |
 | `--plot_effects "0.3,0.5,0.8"` | Overlay multiple effect-size curves (sensitivity; some types) |
+| `--effect_seq "0.1:0.05:0.9"` | **Effect-size as continuous X axis** → effect-axis curve; y = Power with `--nobs`/`--n_seq`, y = sample size (n) with `--power_seq`. Supported by the 9 curve tests (ttest×3 / anova / proportion×2 / survival / equivalence / be_tost). |
+| `--dist_plot` | **① H0/H1 distribution-overlap plot**: standardized-effect space, two normal densities, α/β regions shaded. Supported: `ttest_ind` `ttest_paired` `ttest_one` `proportion_two` `proportion_one` `survival`. |
+| `--power_time_seq "1:0.5:4"` | **③ Survival follow-up–power curve (survival only)**: x = study duration, y = power; needs `--event_rate` (per-unit hazard) + `--accrual_time` in the same time unit. Marks time-to-target-power. |
+| `--heatmap` | **④ Power heatmap**: needs `--n_seq` (sample size) × `--effect_seq` (effect size); fills power over the 2-D grid. Supported by the 9 curve tests. |
 | `--out path.png` | Curve PNG output path (default: system temp) |
 | `-y/--yes` | Explicitly execute R code and compute (legacy local-R dev backend only; coze engine needs no `--yes` — the natural-language trigger fires the compute) |
 | `--dry-run` | Show the exact coze request envelope only, nothing sent (safe preview, default) |
@@ -183,6 +187,23 @@ python scripts/samplesize_power.py --test ttest_ind --n_seq "20:20:200" --plot_e
 
 # Sample-size curve: power = 0.6,0.65,...,0.95
 python scripts/samplesize_power.py --test ttest_ind --power_seq "0.6:0.05:0.95" --out n_curve.png
+
+# Effect-axis curve (Power vs Cohen's d, fixed n=100): x = effect size, y = power
+python scripts/samplesize_power.py --test ttest_ind --effect_seq "0.1:0.05:0.9" --nobs 100 --out effect_power_curve.png
+
+# Effect-axis curve (required n vs Hazard ratio, fixed target power=0.8): x = HR, y = events
+python scripts/samplesize_power.py --test survival --effect_seq "0.5:0.05:0.9" --power_seq "0.8" --out effect_n_curve.png
+
+# ① Distribution-overlap plot (ttest_ind, d=0.5, n=100): shades α/β regions
+python scripts/samplesize_power.py --test ttest_ind --nobs 100 --effect 0.5 --dist_plot --out dist_overlap.png
+
+# ③ Survival follow-up–power curve: x = years, y = power; event_rate=0.1/yr, accrual=1yr
+python scripts/samplesize_power.py --test survival --nobs 200 --hazard_ratio 0.7 \
+    --event_rate 0.1 --accrual_time 1 --power_time_seq "1:0.5:4" --out surv_power_time.png
+
+# ④ Power heatmap: n_seq (sample size) × effect_seq (Cohen's d), fill = power
+python scripts/samplesize_power.py --test ttest_ind --heatmap \
+    --n_seq "30:30:150" --effect_seq "0.2:0.2:1.0" --out power_heatmap.png
 ```
 
 **Curve mode supports 9 core test types:** ttest_ind, ttest_paired, ttest_one, anova, proportion_one, proportion_two, survival, equivalence, be_tost.

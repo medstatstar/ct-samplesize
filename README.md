@@ -1,6 +1,6 @@
 # Clinical Trial Sample Size & Power (ct-samplesize)
 
-[🇨🇳 中文 (Chinese)](./README_zh-CN.md) | [🇺🇸 English (Current)](#)
+- **English guide** → [README.md](https://github.com/medstatstar/ct-samplesize/blob/main/README.md) · **中文指南** → [README_zh-CN.md](https://github.com/medstatstar/ct-samplesize/blob/main/README_zh-CN.md)
 
 <div align="center">
   <img src="assets/icon.svg" alt="ct-samplesize logo" width="240" height="240">
@@ -14,13 +14,13 @@
 
 ## Who This Is For
 
-ct-samplesize is built for anyone who needs **defensible sample-size / power numbers** across **49 clinical-trial designs** without hand-rolling R:
+The `ct-*` clinical-trial skill family covers the whole clinical-trial lifecycle. ct-samplesize targets three groups who need **defensible sample-size / power numbers across 49 designs**:
 
-- **Clinical trial statisticians & biostatisticians** who need quick, auditable n / power for protocols, SAPs, or feasibility.
-- **Investigators / PIs and trial designers** drafting protocols or feasibility assessments.
-- **Medical / regulatory affairs and publication authors** who need reproducible R code for submissions or audit trails.
-- **Students and methodologists** exploring design families (group-sequential, adaptive, Bayesian, non-inferiority…).
-- **Not for**: anyone needing **patient-level data analysis** — this tool only takes aggregate design parameters, never subject data.
+- **Clinical-trial practitioners at pharmaceutical companies** — sponsors, CROs, and medical / statistical / regulatory roles: quick, auditable n / power for protocols, SAPs, feasibility.
+- **Clinicians and nurses who design or run trials**: estimate sample size when drafting protocols or feasibility assessments.
+- **Medical students who want to learn clinical-trial methodology**: exploring design families (group-sequential, adaptive, Bayesian, non-inferiority…).
+
+This tool only takes aggregate design parameters — never patient-level data.
 
 ---
 
@@ -28,9 +28,30 @@ ct-samplesize is built for anyone who needs **defensible sample-size / power num
 
 ct-samplesize is a **conversational skill**: you simply tell the assistant your trial design in natural language — no commands, no parameter names to remember. As a WorkBuddy skill it **auto-loads with no extra installation**.
 
-Below are 7 real conversational examples ordered from simple to advanced. Each gives **"You say"** (a copy-ready natural-language input) plus a hint on how to get the actual number; examples 1, 2, 6, and 7 additionally show a sketch of **"The assistant replies"**.
+Below are 6 real conversational examples ordered by common entry point — from "not sure which test" to specific designs. Each gives **"You say"** (a copy-ready natural-language input), a sketch of **"The assistant replies"**, plus how to get the actual number.
 
-### Example 1 · Two-means comparison (most common)
+### Example 1 · Not sure which test (most common opening)
+**You say:**
+> I want a sample-size calculation but I'm not sure which test to use — help me figure it out
+
+**Assistant replies (sketch):**
+> Sure — let's pin down your trial design first. I'll ask 1–3 focused questions per round, each with a recommended default — confirm or adjust.
+>
+> **Round 1 (2 questions):**
+> 1. What type is your **primary endpoint**? — continuous (e.g. BP difference) / binary (e.g. response rate) / time-to-event (e.g. OS) / other?
+> 2. Is it **parallel-group** or **crossover/paired**? (most designs are parallel — default to that unless you say otherwise)
+>
+> *(You answer…)*
+>
+> **Round 2 (2 questions):**
+> 3. What do you want to show — **superiority**, **non-inferiority**, or **equivalence**?
+> 4. If the endpoint is binary/rate, the **effect expression** is the key fork: **absolute risk difference** (control 60% vs treatment 75%, a 15pp gap → `proportion_two`) or **OR / RR** as the primary effect (OR=2.0 → `odds_ratio`, RR=1.5 → `risk_ratio`)? The sample-size formulas differ substantially; an OR usually needs more subjects.
+>
+> *(Once the test and effect expression are locked, I'll echo a **needs portrait + recommended test + missing params** summary for your confirmation, then compute — no 49-test menu dumped on you in the meantime.)*
+
+**📌 Note:** When you say "not sure which test", the assistant uses **branch-by-branch probing** to clarify your needs, instead of dumping the 49-test menu. Once clarified, it moves to computation.
+
+### Example 2 · Two-means comparison (most common)
 **You say:**
 > Calculate sample size for two independent means, effect size d=0.5, power 80%, two-sided α=0.05
 
@@ -42,24 +63,34 @@ Below are 7 real conversational examples ordered from simple to advanced. Each g
 
 **📌 Get the actual number:** By default the skill shows a **SAFE PREVIEW** — the exact coze request envelope, nothing sent or computed. Say **"please compute directly"** and the assistant will really run it and give the number (on the default coze stateless engine this natural-language trigger is what fires the compute; **no `--yes` needed** — the legacy `--yes` flag applies only to the optional local-R dev backend, see Section 4, "Safe Preview").
 
-### Example 2 · Two-group proportion
+### Example 3 · Two-group proportion
 **You say:**
 > Control response 20%, treatment 35%, two-group proportion chi-square, α=0.05 two-sided, power=0.8
 
 **Assistant replies (sketch):**
 > Two-group proportion comparison (control 20% vs treatment 35%, χ², α=0.05 two-sided, power=0.8): you need about **137 per group** (274 total). A **sample-size curve** is auto-attached; ask for a power-vs-n curve at any fixed n if needed.
 
-### Example 3 · Survival endpoint with interim
+**📌 Get the actual number:** By default the skill shows a **SAFE PREVIEW** — the exact coze request envelope, nothing sent or computed. Say **"please compute directly"** and the assistant will really run it and give the number (on the default coze stateless engine this natural-language trigger is what fires the compute; **no `--yes` needed**).
+
+### Example 4 · Survival endpoint with interim
 **You say:**
 > Design a survival trial with 1 interim analysis, HR=0.75, 1:1 randomization, power 80%, and **plot the power curve** (n vs power)
 
-### Example 4 · Non-inferiority
+**Assistant replies (sketch):**
+> Parsed: time-to-event endpoint, HR=0.75, 1:1 randomization, power 80%, 1 interim analysis (group-sequential / interim framework by default).
+> By default the skill shows a **SAFE PREVIEW** — the exact coze request envelope (test, params, mode) is displayed, nothing sent or computed.
+> Say "please compute directly" to trigger the real calculation: it returns the required sample size (events d and total n) and auto-attaches your requested **power curve** (power vs n, SVG inline & editable).
+
+**📌 Get the actual number:** SAFE PREVIEW by default (exact envelope shown, nothing sent or computed). Say "please compute directly" to really run it and get the number + curve inline (stateless remote engine, no `--yes` needed).
+
+### Example 5 · Non-inferiority / Bioequivalence (curve mode)
 **You say:**
 > Non-inferiority design, margin=0.1, control rate 85%, treatment 80%, power 80%, and **draw the sample-size curve** (n vs target power)
 
-### Example 5 · Bioequivalence (BE)
-**You say:**
-> Bioequivalence sample size, theta0=0.95, CV=25%, 2x2 crossover, and **plot the sample-size curve**
+**Assistant replies (sketch):**
+> Parsed as non-inferiority (margin=0.1, control 85% vs treatment 80%, power 80%). By default SAFE PREVIEW; say "please compute directly" to get the per-group n and an auto-attached **sample-size curve** (n vs target power, SVG inline). Bioequivalence (BE) is the same pattern: theta0=0.95, CV=25%, 2×2 crossover also auto-attaches a sample-size curve.
+
+**📌 Get the actual number:** SAFE PREVIEW by default (exact envelope shown, nothing sent or computed). Say "please compute directly" to run it and get the number + curve inline.
 
 ### Example 6 · Test selection / design-family choice (popup menu)
 **You say:**
@@ -76,25 +107,11 @@ Below are 7 real conversational examples ordered from simple to advanced. Each g
 > - (a) No, fixed sample size → plain t-test
 > - (b) Yes, 1–2 interims with early stopping → `group_sequential` family
 >
-> **③ Can't decide?** → Say "explain the differences between these choices in detail" and the assistant will first walk through the clinical and statistical meaning of superiority vs non-inferiority and with/without interim, then let you decide.
+> **③ Can't decide?** → Say "explain the differences between these choices in detail" and I'll clarify the clinical/statistical meaning before you choose.
 >
 > Pick your preferences for ①–②, or choose ③ to hear the explanation, and I'll lock the test and move to parameter completion / computation.
 
 **📌 Note:** When you've **named the test type but are stuck on "which option / design family"** (e.g. superiority vs non-inferiority, with/without interim), the assistant **pops a routing menu** to confirm step by step — instead of deciding for you or dumping the full 49-test menu. The menu also offers an "explain the differences" option — when you're unsure, it explains before you decide. The full classification tree is in [`references/menu.md`](references/menu.md).
-
-### Example 7 · Not sure which test (vague request)
-**You say:**
-> I want a sample-size calculation but I'm not sure which test to use — help me figure it out
-
-**Assistant replies (sketch):**
-> Sure — let's pin down your trial design first; a few key questions will locate the right test:
-> 1. What type is your **primary endpoint**? — continuous (e.g. BP difference) / binary (e.g. response rate) / time-to-event (e.g. OS) / other?
-> 2. Is it a **parallel-group** or **crossover/paired** design?
-> 3. Do you want to show **superiority**, **non-inferiority**, or **equivalence**?
->
-> (After you answer, the assistant keeps probing until the test is locked, then computes — no 49-test menu dumped on you in the meantime.)
-
-**📌 Note:** When you say "not sure which test", the assistant uses **branch-by-branch probing** to clarify your needs, instead of dumping the 49-test menu. Once clarified, it moves to computation.
 
 > 💡 **Tip:** Most tests need only three things — effect size (or rate / HR) + power + α. Anything you omit (e.g. two-sided α=0.05, 1:1 randomization, follow-up) is filled with sensible defaults. It's fine to be incomplete — the assistant will tell you what's missing.
 
@@ -201,6 +218,15 @@ A: Yes. By default the output language follows your OS language setting — Chin
 **Q: What if my data must stay confidential?**
 A: Use the same design framework but **replace the raw data** (e.g. run through the flow with placeholder values), ask the skill to output the full R code, then run that code yourself locally with your real data — the skill only ever sends design parameters and never touches your raw data.
 
+**Q: What if I found an error in the result — how do I report it?**
+A: This skill follows the ct-base §20.3 bug-report workflow. If you suspect the result is wrong (or the engine errored), just say **"report a bug" / "上报问题" / "提交错误报告"**. The skill also **proactively asks** whether to report when it detects a likely defect (e.g. the engine errors or retries still fail) — at most **once per session**, and you can always decline. Either way, the assistant will:
+1. **Propose a sanitized report** (11-field whitelist: skill / skill_version / test / error_type / error_code / engine_status / description / locale / query_origin / session_hash / attempts — **no raw input values or personal data**, except the `description` field where you decide what to disclose, e.g. the algorithm/function used and the error message);
+2. **Show the full report text for your review** — you can add a problem description or correct anything before confirming;
+3. **Send after your explicit confirmation** — to the unified endpoint `https://ct-bugreport.coze.site/run` (if this session called coze) or saved locally + emailed to the author (if purely local, data never leaves your machine);
+4. **Receive an acknowledgment** — including whether a previously submitted report from your source has already been fixed (with the fix note) or is still pending.
+
+You stay in full control: the report is shown to you **before** anything is sent, and nothing is transmitted without your explicit "send" confirmation.
+
 ---
 
 ## 4. Safety & Disclaimer
@@ -227,10 +253,10 @@ For feature requests, bug reports, or other feedback, please contact the author 
 
 ## Confidentiality Notice
 
-> The CT series consists of 20+ specialized domain skills organized into **two tiers — A and B** by confidentiality, providing full coverage of the entire new-drug clinical trial (Clinical Trial) lifecycle.
+> The CT series consists of 20+ specialized domain skills, organized into **two tiers — A, B** — by "confidential-data-exfiltration risk + whether external retrieval is needed", providing full coverage of the entire new-drug clinical trial (Clinical Trial) lifecycle.
 >
-> - **Tier A (non-confidential, public)**: involves no confidential information and is published openly on GitHub (this skill, ct-samplesize, is Tier A).
-> - **Tier B (confidential, internal)**: involves strictly confidential clinical-trial data and internal information from pharma sponsors (e.g., ct-analysis, ct-sdtm); designated for internal enterprise use only and not publicly released at present.
+> - **Tier A (non-confidential, public)**: ordinary data only; runs fully locally (`network=off`) or uses public retrieval (`network=public-retrieval`, e.g. ct-registry / ct-advisor) — no confidential information. Tier A skills are published openly on GitHub.
+> - **Tier B (confidential, internal)**: involve strictly confidential clinical-trial data and internal information from pharma sponsors (e.g., ct-analysis, ct-sdtm, ct-eligibility); processed locally (`egress=none`, data never leaves the boundary) or require approval for egress (`egress=approval-req`, e.g. ct-eligibility). Tier B skills are designated for internal enterprise use only and are not publicly released at present.
 >
 > If you do have a genuine need for these confidential skills, please contact the author to request custom installation.
 >

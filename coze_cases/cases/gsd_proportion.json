@@ -1,0 +1,34 @@
+{
+  "id": "gsd_proportion",
+  "test": "gsd_proportion",
+  "desc": "成组序贯两比例求n",
+  "cli": [
+    "--test",
+    "gsd_proportion",
+    "--p1",
+    "0.7",
+    "--p2",
+    "0.5",
+    "--gs_proportion_metric",
+    "difference",
+    "--spending_func",
+    "OF",
+    "--n_interim",
+    "1",
+    "--power",
+    "0.8"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "p1",
+      "p2",
+      "gs_proportion_metric",
+      "spending_func",
+      "n_interim"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "be_tost",
+  "test": "be_tost",
+  "desc": "生物等效TOST求n",
+  "cli": [
+    "--test",
+    "be_tost",
+    "--theta0",
+    "0.95",
+    "--cv",
+    "0.25",
+    "--design",
+    "2x2",
+    "--power",
+    "0.8"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "theta0",
+      "cv",
+      "design"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

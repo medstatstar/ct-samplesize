@@ -1,0 +1,25 @@
+{
+  "id": "bayesian",
+  "test": "bayesian",
+  "desc": "贝叶斯先验 informed 求n",
+  "cli": [
+    "--test",
+    "bayesian",
+    "--prob_control",
+    "0.3",
+    "--prob_treatment",
+    "0.15",
+    "--power",
+    "0.8"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "prob_control",
+      "prob_treatment"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

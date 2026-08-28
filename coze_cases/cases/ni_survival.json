@@ -1,0 +1,30 @@
+{
+  "id": "ni_survival",
+  "test": "ni_survival",
+  "desc": "非劣效生存（NL派生）",
+  "nl": "非劣效生存试验，NI界值1.25，期望HR=1.0，入组12月随访12月",
+  "cli": [
+    "--test",
+    "ni_survival",
+    "--ni_margin_surv",
+    "1.25",
+    "--hr_expected",
+    "1.0",
+    "--accrual_time",
+    "12",
+    "--followup_time",
+    "12"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "ni_margin_surv",
+      "hr_expected",
+      "accrual_time",
+      "followup_time"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

@@ -37,6 +37,18 @@ import argparse, sys, os, io, tempfile, re, json, time
 from i18n import t
 from compute_backend import select_backend, Result, Figure
 
+# ── E1/E2: 本地确定性 NL 路由 + 参数别名解析（零 LLM，仅作 coze LLM 之前的快速预路由）──
+# 同目录 import（脚本可直接运行，也兼容从其他 cwd 经 subprocess 调用）
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+try:
+    from classify_test import classify as _nl_classify
+    from param_aliases import extract_parameters as _nl_extract
+    _NL_AVAILABLE = True
+except Exception:  # pragma: no cover — 缺模块时降级为「无 --nl 能力」
+    _NL_AVAILABLE = False
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # 图形产物落盘与展示（coze 可能回传 SVG / HTML / PNG）
@@ -84,6 +96,38 @@ def _outputs_dir() -> str:
     d = os.environ.get("CTSS_OUTPUT_DIR") or os.path.join(os.getcwd(), "outputs")
     os.makedirs(d, exist_ok=True)
     return d
+
+
+#: 契约缺失时的默认出图集合（与 v5.3.1 硬编码一致；契约就绪后由 _auto_curve_tests 取代）
+_FALLBACK_AUTO_CURVE_TESTS = frozenset({
+    "ttest_ind", "ttest_paired", "ttest_one",
+    "proportion_one", "proportion_two",
+})
+_AUTO_CURVE_TESTS_CACHE = None
+
+
+def _auto_curve_tests() -> frozenset:
+    """从 coze_cases/_contract_index.json 读取 default_curve=true 的 test 集合。
+
+    单一真相源（v5.3.2）：每种检验方法「默认是否自动出曲线」由契约的
+    default_curve 字段分别配置（改契约即改默认出图，无需改代码）；
+    契约缺失 / 未登记字段时回退硬编码集合（与前版本行为一致）。
+    """
+    global _AUTO_CURVE_TESTS_CACHE
+    if _AUTO_CURVE_TESTS_CACHE is not None:
+        return _AUTO_CURVE_TESTS_CACHE
+    try:
+        idx_path = (Path(__file__).resolve().parent.parent
+                    / "coze_cases" / "_contract_index.json")
+        data = json.loads(Path(idx_path).read_text(encoding="utf-8"))
+        s = frozenset(
+            t["test"] for t in data.get("tests", [])
+            if t.get("default_curve") is True
+        )
+        _AUTO_CURVE_TESTS_CACHE = s or _FALLBACK_AUTO_CURVE_TESTS
+    except Exception:  # noqa: BLE001 - 契约缺失时回退硬编码
+        _AUTO_CURVE_TESTS_CACHE = _FALLBACK_AUTO_CURVE_TESTS
+    return _AUTO_CURVE_TESTS_CACHE
 
 
 def _resolve_figure_mode(explicit=None) -> str:
@@ -137,7 +181,11 @@ def render_figures(figures, test: str, figure_mode=None):
             svg_figs.append({"svg": content, "type": fig.caption or "ct-samplesize 图"})
             _svg_paths.append(path)
             _svg_kb += len(content.encode("utf-8")) / 1024.0
-        print('__FIGURE__ %s %s caption="%s"' % (fmt, path, (fig.caption or "").replace('"', "'")))
+        # 2026-08-28 设计修订（用户定）：对话流不展示单张图形，仅 HTML 报告全量展示。
+        # __FIGURE__ svg/png（会触发宿主内联展示）默认关闭，仅保留落盘供归档/下载；
+        # 宿主如需逐图内联展示，设 CTSS_INLINE_WIDGET=1 恢复。
+        if os.environ.get("CTSS_INLINE_WIDGET") == "1":
+            print('__FIGURE__ %s %s caption="%s"' % (fmt, path, (fig.caption or "").replace('"', "'")))
     # ct-base §19：SVG 内联渲染（复用统一 adapters/rendering.py 管线）
     if svg_figs:
         try:
@@ -154,23 +202,24 @@ def render_figures(figures, test: str, figure_mode=None):
                     try:
                         png_path = os.path.join(outdir, "ctss_%s_%d.png" % (test, j))
                         svg_to_png(f["svg"], png_path, scale=2.0)
-                        print('__FIGURE__ png %s caption="%s"' % (png_path, (f.get("type") or "").replace('"', "'")))
+                        if os.environ.get("CTSS_INLINE_WIDGET") == "1":
+                            print('__FIGURE__ png %s caption="%s"' % (png_path, (f.get("type") or "").replace('"', "'")))
                     except Exception as e:  # noqa: BLE001 - cairosvg 缺失/失败 → 优雅降级
                         print("# png_file 转换失败，降级 svg_inline: %s" % e)
                         mode = "svg_inline"
                         break
             if mode == "svg_inline":
-                titles = [f.get("type") or "图 %d" % (j + 1) for j, f in enumerate(svg_figs)]
-                html = build_figure_widget(svg_figs, titles)
-                print("__SVG_WIDGET__ " + html)
-                # SVG 无法内联预览时的降级指引（2026-08-20 用户反馈修订：双语——中文用户 + 英文研究者）
+                # 2026-08-28 设计修订（用户定）：对话流不再内联 SVG 图形，
+                # 图形展示完全交给 render_html_report 全量输出（HTML 报告）。
+                # 这里只落盘 SVG 源文件 + __FIGURE__ svg 标记供下载/归档；
+                # 若宿主仍需对话流内联，可设 CTSS_INLINE_WIDGET=1 恢复 __SVG_WIDGET__。
+                if os.environ.get("CTSS_INLINE_WIDGET") == "1":
+                    titles = [f.get("type") or "图 %d" % (j + 1) for j, f in enumerate(svg_figs)]
+                    html = build_figure_widget(svg_figs, titles)
+                    print("__SVG_WIDGET__ " + html)
+                # SVG 源文件供下载（用户在对话流仅看到报告入口，文件在此持久化）
                 if _svg_paths:
-                    print("# 若界面无法直接预览内联 SVG：请在回复中用自然语言提示词引导用户切换图片格式"
-                          "（中文用户：『图形无法预览，请改用 PNG 图片格式重新出图』/『把图转成 PNG 文件』；"
-                          "English users: \"The figure can't be previewed, please re-render it as a PNG "
-                          "image\" / \"Convert the figure to PNG\"）。技能将自动以 PNG 位图重新输出"
-                          "（等价 --figure-mode png_file，本地 cairosvg 转换）。"
-                          "SVG 源文件可直接打开查看: %s" % ", ".join(_svg_paths))
+                    print("# SVG 图形已落盘（全量展示见 HTML 报告）: %s" % ", ".join(_svg_paths))
         except Exception as e:  # noqa: BLE001 - 渲染失败不阻断主流程
             print("# __SVG_WIDGET__ 生成失败: %s" % e)
 
@@ -318,7 +367,9 @@ def render_curve_fallback(meta: dict, test: str, target_power: float = None):
     path = os.path.join(outdir, "ctss_%s_curve.svg" % test)
     with io.open(path, "w", encoding="utf-8") as f:
         f.write(svg)
-    print('__FIGURE__ svg %s caption="Curve %s"' % (path, test))
+    # 2026-08-28 设计修订（用户定）：对话流不内联图形，仅 HTML 报告全量展示。
+    if os.environ.get("CTSS_INLINE_WIDGET") == "1":
+        print('__FIGURE__ svg %s caption="Curve %s"' % (path, test))
     try:
         _skill_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         _adapters_dir = os.path.join(_skill_root, "adapters")
@@ -328,14 +379,11 @@ def render_curve_fallback(meta: dict, test: str, target_power: float = None):
         from rendering import build_figure_widget  # type: ignore  # adapters/rendering.py
         html = build_figure_widget([{"svg": svg, "type": "Curve %s" % test}],
                                    ["Curve %s" % test])
-        print("__SVG_WIDGET__ " + html)
-        # SVG 无法内联预览时的降级指引（2026-08-20 用户反馈修订：双语——中文用户 + 英文研究者）
-        print("# 若界面无法直接预览内联 SVG：请在回复中用自然语言提示词引导用户切换图片格式"
-              "（中文用户：『图形无法预览，请改用 PNG 图片格式重新出图』/『把图转成 PNG 文件』；"
-              "English users: \"The figure can't be previewed, please re-render it as a PNG "
-              "image\" / \"Convert the figure to PNG\"）。技能将自动以 PNG 位图重新输出"
-              "（等价 --figure-mode png_file，本地 cairosvg 转换）。"
-              "SVG 源文件可直接打开查看: %s" % path)
+        if os.environ.get("CTSS_INLINE_WIDGET") == "1":
+            print("__SVG_WIDGET__ " + html)
+        # 2026-08-28 设计修订：图形展示走 HTML 报告（render_html_report 全量），
+        # 此处仅提示落盘 SVG 源文件供下载。
+        print("# 图形 SVG 已落盘（全量展示见 HTML 报告）: %s" % path)
     except Exception as e:  # noqa: BLE001
         print("# __SVG_WIDGET__ 生成失败: %s" % e)
 
@@ -355,6 +403,10 @@ def build_parser():
                  "survival_one_sample","competing_risks","recurrent_events",
                  "survival_historical",
                  "adaptive_simulate"])
+    p.add_argument("--nl", default=None,
+                   help="自然语言需求（零 LLM 本地确定性解析：自动识别 --test 并提取参数）。"
+                        "例：'非劣效生存试验，NI界值1.25，期望HR=1.0，入组12月随访12月'。"
+                        "本地仅做快速预路由；置信度低或参数不全时仍会交由 coze LLM 补全（不静默错参）。")
     p.add_argument("--yes", "-y", action="store_true",
                    help="显式确认执行 R 代码（默认 dry-run 安全预览，仅展示代码、不执行）")
     p.add_argument("--dry-run", action="store_true",
@@ -591,6 +643,18 @@ def build_parser():
                    help="效能序列: 显式 '0.6,0.7,0.95' 或自动 '0.6:0.05:0.95' → 绘制样本量曲线")
     p.add_argument("--plot_effects", type=str, default=None,
                    help="多效应量叠加(可选): '0.3,0.5,0.8' 画多条曲线做敏感性分析")
+    p.add_argument("--effect_seq", type=str, default=None,
+                   help="效应量连续序列: 显式 '0.1,0.2,0.9' 或自动 '0.1:0.05:0.9'(起:步:止) → "
+                        "绘制效应量轴曲线(x=效应量; 配 --n_seq 时 y=效能, 配 --power_seq 时 y=所需样本量)")
+    p.add_argument("--dist_plot", action="store_true", default=False,
+                   help="① H0/H1 分布重叠图：标准化效应空间画两条正态密度并着色 α/β 区"
+                        "(支持 ttest*/proportion*/survival)")
+    p.add_argument("--power_time_seq", type=str, default=None,
+                   help="③ 生存随访-效能曲线(仅 survival)：随访时长序列(单位与 event_rate 一致，如年 '1:0.5:4')"
+                        "→ x=时长 y=效能；需配合 --event_rate / --accrual_time")
+    p.add_argument("--heatmap", action="store_true", default=False,
+                   help="④ 效能热力图：需 --n_seq(样本量) + --effect_seq(效应量) 两序列，"
+                        "绘制效能填充热力图(支持 9 个曲线 test)")
     p.add_argument("--out", type=str, default=None,
                    help="曲线 PNG 输出路径 (默认系统临时目录)")
 
@@ -630,6 +694,34 @@ def main():
             _validate_path(args.out)  # raises ValueError if unsafe
     except ValueError as e:
         p.error(str(e))
+
+    # ═══ E1/E2: 自然语言确定性预路由（零 LLM，仅本地快速预解析）═══
+    # 若提供 --nl，先用确定性规则识别 test + 提取参数，结果 write-thru 到 args 作为强信号；
+    # 置信度低 / 参数不全时打印结构化提示（不静默错参、不阻断），剩余交由 coze LLM 补全。
+    if args.nl:
+        if not _NL_AVAILABLE:
+            print("# [NL-route] 本地 NL 解析模块不可用，跳过 --nl 预路由，交由 coze LLM 解析")
+        else:
+            _nl = args.nl
+            _cls = _nl_classify(_nl)
+            if _cls.get("test"):
+                args.test = _cls["test"]
+                print("# [NL-route] test=%s (confidence=%s, matched=%s)"
+                      % (args.test, _cls["confidence"], ",".join(_cls.get("matched", [])) or "-"))
+                if _cls.get("needs_llm_fallback"):
+                    print("# [NL-route] 终点类型置信度低，建议 coze LLM 兜底确认")
+                for _m in _cls.get("missing", []):
+                    print("# [NL-route] 缺关键信息: %s" % _m)
+            else:
+                print("# [NL-route] 未能从自然语言识别 test，交由 coze LLM 解析")
+            # 参数提取：仅把 NL 中明确给出的参数 write-thru 到 args（不推断、不补默认）
+            _pe = _nl_extract(_nl, test=args.test)
+            for _k, _v in _pe.get("params", {}).items():
+                if hasattr(args, _k):
+                    setattr(args, _k, _v)
+            if _pe.get("needs_llm_fallback"):
+                _note = "; ".join(_pe.get("notes", [])) or "参数识别不全"
+                print("# [NL-params] 部分参数需 coze LLM 兜底: " + _note)
 
     # SECURITY: dry-run is the SAFE DEFAULT. Execution requires an explicit
     # opt-in (--yes / -y) so generated R code is never run silently.
@@ -690,7 +782,11 @@ def main():
         d_val = args.effect if args.effect is not None else 0.5
 
     if not args.test:
-        p.error(t("error.test_required"))
+        if args.nl:
+            p.error(t("error.test_required")
+                    + "（自然语言路由未能识别终点类型：请用 --test 显式指定，或换种表述后重试）")
+        else:
+            p.error(t("error.test_required"))
 
     # ═════════════════════════════════════════════════════════════════════════
     # 统一后端调度（coze 权威 / 本地 Python 兜底 / 本地 R 开发后端）
@@ -700,7 +796,8 @@ def main():
         "solve_for_power": solve_for_power,
         "alt": alt,
         "d_val": d_val,
-        "curve": bool(args.n_seq or args.power_seq),
+        "curve": bool(args.n_seq or args.power_seq or args.effect_seq
+                     or args.dist_plot or args.power_time_seq or args.heatmap),
         "show_code": bool(args.show_code),
         "dry_run": bool(args.dry_run),
         # R 真相源开关：要求随结果回传完整 R 源码 + R 数值（repro.r）
@@ -747,6 +844,30 @@ def main():
 
     # ── 图形产物（coze 返回 SVG/HTML；本地 R 直接写 PNG）──
     render_figures(res.figures, args.test, figure_mode=args.figure_mode)
+    # v5.3.2：聚合 HTML 报告（stats + 内联 SVG + R 复现脚本，单文件浏览器直接打开）
+    try:
+        from rendering import render_html_report  # type: ignore  # adapters/rendering.py
+
+        _report_env = {
+            "status": "ok",
+            "stats": res.r_result or res.meta,
+            "narrative": res.text,
+            "figures": [
+                {"format": f.format, "content": f.content, "caption": f.caption}
+                for f in res.figures
+            ],
+            "repro": {"r": res.r_code} if res.r_code else None,
+            "warnings": [],
+            # 契约漂移标记（ct-base §20.9）：透传自 compute 的 meta，供渲染横幅消费
+            "_needs_upgrade": bool(res.meta.get("_needs_upgrade", False)),
+            "_contract_drift": res.meta.get("_contract_drift", []) or [],
+        }
+        _rp = render_html_report(_report_env, out_dir=_outputs_dir(),
+                                 test=args.test, backend=res.backend or "coze")
+        if _rp:
+            print('__FIGURE__ html %s caption="ct-samplesize 结果报告"' % _rp)
+    except Exception as _e:  # noqa: BLE001 - HTML 报告生成失败不阻断主流程
+        print("# HTML 报告生成跳过: %s" % _e)
     # coze 端无图（svglite/cairo 缺失）但返回曲线数值 → 本地生成 SVG 兜底（ct-base §19）。
     # 仅在 coze 未返回任何图形时才兜底——否则同一曲线会被处理两遍（coze SVG + 本地
     # fallback 两份输出），且持久化文件可能被无参考线的 fallback 版覆盖（2026-08-20 修复）。
@@ -754,14 +875,13 @@ def main():
         render_curve_fallback(res.meta, args.test,
                               target_power=getattr(args, "power", None) or 0.8)
 
-    # ── 自动附带曲线（简单单/两组问题默认出图，用户设定 2026-08-20）──
+    # ── 自动附带曲线（v5.3.2 起每种检验的默认出图由契约 default_curve 分别配置）──
     # 规则: forward（求 n）→ 自动补「样本量随把握度」曲线；reverse（求 power）→
-    # 自动补「把握度随样本量」曲线。仅当：① 检验属简单单/两组集合；② 用户未显式
-    # 指定曲线（--n_seq / --power_seq）；③ 非 dry-run；④ coze 路径（非本地 R）。
-    # 关闭方式：显式指定 --n_seq / --power_seq（走用户自己的曲线），或 --dry-run。
-    _AUTO_CURVE_TESTS = {"ttest_ind", "ttest_paired", "ttest_one",
-                         "proportion_one", "proportion_two"}
-    if (not ctx["curve"] and args.test in _AUTO_CURVE_TESTS
+    # 自动补「把握度随样本量」曲线。仅当：① 该 test 契约 default_curve=true；② 用户未
+    # 显式指定曲线（--n_seq / --power_seq）；③ 非 dry-run；④ coze 路径（非本地 R）。
+    # 关闭/开启方式：编辑 coze_cases/_contract_index.json 的 default_curve 字段，
+    # 或显式指定 --n_seq / --power_seq（走用户自己的曲线）、--dry-run 关闭。
+    if (not ctx["curve"] and args.test in _auto_curve_tests()
             and not args.dry_run and not gated):
         try:
             args2 = argparse.Namespace(**vars(args))

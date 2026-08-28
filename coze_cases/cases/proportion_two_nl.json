@@ -1,0 +1,29 @@
+{
+  "id": "proportion_two_nl",
+  "test": "proportion_two",
+  "desc": "两组率比较（NL派生,单侧）",
+  "nl": "比较两种药的有效率，试验组70%，对照组50%，把握度80%，单侧",
+  "cli": [
+    "--test",
+    "proportion_two",
+    "--p1",
+    "0.7",
+    "--p2",
+    "0.5",
+    "--power",
+    "0.8",
+    "--side",
+    "one"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "p1",
+      "p2",
+      "side"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

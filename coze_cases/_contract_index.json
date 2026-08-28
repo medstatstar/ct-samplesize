@@ -1,0 +1,850 @@
+{
+  "_meta": {
+    "schema_version": "1.0",
+    "generated_for": "ct-samplesize v5 coze R 引擎逐 test 契约索引",
+    "authority": "adapters/coze/src/r_engine/run_task.R (dispatch) + samplesize_functions.R (函数签名)",
+    "routing_source_of_truth": "R 引擎 dispatch 分支名（与 CLI --test choices / references/menu.md Part 1 三者一致）",
+    "request_envelope": "见 adapters/r-assets/coze_contract.md §2（build_params 序列化）",
+    "response_envelope": "见 adapters/r-assets/coze_contract.md §3（status/stats/narrative/figures/warnings/notes/repro）",
+    "param_convention": "required 使用 CLI 参数名（snake_case）；alpha 默认 0.05、power 默认 0.8，solve_for_power 时改传 nobs"
+  },
+  "tests": [
+    {
+      "test": "ttest_ind",
+      "family": "连续均值",
+      "r_function": "ss_ttest(type='two.sample')",
+      "required": [
+        "effect",
+        "alpha",
+        "side"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "提供 --sd 时 --effect 视为原始均差 Δ，自动折算 Cohen's d=Δ/sd；否则 --effect 直接为 d",
+      "default_curve": true
+    },
+    {
+      "test": "ttest_paired",
+      "family": "连续均值",
+      "r_function": "ss_ttest(type='paired')",
+      "required": [
+        "effect",
+        "alpha",
+        "side"
+      ],
+      "output": [
+        "n_pairs",
+        "power"
+      ],
+      "notes": "配对/交叉设计",
+      "default_curve": true
+    },
+    {
+      "test": "ttest_one",
+      "family": "连续均值",
+      "r_function": "ss_ttest(type='one.sample')",
+      "required": [
+        "effect",
+        "alpha",
+        "side"
+      ],
+      "output": [
+        "n_total",
+        "power"
+      ],
+      "notes": "单组 vs 已知标准均值",
+      "default_curve": true
+    },
+    {
+      "test": "anova",
+      "family": "连续均值",
+      "r_function": "ss_anova",
+      "required": [
+        "k_groups",
+        "effect",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "effect 为 Cohen's f；k_groups 组数",
+      "default_curve": false
+    },
+    {
+      "test": "proportion_one",
+      "family": "率",
+      "r_function": "ss_prop_one",
+      "required": [
+        "p1",
+        "alpha",
+        "side"
+      ],
+      "output": [
+        "n_total",
+        "power"
+      ],
+      "notes": "单组率（p0 为已知基线，可省）",
+      "default_curve": true
+    },
+    {
+      "test": "proportion_two",
+      "family": "率",
+      "r_function": "ss_prop_two",
+      "required": [
+        "p1",
+        "p2",
+        "alpha",
+        "side"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "两组率比较",
+      "default_curve": true
+    },
+    {
+      "test": "proportion_paired",
+      "family": "率",
+      "r_function": "ss_prop_paired",
+      "required": [
+        "p1",
+        "p2",
+        "alpha",
+        "side"
+      ],
+      "output": [
+        "n_pairs",
+        "power"
+      ],
+      "notes": "McNemar 配对率",
+      "default_curve": false
+    },
+    {
+      "test": "odds_ratio",
+      "family": "率",
+      "r_function": "ss_or_rr",
+      "required": [
+        "p1",
+        "p2",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "OR；p1/p2 为两组率",
+      "default_curve": false
+    },
+    {
+      "test": "risk_ratio",
+      "family": "率",
+      "r_function": "ss_or_rr",
+      "required": [
+        "p1",
+        "p2",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "RR；p1/p2 为两组率",
+      "default_curve": false
+    },
+    {
+      "test": "non_inferiority",
+      "family": "率-非劣效",
+      "r_function": "ss_noninf_prop",
+      "required": [
+        "p1",
+        "p2",
+        "margin",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "率的非劣效检验；margin 为非劣效界值",
+      "default_curve": false
+    },
+    {
+      "test": "superiority_margin",
+      "family": "率-优效",
+      "r_function": "ss_sup_margin",
+      "required": [
+        "p_control_sup",
+        "delta_sup",
+        "sup_margin",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "含优效界值的率优效检验",
+      "default_curve": false
+    },
+    {
+      "test": "equivalence",
+      "family": "均值-等效",
+      "r_function": "ss_eq_means",
+      "required": [
+        "effect",
+        "sd",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "均值等效 TOST；effect 为等效界值 Δ，sd 为标准差",
+      "default_curve": false
+    },
+    {
+      "test": "be_tost",
+      "family": "生物等效",
+      "r_function": "ss_be_tost",
+      "required": [
+        "theta0",
+        "cv",
+        "design",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "bioequivalence TOST；theta0 几何均值比，cv 变异系数",
+      "default_curve": false
+    },
+    {
+      "test": "survival",
+      "family": "生存",
+      "r_function": "ss_survival_logrank",
+      "required": [
+        "hazard_ratio",
+        "alpha",
+        "event_rate",
+        "accrual_time"
+      ],
+      "output": [
+        "n_per_arm",
+        "events",
+        "power"
+      ],
+      "notes": "logrank 两样本；hazard_ratio 为预期 HR",
+      "default_curve": false
+    },
+    {
+      "test": "ni_survival",
+      "family": "生存-非劣效",
+      "r_function": "ss_ni_survival",
+      "required": [
+        "ni_margin_surv",
+        "hr_expected",
+        "accrual_time",
+        "followup_time",
+        "alpha"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "非劣效生存；ni_margin_surv 为非劣效界值(HR)，hr_expected 为预期 HR",
+      "default_curve": false
+    },
+    {
+      "test": "survival_equivalence",
+      "family": "生存-等效",
+      "r_function": "ss_surv_equiv",
+      "required": [
+        "eq_margin_surv",
+        "hr_expected",
+        "accrual_time",
+        "followup_time",
+        "alpha"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "HR 等效 TOST；eq_margin_surv 为等效界值",
+      "default_curve": false
+    },
+    {
+      "test": "survival_superiority",
+      "family": "生存-优效",
+      "r_function": "ss_surv_sup",
+      "required": [
+        "sup_margin_surv",
+        "sup_hr",
+        "accrual_time",
+        "followup_time",
+        "alpha"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "含优效界值的生存优效",
+      "default_curve": false
+    },
+    {
+      "test": "survival_exact",
+      "family": "生存",
+      "r_function": "ss_survival_exact",
+      "required": [
+        "hr_exact",
+        "accrual_exact",
+        "followup_exact",
+        "event_rate_exact",
+        "alpha"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "精确生存（指数）样本量",
+      "default_curve": false
+    },
+    {
+      "test": "cox_covariate",
+      "family": "生存-协变量",
+      "r_function": "ss_cox_cov",
+      "required": [
+        "cox_hr",
+        "cox_r2",
+        "cox_prev",
+        "cox_event_prop",
+        "alpha"
+      ],
+      "output": [
+        "n_total",
+        "power"
+      ],
+      "notes": "Cox 含协变量（Vittinghoff）",
+      "default_curve": false
+    },
+    {
+      "test": "survival_one_sample",
+      "family": "生存-单组",
+      "r_function": "ss_onesample_surv",
+      "required": [
+        "median0",
+        "median1",
+        "accrual_time",
+        "followup_time",
+        "alpha"
+      ],
+      "output": [
+        "n_total",
+        "power"
+      ],
+      "notes": "单组指数生存",
+      "default_curve": false
+    },
+    {
+      "test": "competing_risks",
+      "family": "生存-竞争风险",
+      "r_function": "ss_comprisk",
+      "required": [
+        "ci_control",
+        "ci_treatment",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "竞争风险累积发生率",
+      "default_curve": false
+    },
+    {
+      "test": "recurrent_events",
+      "family": "生存-复发",
+      "r_function": "ss_recur",
+      "required": [
+        "rate_control",
+        "rate_ratio",
+        "recur_followup",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "复发事件(Andersen-Gill)",
+      "default_curve": false
+    },
+    {
+      "test": "survival_historical",
+      "family": "生存-历史对照",
+      "r_function": "ss_histctrl",
+      "required": [
+        "new_median",
+        "hist_n",
+        "accrual_time",
+        "followup_time",
+        "alpha"
+      ],
+      "output": [
+        "n_total",
+        "power"
+      ],
+      "notes": "历史对照 logrank",
+      "default_curve": false
+    },
+    {
+      "test": "poisson",
+      "family": "计数",
+      "r_function": "ss_poisson",
+      "required": [
+        "lambda1",
+        "lambda2",
+        "t1",
+        "t2",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "两 Poisson 率；t1/t2 随访时间",
+      "default_curve": false
+    },
+    {
+      "test": "roc",
+      "family": "诊断",
+      "r_function": "ss_roc",
+      "required": [
+        "auc0",
+        "auc1",
+        "alpha"
+      ],
+      "output": [
+        "n_total",
+        "power"
+      ],
+      "notes": "ROC/AUC 诊断试验",
+      "default_curve": false
+    },
+    {
+      "test": "bland_altman",
+      "family": "一致性",
+      "r_function": "ss_bland_altman",
+      "required": [
+        "sd_diff",
+        "w",
+        "alpha"
+      ],
+      "output": [
+        "n_total"
+      ],
+      "notes": "Bland-Altman 一致性界限样本量",
+      "default_curve": false
+    },
+    {
+      "test": "cluster",
+      "family": "聚类",
+      "r_function": "ss_cluster",
+      "required": [
+        "m",
+        "icc",
+        "n_indiv"
+      ],
+      "output": [
+        "n_total",
+        "n_clusters"
+      ],
+      "notes": "整群随机；m=簇大小，icc=组内相关，需 n_indiv 或 n_total",
+      "default_curve": false
+    },
+    {
+      "test": "vaccine_efficacy",
+      "family": "疫苗",
+      "r_function": "ss_vaccine",
+      "required": [
+        "ve_control",
+        "ve_treatment",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "疫苗效力 VE",
+      "default_curve": false
+    },
+    {
+      "test": "multiple_endpoints",
+      "family": "多重终点",
+      "r_function": "ss_multiple",
+      "required": [
+        "correlation",
+        "effect",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "复合/多重终点（相关性校正）",
+      "default_curve": false
+    },
+    {
+      "test": "bayesian",
+      "family": "贝叶斯",
+      "r_function": "ss_prior_informed",
+      "required": [
+        "prob_control",
+        "prob_treatment",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "贝叶斯先验 informs 样本量",
+      "default_curve": false
+    },
+    {
+      "test": "dose_escalation",
+      "family": "剂量",
+      "r_function": "ss_dose",
+      "required": [
+        "n_doses",
+        "target_dlt"
+      ],
+      "output": [
+        "n_per_dose"
+      ],
+      "notes": "Phase I 剂量爬坡(MTD 设计)",
+      "default_curve": false
+    },
+    {
+      "test": "win_ratio",
+      "family": "Win-Ratio",
+      "r_function": "ss_win_ratio",
+      "required": [
+        "win_ratio_theta",
+        "se_approx",
+        "alpha"
+      ],
+      "output": [
+        "n_total",
+        "power"
+      ],
+      "notes": "胜率比",
+      "default_curve": false
+    },
+    {
+      "test": "must_win",
+      "family": "共同主要",
+      "r_function": "ss_must_win",
+      "required": [
+        "n_endpoints_must",
+        "correlation_must",
+        "effect_must",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "Co-primary / Must-Win",
+      "default_curve": false
+    },
+    {
+      "test": "historical_controls",
+      "family": "历史对照",
+      "r_function": "ss_hist_controls",
+      "required": [
+        "p_control_current",
+        "historical_response",
+        "historical_n",
+        "a0_borrowing",
+        "alpha"
+      ],
+      "output": [
+        "n_treatment",
+        "power"
+      ],
+      "notes": "历史数据借用(a0 权重)",
+      "default_curve": false
+    },
+    {
+      "test": "mams",
+      "family": "多臂多阶段",
+      "r_function": "ss_mams",
+      "required": [
+        "n_arms_mams",
+        "delta_effect",
+        "alpha"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "Multi-Arm Multi-Stage",
+      "default_curve": false
+    },
+    {
+      "test": "dunnett",
+      "family": "多组比较",
+      "r_function": "ss_dunnett",
+      "required": [
+        "n_groups_dunnett",
+        "n_control_dunnett",
+        "effect_dunnett",
+        "alpha"
+      ],
+      "output": [
+        "n_per_group",
+        "power"
+      ],
+      "notes": "Dunnett 多重比较校正",
+      "default_curve": false
+    },
+    {
+      "test": "mediation",
+      "family": "中介",
+      "r_function": "ss_mediation",
+      "required": [
+        "a_path",
+        "b_path",
+        "sigma2_m",
+        "sigma2_y",
+        "alpha"
+      ],
+      "output": [
+        "n_total",
+        "power"
+      ],
+      "notes": "中介效应",
+      "default_curve": false
+    },
+    {
+      "test": "mixed_model",
+      "family": "纵向/MMRM",
+      "r_function": "ss_mixed_model",
+      "required": [
+        "effect",
+        "varcorr",
+        "sigma",
+        "nsim",
+        "effect_name"
+      ],
+      "output": [
+        "n_subjects",
+        "power"
+      ],
+      "notes": "重复测量混合模型/MMRM",
+      "default_curve": false
+    },
+    {
+      "test": "group_sequential",
+      "family": "成组序贯",
+      "r_function": "ss_gsd(rpact)",
+      "required": [
+        "effect_gs",
+        "spending_func",
+        "n_interim",
+        "alpha"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "rpact 精确两样本均值成组序贯；spending_func∈OF/Pocock/WT/HSD/KimDeMets",
+      "default_curve": false
+    },
+    {
+      "test": "gsd_proportion",
+      "family": "成组序贯",
+      "r_function": "ss_gsd(rpact)",
+      "required": [
+        "p1",
+        "p2",
+        "gs_proportion_metric",
+        "spending_func",
+        "n_interim",
+        "alpha"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "成组序贯两比例(difference/ratio/or)",
+      "default_curve": false
+    },
+    {
+      "test": "gsd_survival",
+      "family": "成组序贯",
+      "r_function": "ss_gsd(rpact)",
+      "required": [
+        "gs_median_control",
+        "hr_expected",
+        "spending_func",
+        "n_interim",
+        "alpha"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "成组序贯生存(对照中位推导 lambda2)",
+      "default_curve": false
+    },
+    {
+      "test": "gsd_hazard",
+      "family": "成组序贯",
+      "r_function": "ss_gsd(rpact)",
+      "required": [
+        "gs_median_control",
+        "hr_expected",
+        "spending_func",
+        "n_interim",
+        "alpha"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "成组序贯风险比",
+      "default_curve": false
+    },
+    {
+      "test": "gsd_poisson",
+      "family": "成组序贯",
+      "r_function": "ss_gsd(rpact)",
+      "required": [
+        "gs_rate1",
+        "gs_rate2",
+        "gs_poisson_time",
+        "spending_func",
+        "n_interim",
+        "alpha"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "成组序贯 Poisson 率",
+      "default_curve": false
+    },
+    {
+      "test": "gsd_survival_sim",
+      "family": "成组序贯-仿真",
+      "r_function": "ss_gsd + MonteCarlo",
+      "required": [
+        "gs_median_control",
+        "hr_expected",
+        "spending_func",
+        "n_interim",
+        "alpha",
+        "n_sim"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "成组序贯生存蒙特卡洛模拟",
+      "default_curve": false
+    },
+    {
+      "test": "gsd_hazard_sim",
+      "family": "成组序贯-仿真",
+      "r_function": "ss_gsd + MonteCarlo",
+      "required": [
+        "gs_median_control",
+        "hr_expected",
+        "spending_func",
+        "n_interim",
+        "alpha",
+        "n_sim"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "成组序贯 HR 蒙特卡洛模拟",
+      "default_curve": false
+    },
+    {
+      "test": "adaptive",
+      "family": "适应性",
+      "r_function": "ss_adaptive",
+      "required": [
+        "n_stages_adapt",
+        "effect_adaptive",
+        "adaptive_type",
+        "alpha"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "适应性设计(SSR 等)",
+      "default_curve": false
+    },
+    {
+      "test": "adaptive_simulate",
+      "family": "适应性-仿真",
+      "r_function": "pure-Python MonteCarlo",
+      "required": [
+        "sim_design",
+        "effect_size",
+        "interim_looks",
+        "spending_function"
+      ],
+      "output": [
+        "n_per_arm",
+        "power"
+      ],
+      "notes": "纯 Python 蒙特卡洛仿真，无 R/无 shell",
+      "default_curve": false
+    },
+    {
+      "test": "conditional_power",
+      "family": "期中/再估计",
+      "r_function": "ss_conditional_power",
+      "required": [
+        "observed_effect",
+        "planned_effect",
+        "n_completed",
+        "n_planned",
+        "timing",
+        "alpha"
+      ],
+      "output": [
+        "conditional_power"
+      ],
+      "notes": "条件功效/样本量再估计(SSR)",
+      "default_curve": false
+    },
+    {
+      "test": "assurance",
+      "family": "贝叶斯保证",
+      "r_function": "ss_assurance",
+      "required": [
+        "shape1_trt",
+        "shape2_trt",
+        "shape1_ctrl",
+        "shape2_ctrl",
+        "n_assurance",
+        "n_sim_assurance",
+        "margin"
+      ],
+      "output": [
+        "assurance_prob"
+      ],
+      "notes": "贝叶斯保证度；先验默认 Beta(2,2) 可省",
+      "default_curve": false
+    }
+  ]
+}

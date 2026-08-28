@@ -1,0 +1,25 @@
+{
+  "id": "roc",
+  "test": "roc",
+  "desc": "ROC/AUC诊断试验求n",
+  "cli": [
+    "--test",
+    "roc",
+    "--auc0",
+    "0.5",
+    "--auc1",
+    "0.7",
+    "--power",
+    "0.8"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "auc0",
+      "auc1"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

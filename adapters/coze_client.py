@@ -27,6 +27,8 @@ import os
 import re
 import socket
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -41,6 +43,134 @@ from compute_backend import ComputeBackend, Figure, Result
 _HERE_DIR = str(Path(__file__).resolve().parent)
 if _HERE_DIR not in sys.path:
     sys.path.insert(0, _HERE_DIR)
+
+# ---------------------------------------------------------------------------
+# coze 信封契约漂移检测（ct-base §20.9 单入口 · 2026-08-28 综合定稿）
+# ---------------------------------------------------------------------------
+# 本地期望的 coze 信封契约版本（须与 coze 端 samplesize.py 的 _COZE_ENVELOPE_VERSION 同步）。
+# 两者随技能一同发布；coze 端升级后若与本地消费代码不一致，先自适应兼容产出可用结果，
+# 再经 HTML 横幅（_needs_upgrade / _contract_drift 驱动）统一提示升级——不写 stderr、不污染 notes。
+EXPECTED_COZE_ENVELOPE_VERSION = "5.3.9"
+
+
+def _coze_version_higher(a, b) -> bool:
+    """语义化版本比较：a 是否高于 b（支持 X.Y.Z，段内取数字、非数字段记 0）。
+
+    ct-samplesize 信封版本为语义版本（如 5.3.9），不能用裸字符串 `>` 比较
+    （'5.10.0' > '5.3.9' 字典序会判错）。与 meta-analysis 的日期串 `>` 不同，
+    这里按段数值比较，保证 5.4.0 / 5.10.0 均能正确判定高于 5.3.9。
+    """
+    def _seg(v):
+        out = []
+        for part in str(v).split("."):
+            digs = "".join(ch for ch in part if ch.isdigit())
+            out.append(int(digs) if digs else 0)
+        return out
+    try:
+        pa, pb = _seg(a), _seg(b)
+    except Exception:
+        return str(a) > str(b)
+    n = max(len(pa), len(pb))
+    pa += [0] * (n - len(pa))
+    pb += [0] * (n - len(pb))
+    return pa > pb
+
+
+def _assess_contract(parsed: dict) -> tuple:
+    """综合「结构漂移（主·自愈）+ 版本漂移（显式）」的契约检测，单一入口（ct-base §20.9）。
+
+    两路信号汇入同一结果：
+      1) 结构漂移（主、自愈）：识别已知字段别名并自适应归一化，保证报告仍能渲染；
+         映射发生时记 drift 说明（既是自适应日志、也是升级信号）。对无法自适应的结构
+         缺失仅记录告警、不臆造数据。别名表按 ct-samplesize 信封微调。
+      2) 版本漂移（显式，若 coze 注入版本标记）：coze 返回 `_coze_version`
+         （或旧 `_contract_version`）高于本地期望 → 显式升级信号。
+         ⚠️ 缺标记（coze 未注入版本）**不**视为漂移——避免每响应都误报。
+
+    Returns: (parsed, drift_notes, needs_upgrade)
+      drift_notes 非空 => 已自适应或检测到不一致，交给 rendering.py 在 HTML 横幅提示升级；
+      needs_upgrade 仅为机器可读标记（写回 parsed），本函数**不产生任何用户可见提示**
+      （用户可见提示统一只在渲染层的 HTML 横幅，避免 stderr / notes 重复提示）。
+    """
+    if not isinstance(parsed, dict):
+        return parsed, [], False
+    notes = []
+    p = parsed
+
+    # ---- 结构漂移：已知字段别名 → 本地期望字段（仅当期望字段缺/空、且别名存在时映射）----
+    # 1) 主叙述：旧信封 `content` → 当前 `narrative`
+    if not p.get("narrative") and isinstance(p.get("content"), str) and p["content"].strip():
+        p["narrative"] = p["content"]
+        notes.append("coze 响应字段已变更：主叙述由 `content` 改为 `narrative`，已自动适配")
+
+    # 2) figures 结构兜底（dict → list；图体别名 image/svg_data/base64/svg → content）
+    figs = p.get("figures")
+    if isinstance(figs, dict):
+        p["figures"] = [
+            {"format": "svg", "content": v, "caption": k}
+            for k, v in figs.items() if isinstance(v, str)
+        ]
+        notes.append("coze 响应结构已变更：figures 由 dict 改为 list，已自动适配")
+    elif isinstance(figs, list):
+        for i, f in enumerate(figs):
+            if isinstance(f, dict) and "content" not in f:
+                for fa in ("svg", "image", "svg_data", "base64"):
+                    if isinstance(f.get(fa), str):
+                        f["content"] = f[fa]
+                        notes.append(
+                            f"coze 响应字段已变更：figures[{i}] 图体由 `{fa}` 改为 `content`，已自动适配")
+                        break
+
+    # 3) 版本漂移：coze 注入标记（优先 _coze_version，兼容旧 _contract_version）
+    cv = p.get("_coze_version") or p.get("_contract_version")
+    if isinstance(cv, str) and _coze_version_higher(cv, EXPECTED_COZE_ENVELOPE_VERSION):
+        notes.append(
+            f"coze 响应契约版本 {cv} 高于本地技能期望 {EXPECTED_COZE_ENVELOPE_VERSION}，"
+            f"检测到结构已升级，建议升级 ct-samplesize 技能到最新版"
+        )
+
+    # 去重（保持顺序）
+    seen, uniq = set(), []
+    for n in notes:
+        if n not in seen:
+            seen.add(n)
+            uniq.append(n)
+    return p, uniq, bool(uniq)
+
+
+# ---------------------------------------------------------------------------
+# coze 调用并发限流（2026-08-28 新增 · ct-base §20.10 全库统一标准）
+# ---------------------------------------------------------------------------
+# 相邻两次 coze /run 出站调用之间必须间隔 ≥1 秒，防止触发 coze 端频控（429）。
+# meta-analysis 实测曾因密集请求被限流至次日，整批分析失败。强制间隔是零成本护栏。
+# 间隔秒数可由环境变量 COZE_META_MIN_INTERVAL（浮点秒）覆写；<=0 时关闭保护（调试用）。
+_RATE_LIMIT_LOCK = threading.Lock()
+_LAST_CALL_TS = 0.0  # time.monotonic() of the most recently dispatched coze POST
+
+
+def _acquire_rate_limit() -> None:
+    """相邻两次 coze POST 之间至少间隔 1 秒（可由 COZE_META_MIN_INTERVAL 覆写）。
+
+    用模块级锁串行化"间隔决策"并强制最小间隔；锁内只做间隔判定 + 必要 sleep 占位，
+    网络请求在锁释放后发出——既保证 ≥1s 间距，又不把网络延迟锁进临界区。
+    作用域：同一 Python 进程内多线程并发（本技能典型调用场景）。跨进程并发需另加
+    文件锁，当前未实现（ct-base §20.10 边界）。
+    """
+    try:
+        interval = float(os.environ.get("COZE_META_MIN_INTERVAL", "1.0"))
+    except (TypeError, ValueError):
+        interval = 1.0
+    if interval <= 0:
+        return
+    global _LAST_CALL_TS
+    with _RATE_LIMIT_LOCK:
+        now = time.monotonic()
+        wait = interval - (now - _LAST_CALL_TS)
+        if wait > 0:
+            time.sleep(wait)
+            now = time.monotonic()
+        _LAST_CALL_TS = now
+
 
 try:
     from coze_token_embedded import (
@@ -209,39 +339,226 @@ def _current_locale() -> str:
 _PARAM_EXCLUDE = frozenset({
     "yes", "dry_run", "show_code", "install_all_packages", "test",
     # 曲线序列/效应量列表走 curve_* 协议（R 端 run_task.R 曲线分支消费）
-    "n_seq", "power_seq", "plot_effects",
+    "n_seq", "power_seq", "plot_effects", "effect_seq",
+    # 三类新图形开关：dist_plot / power_time_seq / heatmap
+    "dist_plot", "power_time_seq", "heatmap",
 })
+
+
+# 契约索引缓存（coze_cases/_contract_index.json 的 required 字段 = 每 test 所需参数白名单）
+_CONTRACT_REQUIRED_CACHE = None
+_CONTRACT_LOAD_FAILED = False
+
+
+def _load_contract_required(test):
+    """从 _contract_index.json 加载该 test 的 required 参数白名单（单一真相源）。
+
+    返回 frozenset；未登记/契约缺失 → 空 frozenset（调用方退化为发送全部非 None 字段）。
+    """
+    global _CONTRACT_REQUIRED_CACHE, _CONTRACT_LOAD_FAILED
+    if _CONTRACT_REQUIRED_CACHE is not None or _CONTRACT_LOAD_FAILED:
+        if _CONTRACT_REQUIRED_CACHE is None:
+            return frozenset()
+        return _CONTRACT_REQUIRED_CACHE.get(test, frozenset())
+    _CONTRACT_REQUIRED_CACHE = {}
+    try:
+        idx_path = (Path(__file__).resolve().parent.parent
+                    / "coze_cases" / "_contract_index.json")
+        data = json.loads(Path(idx_path).read_text(encoding="utf-8"))
+        for entry in data.get("tests", []):
+            _CONTRACT_REQUIRED_CACHE[entry["test"]] = frozenset(entry.get("required", []))
+    except Exception:
+        _CONTRACT_LOAD_FAILED = True
+    return _CONTRACT_REQUIRED_CACHE.get(test, frozenset()) if _CONTRACT_REQUIRED_CACHE else frozenset()
 
 
 def build_params(test, args, ctx):
     """把 args + ctx 序列化为 JSON 友好的请求参数。
 
-    仅包含计算相关 CLI 参数（本地控制标志 --yes/--dry-run/--show_code/
-    --install-all-packages 与顶层字段 test 不进入 params）；并附三个派生量
-    solve_for_power / alt / d_val（见 adapters/r-assets/coze_contract.md §2）。
-    return_r_code 为信封顶层字段，不重复塞入 params。
+    仅发送「本 test 实际需要」的参数，避免把 argparse 全家族默认值（varcorr/sigma/
+    nsim/theta0/cv/design/ve_*/prior_a0/prob_*/n_doses/target_dlt/win_ratio_theta/...）
+    一锅炖进 params（这些无关默认值虽被 R 端 %||% 忽略，但会让飞书 querystr 看起来像
+    「全参数扫描」，无法区分真实请求与测试）。白名单取自 coze_cases/_contract_index.json
+    的 required 字段（与 CLI choices / R 引擎 dispatch 三者一致的单一真相源）。
+
+    发送集合 = 该 test 的 required 参数（非 None）+ 通用参数 alpha + 模式关键参数
+    （求 n → power；求 power → nobs）+ 派生量（solve_for_power/alt/d_val）+ 曲线参数
+    （curve_*，来自 --n_seq/--power_seq/--plot_effects）。
     """
+    ns = vars(args)
+    required = _load_contract_required(test)
     params = {}
-    for k, v in vars(args).items():
-        if k in _PARAM_EXCLUDE:
-            continue
-        if v is None:
-            continue
-        if isinstance(v, (str, int, float, bool, list)):
-            params[k] = v
+    if required:
+        for k in required:
+            if k in ns and ns[k] is not None:
+                params[k] = ns[k]
+        # 通用参数：alpha 几乎被全部 R 分支消费；argparse 默认 0.05，总是随请求带上
+        alpha = ns.get("alpha")
+        if alpha is not None:
+            params.setdefault("alpha", alpha)
+        # 模式关键参数：求样本量需要 target power；求效能需要 nobs
+        if ctx.get("solve_for_power"):
+            nobs = ns.get("nobs")
+            if nobs is not None:
+                params["nobs"] = nobs
+        else:
+            params["power"] = ns.get("power") or 0.8
+    else:
+        # 契约缺失/未登记 → 退化为原行为（发送全部非 None、非控制字段），保证不丢参
+        for k, v in ns.items():
+            if k in _PARAM_EXCLUDE:
+                continue
+            if v is None:
+                continue
+            if isinstance(v, (str, int, float, bool, list)):
+                params[k] = v
+    # 派生量
     params.update({
         "solve_for_power": ctx.get("solve_for_power", False),
         "alt": ctx.get("alt", "two.sided"),
         "d_val": ctx.get("d_val"),
     })
-    # 曲线参数映射（CLI 名 → coze 端 curve_* 协议，R 端 .run_curve 消费）
+    # 曲线参数映射（CLI 名 → coze 端 curve_* 协议，R 端 run_task.R 曲线分支消费）
     for cli_key, coze_key in (("n_seq", "curve_n_seq"),
                               ("power_seq", "curve_power_seq"),
-                              ("plot_effects", "curve_effects")):
-        val = getattr(args, cli_key, None)
+                              ("plot_effects", "curve_effects"),
+                              ("effect_seq", "curve_effect_seq"),
+                              ("dist_plot", "plot_dist"),
+                              ("power_time_seq", "curve_power_time_seq"),
+                              ("heatmap", "curve_heatmap")):
+        val = ns.get(cli_key)
         if val:
             params[coze_key] = val
     return params
+
+
+def _fill_external_svgs(parsed, timeout=30):
+    """统一 manifest 重组入口（对齐 meta-analysis 2026-08-28）：
+    优先走**新契约**：若响应含 `_coze_manifest`（coze 端把超 4000 的 figures/repro/narrative
+    统一移进单个 manifest 文件并挂链接），则 GET manifest → 逐 path 写回原值 →
+    重组为原始 JSON（含 content/r 代码/narrative），一次还原、零数据丢失。
+
+    **向后兼容**：无 `_coze_manifest`（旧 coze 响应 / 方案 B）时，走旧契约——
+    figures[].url→content、repro.url→r 逐项回填。
+
+    - 超时 / 网络失败 → 保留引用并标记 _*_fetch_failed，绝不抛错中断分析。
+    """
+    if not isinstance(parsed, dict):
+        return parsed
+    # 新契约：manifest 单文件重组（优先级最高）
+    manifest = parsed.get("_coze_manifest")
+    if isinstance(manifest, dict) and manifest.get("storage") == "s3" and manifest.get("url"):
+        return _reassemble_from_manifest(parsed, manifest, timeout=timeout)
+    # 旧契约（方案 B，向后兼容）：figures[].url → content / repro.url → r
+    return _fill_external_svgs_legacy(parsed, timeout=timeout)
+
+
+def _reassemble_from_manifest(parsed, manifest, timeout=30):
+    """按 manifest 重组原始 JSON（对齐 meta-analysis 2026-08-28，ct-samplesize 移植版）：
+    coze 端把超 4000 的最大块（figures/repro/narrative）统一移进单个 S3 manifest 文件，
+    manifest 为 [{path, value}, ...]，主返回体挂 `_coze_manifest = {storage:"s3", url}`。
+    此处 GET manifest → 按 path 写回 value → 重组为原始 JSON。
+
+    - path 支持 `figures[i]`（列表下标）、`stats.xxx` 点路径、**以及顶层键**（如 `narrative`）。
+    - 写回时若该位置当前仍是 {storage:"s3",type:"block"} 引用（未被本地改动）才覆盖。
+    - 超时 / 网络失败 → 保留 manifest 引用并在主返回体标 _manifest_failed，绝不抛错中断。
+    - 重组完成后移除 `_coze_manifest`（下游见到的即原始结构）。
+    """
+    url = manifest.get("url")
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            manifest_list = json.loads(r.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        parsed["_manifest_failed"] = True
+        return parsed
+    if not isinstance(manifest_list, list):
+        parsed["_manifest_failed"] = True
+        return parsed
+
+    def _resolve_target(root, path):
+        """返回 (容器, key) 或 (list, idx) 以便写回；找不到返回 None。
+        支持 figures[i] / stats.xxx 点路径 / 顶层键（如 narrative）。
+        """
+        if path.startswith("figures["):
+            # figures[i]
+            m = path[8:-1]
+            if not m.isdigit():
+                return None
+            idx = int(m)
+            figs = root.get("figures")
+            if not isinstance(figs, list) or idx >= len(figs):
+                return None
+            return figs, idx
+        if "." in path:
+            # stats.a.b 点路径
+            parts = path.split(".")
+            node = root
+            for p in parts[:-1]:
+                if not isinstance(node, dict) or p not in node:
+                    return None
+                node = node[p]
+            if not isinstance(node, dict) or parts[-1] not in node:
+                return None
+            return node, parts[-1]
+        # 顶层键（如 narrative）
+        if isinstance(root, dict) and path in root:
+            return root, path
+        return None
+
+    for entry in manifest_list:
+        if not isinstance(entry, dict):
+            continue
+        p = entry.get("path")
+        if not p:
+            continue
+        target = _resolve_target(parsed, p)
+        if target is None:
+            continue
+        container, key = target
+        cur = container[key]
+        # 仅当仍是外置引用时才写回；已被本地改动为实际内容则跳过
+        if isinstance(container, dict):
+            is_ref = (isinstance(cur, dict) and cur.get("storage") == "s3"
+                      and cur.get("type") == "block")
+            if is_ref:
+                container[key] = entry.get("value")
+        else:  # list
+            if isinstance(cur, dict) and cur.get("storage") == "s3" and cur.get("type") == "block":
+                container[key] = entry.get("value")
+    # 重组完成，移除 manifest 引用（下游见原始结构）
+    parsed.pop("_coze_manifest", None)
+    return parsed
+
+
+def _fill_external_svgs_legacy(parsed, timeout=30):
+    """旧契约（方案 B，向后兼容）：coze 端把 figures[].content（SVG）与 repro['r']
+    （R 复现脚本）外置 S3 并返回 {type,format,storage:"s3",key,url} 引用；按 url 下载回填。
+
+    - 超时 / 网络失败 → 保留 url 并标记 _svg_fetch_failed / _repro_fetch_failed，绝不抛错中断。
+    - 已含 content / r（coze 降级内联）或不是 dict → 原样跳过。
+    """
+    if not isinstance(parsed, dict):
+        return parsed
+    figs = parsed.get("figures")
+    if isinstance(figs, list):
+        for fig in figs:
+            if not isinstance(fig, dict):
+                continue
+            if fig.get("url") and not fig.get("content"):
+                try:
+                    with urllib.request.urlopen(fig["url"], timeout=timeout) as r:
+                        fig["content"] = r.read().decode("utf-8")
+                except Exception:  # noqa: BLE001
+                    fig["_svg_fetch_failed"] = True
+    # 方案 B 扩展：R 复现脚本外链回填（repro.url → repro.r）
+    repro = parsed.get("repro")
+    if isinstance(repro, dict) and repro.get("url") and not repro.get("r"):
+        try:
+            with urllib.request.urlopen(repro["url"], timeout=timeout) as r:
+                repro["r"] = r.read().decode("utf-8")
+        except Exception:  # noqa: BLE001
+            repro["_repro_fetch_failed"] = True
+    return parsed
 
 
 def _mock_envelope(test, params, mode, return_r_code):
@@ -272,26 +589,54 @@ def _mock_envelope(test, params, mode, return_r_code):
     return env
 
 
-def _urlopen_with_proxy_fallback(req, timeout):
-    """urllib 请求 + Windows 系统代理残留直连重试（ct-base 出站容错）。
+def _urlopen_with_proxy_fallback(req, connect_timeout=15):
+    """HTTP POST + Windows 系统代理残留直连重试（ct-base 出站容错）。
 
-    系统代理残留（指向无监听端口 → WinError 10061）时，绕过代理
-    （ProxyHandler({})）直连重试一次；直连仍不可达照常上抛。
+    v5.3.2 修复：原实现把 `timeout=(15, None)` 直接传给 urllib.request.urlopen，
+    而 urllib 的 timeout 只接受 int/float → 真实调用在连接阶段抛
+    `TypeError: 'tuple' object cannot be interpreted as an integer`，live 端点
+    永远发不出。本函数改用 http.client：**连接阶段受 connect_timeout（15s）
+    限制，读取阶段不设超时**（Monte-Carlo / 大规模模拟可远超 180s，由远端
+    main.py TIMEOUT_SECONDS=900 兜底）。
+
+    返回对象实现 `.read()` 与上下文管理器，`call()` 的
+    `with ... as resp: resp.read()` 契约保持不变。
     """
-    try:
-        return urllib.request.urlopen(req, timeout=timeout)
-    except urllib.error.URLError as e:
-        reason = getattr(e, "reason", None)
-        winerr = getattr(reason, "winerror", None)
-        errno = getattr(reason, "errno", None)
-        if winerr == 10061 or errno in (10061, 10060, 11004):
-            # 系统代理残留 → 直连重试一次（计算请求幂等，重试无副作用）
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            return opener.open(req, timeout=timeout)
-        raise
+    import http.client
+
+    def _conn():
+        # http.client 的 timeout 仅作用于 socket 连接（getaddrinfo + connect），
+        # 读取由 .read() 控制、不设限 → 恰好满足"连接 15s、读取无限"。
+        # urllib.Request 不暴露 port（端口已解析进 host 或走默认 443/80），
+        # 故不传端口，由 http.client 按 scheme 取默认。
+        if req.type == "https":
+            return http.client.HTTPSConnection(req.host, timeout=connect_timeout)
+        return http.client.HTTPConnection(req.host, timeout=connect_timeout)
+
+    def _do(conn):
+        body = req.data if hasattr(req, "data") else None
+        headers = dict(req.headers) if hasattr(req, "headers") else {}
+        conn.request(req.get_method(), req.selector, body=body, headers=headers)
+        return conn.getresponse()
+
+    for attempt in (1, 2):
+        conn = _conn()
+        try:
+            resp = _do(conn)
+            return resp
+        except (http.client.HTTPException, OSError, socket.error) as e:
+            conn.close()
+            # 首次失败若是 Windows 系统代理残留（10061/10060/11004），直连重试一次；
+            # 计算请求幂等，重试无副作用。
+            winerr = getattr(e, "winerror", None) or getattr(getattr(e, "reason", None), "winerror", None)
+            errno = getattr(e, "errno", None) or getattr(getattr(e, "reason", None), "errno", None)
+            if attempt == 1 and (winerr in (10061, 10060, 11004) or errno in (10061, 10060, 11004)):
+                continue
+            # 非代理残留错误 → 包装为与 urllib 一致的异常语义上抛
+            raise urllib.error.URLError(reason=e)
 
 
-def call(test, params, mode, return_r_code, locale=None):
+def call(test, params, mode, return_r_code, locale=None, resolved_spec=None):
     """调用 coze 服务，返回 R 引擎信封 dict（重构 v5 协议）。
 
     模式（优先级从高到低）：
@@ -322,11 +667,20 @@ def call(test, params, mode, return_r_code, locale=None):
             "return_r_code": return_r_code,
             "locale": locale or _current_locale(),
             "query_origin": _compute_query_origin(),
+            "resolved_spec": resolved_spec or {
+                "test": test, "mode": mode, "params": sanitize(params)
+            },
         }, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
             endpoint, data=payload, headers=headers, method="POST")
+        # coze 调用并发限流（ct-base §20.10）：相邻两次 coze POST 间隔 ≥1 秒，
+        # 防触发 429 频控；间隔秒数由 COZE_META_MIN_INTERVAL 覆写。
+        _acquire_rate_limit()
         try:
-            with _urlopen_with_proxy_fallback(req, timeout=180) as resp:
+            # 超时：取消【读取】限制（Monte-Carlo / 大规模模拟可能远超 180s），
+            # 仅保留 15s 连接握手保护，避免端点不可达时 agent 永久阻塞。
+            # 远端 main.py TIMEOUT_SECONDS=900 为硬上限，read 永不越过该边界。
+            with _urlopen_with_proxy_fallback(req) as resp:
                 outer = json.loads(resp.read().decode("utf-8"))
         except urllib.error.URLError as e:
             # 只打异常类型 + 端点（绝不回显 token / payload）
@@ -335,11 +689,13 @@ def call(test, params, mode, return_r_code, locale=None):
         result_str = outer.get("result") if isinstance(outer, dict) else None
         if isinstance(result_str, str) and result_str.strip().startswith("{"):
             try:
-                return json.loads(result_str)
+                # 方案 B：figures[].content 已在 coze 端外置 S3，按 url 回填（失败保留 url）
+                return _fill_external_svgs(json.loads(result_str))
             except ValueError:
                 return outer
-        return outer if isinstance(outer, dict) else {
-            "status": "error", "notes": "coze 返回空/非对象响应"}
+        if isinstance(outer, dict):
+            return _fill_external_svgs(outer)
+        return {"status": "error", "notes": "coze 返回空/非对象响应"}
     raise RuntimeError(
         "coze 端点未配置：请设置 CTSS_COZE_ENDPOINT（真实），"
         "或 CTSS_COZE_MOCK=1（本地演示）。")
@@ -354,21 +710,27 @@ class CozeBackend(ComputeBackend):
         """--dry-run / --show-code 时展示将要发往 coze 的请求信封（脱敏后）。"""
         if not (ctx.get("dry_run") or ctx.get("show_code")):
             return None
+        mode = "power" if ctx.get("solve_for_power") else "n"
+        params = build_params(test, args, ctx)
         return json.dumps({
             "endpoint": _resolve_endpoint() or "(mock)",
             "test": test,
-            "mode": "power" if ctx.get("solve_for_power") else "n",
+            "mode": mode,
             "return_r_code": ctx.get("return_r_code", False),
             "locale": ctx.get("locale") or _current_locale(),
             "query_origin": _compute_query_origin(),
-            "params": sanitize(build_params(test, args, ctx)),
+            "params": sanitize(params),
+            "resolved_spec": {"test": test, "mode": mode, "params": sanitize(params)},
         }, ensure_ascii=False, indent=2)
 
     def compute(self, test, args, ctx):
         params = build_params(test, args, ctx)
         mode = "power" if ctx.get("solve_for_power") else "n"
+        # P3：resolved_spec 契约增强——本次完整语义快照，远端可选消费（补参/校验）。
+        resolved_spec = {"test": test, "mode": mode, "params": sanitize(params)}
         env = call(test, params, mode, ctx.get("return_r_code", False),
-                   locale=ctx.get("locale") or _current_locale())
+                   locale=ctx.get("locale") or _current_locale(),
+                   resolved_spec=resolved_spec)
         # AUTH-BLOCK：未授权不发送，提示用户（授权不阻断流程）
         if env is None:
             raise RuntimeError(
@@ -378,6 +740,22 @@ class CozeBackend(ComputeBackend):
         # v5 信封：status/stats/narrative/warnings/notes/repro
         if not isinstance(env, dict):
             raise RuntimeError("coze 返回非对象响应")
+        # ── 契约漂移检测 + 结构自适应兼容（ct-base §20.9 单入口 _assess_contract）──
+        # coze 端信封携带 _coze_version；结构别名自愈 + 版本高于期望才显式提醒。
+        # 用户可见提示统一只在渲染层 HTML 横幅（_needs_upgrade/_contract_drift 驱动），
+        # 不写 stderr、不污染 narrative/notes（零噪音原则）。
+        env, drift_notes, needs_upgrade = _assess_contract(env)
+        # 自适应兼容：缺字段补默认，保证下游不 KeyError
+        env.setdefault("stats", {})
+        env.setdefault("narrative", "")
+        env.setdefault("figures", [])
+        env.setdefault("warnings", [])
+        env.setdefault("notes", "")
+        env.setdefault("repro", {})
+        # 机器可读标记写回信封（rendering 横幅消费；非用户提示）
+        env["_needs_upgrade"] = needs_upgrade
+        if drift_notes:
+            env["_contract_drift"] = drift_notes
         # 契约 §5：coze 出错可返回 {"error": {...}}；原样呈现 message
         err = env.get("error")
         if err:
@@ -388,12 +766,25 @@ class CozeBackend(ComputeBackend):
             raise RuntimeError("coze 计算失败: %s" % (env.get("notes") or status))
         stats = env.get("stats") or {}
         repro = env.get("repro") or {}
+        # 截断告警（coze 返回体超 4000 字符、已丢部分 stats 子块；narrative 优先外置故鲜触发）
+        truncated = env.get("_coze_truncated")
+        text = env.get("narrative", "") or ""
+        meta = dict(stats)
+        if truncated:
+            sys.stderr.write(
+                "\n[ct-samplesize] 注意：coze 返回体超 4000 字符，"
+                "已截断部分 stats 子块：%s\n" % truncated)
+            meta["_coze_truncated"] = truncated
+        # 契约漂移标记：透出到 meta（rendering 经 res.meta 读取，写回报告横幅）
+        meta["_needs_upgrade"] = needs_upgrade
+        if drift_notes:
+            meta["_contract_drift"] = drift_notes
         return Result(
-            text=env.get("narrative", ""),
+            text=text,
             figures=[Figure(f.get("format", "svg"), f.get("content", ""),
                             f.get("caption", "")) for f in env.get("figures", [])],
             r_code=repro.get("r") if ctx.get("return_r_code") else None,
             r_result=stats,
-            meta=stats,
+            meta=meta,
             backend=self.name,
         )

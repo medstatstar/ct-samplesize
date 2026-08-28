@@ -32,3 +32,7 @@ adapters/r-assets/
 **/refiner_contract.md
 **/coze_system_prompt_v*.md
 **/ops.md
+
+# 本地编辑备份文件（如 i18n.py.bak_YYYYMMDD），不入仓库、不随发布包分发
+*.bak
+*.bak_*

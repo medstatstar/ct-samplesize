@@ -1,0 +1,28 @@
+{
+  "id": "group_sequential",
+  "test": "group_sequential",
+  "desc": "成组序贯均值求n",
+  "cli": [
+    "--test",
+    "group_sequential",
+    "--effect_gs",
+    "0.4",
+    "--spending_func",
+    "OF",
+    "--n_interim",
+    "1",
+    "--power",
+    "0.8"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "effect_gs",
+      "spending_func",
+      "n_interim"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

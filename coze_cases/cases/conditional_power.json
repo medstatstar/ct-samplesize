@@ -1,0 +1,34 @@
+{
+  "id": "conditional_power",
+  "test": "conditional_power",
+  "desc": "条件功效（给定n求CP）",
+  "cli": [
+    "--test",
+    "conditional_power",
+    "--observed_effect",
+    "0.2",
+    "--planned_effect",
+    "0.3",
+    "--n_completed",
+    "100",
+    "--n_planned",
+    "200",
+    "--timing",
+    "0.5",
+    "--alpha",
+    "0.05"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "observed_effect",
+      "planned_effect",
+      "n_completed",
+      "n_planned",
+      "timing"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

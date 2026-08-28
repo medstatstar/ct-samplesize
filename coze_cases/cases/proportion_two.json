@@ -1,0 +1,26 @@
+{
+  "id": "proportion_two",
+  "test": "proportion_two",
+  "desc": "两组率比较求n",
+  "cli": [
+    "--test",
+    "proportion_two",
+    "--p1",
+    "0.7",
+    "--p2",
+    "0.5",
+    "--power",
+    "0.8"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "p1",
+      "p2",
+      "alpha"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

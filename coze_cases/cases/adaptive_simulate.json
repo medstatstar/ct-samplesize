@@ -1,0 +1,32 @@
+{
+  "id": "adaptive_simulate",
+  "test": "adaptive_simulate",
+  "desc": "适应性蒙特卡洛仿真求n",
+  "cli": [
+    "--test",
+    "adaptive_simulate",
+    "--sim_design",
+    "group_sequential",
+    "--effect_size",
+    "0.3",
+    "--interim_looks",
+    "2",
+    "--spending_function",
+    "obrien_fleming",
+    "--sim_n",
+    "100",
+    "--power",
+    "0.8"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "sim_design",
+      "effect_size",
+      "interim_looks"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

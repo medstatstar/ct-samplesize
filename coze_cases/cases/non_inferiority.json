@@ -1,0 +1,28 @@
+{
+  "id": "non_inferiority",
+  "test": "non_inferiority",
+  "desc": "率的非劣效检验求n",
+  "cli": [
+    "--test",
+    "non_inferiority",
+    "--p1",
+    "0.6",
+    "--p2",
+    "0.6",
+    "--margin",
+    "0.1",
+    "--power",
+    "0.8"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "margin",
+      "p1",
+      "p2"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

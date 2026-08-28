@@ -30,5 +30,49 @@
   "header.install_cmd": {
     "en": "[R package commands — for review only, NOT executed]",
     "zh": "[R 包安装命令 — 仅供审阅，未执行]"
+  },
+  "fig.curve": {
+    "en": "Curve: %s",
+    "zh": "曲线：%s"
+  },
+  "fig.effect_curve": {
+    "en": "Effect-axis curve: %s",
+    "zh": "效应量轴曲线：%s"
+  },
+  "fig.dist": {
+    "en": "H0/H1 distribution overlap: %s",
+    "zh": "H0/H1 分布重叠图：%s"
+  },
+  "fig.heatmap": {
+    "en": "Power heatmap: %s",
+    "zh": "效能热力图：%s"
+  },
+  "fig.surv_time": {
+    "en": "Power vs follow-up: %s",
+    "zh": "效能-随访时间曲线：%s"
+  },
+  "fig.adaptive": {
+    "en": "Adaptive simulation (%s)",
+    "zh": "适应性模拟（%s）"
+  },
+  "error.invalid_install_path": {
+    "en": "[ERROR] Invalid install script path; execution refused.",
+    "zh": "[错误] 安装脚本路径无效；执行已拒绝。]"
+  },
+  "error.invalid_temp_path": {
+    "en": "[ERROR] Invalid temp path; execution refused.",
+    "zh": "[错误] 临时路径无效；执行已拒绝。]"
+  },
+  "error.r_timeout": {
+    "en": "[ERROR] R execution timed out (300s limit)",
+    "zh": "[错误] R 执行超时（300 秒限制）]"
+  },
+  "error.rscript_not_found": {
+    "en": "[ERROR] Rscript not found or invalid. Set RSCRIPT_PATH env or install R.",
+    "zh": "[错误] 未找到 Rscript 或路径无效。请设置 RSCRIPT_PATH 环境变量或安装 R。"
+  },
+  "error.rscript_not_found_install": {
+    "en": "[ERROR] Rscript not found or invalid. Is R installed?",
+    "zh": "[错误] 未找到 Rscript 或路径无效。是否已安装 R？]"
   }
 }

@@ -1,0 +1,28 @@
+{
+  "id": "cluster",
+  "test": "cluster",
+  "desc": "整群随机求n",
+  "cli": [
+    "--test",
+    "cluster",
+    "--m",
+    "20",
+    "--icc",
+    "0.05",
+    "--n_indiv",
+    "30",
+    "--power",
+    "0.8"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "m",
+      "icc",
+      "n_indiv"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

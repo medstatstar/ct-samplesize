@@ -1,0 +1,25 @@
+{
+  "id": "vaccine_efficacy",
+  "test": "vaccine_efficacy",
+  "desc": "疫苗效力VE求n",
+  "cli": [
+    "--test",
+    "vaccine_efficacy",
+    "--ve_control",
+    "0.02",
+    "--ve_treatment",
+    "0.005",
+    "--power",
+    "0.8"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "ve_control",
+      "ve_treatment"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

@@ -1,5 +1,133 @@
 # Changelog / 版本历史
 
+## v5.3.12 (2026-08-28) · 待发布：SKILL.md 对齐 ct-base §3/§4 正文规范 + 跨轮连续性/菜单设定对齐 ct-base
+
+- **🔴 SKILL.md 正文英文化（ct-base §3 排版规则 + §4 正文规范）**：原 `## Cross-turn Continuity（跨轮连续性·必须）` 整段为中文指令散文，违反「SKILL.md 正文（YAML 之外）一律英文（agent-facing）」；按范本 meta-analysis §5.1 英文结构重写（英文指令 + 回显块字面串保留 `## 当前分析设定：` 前缀，与 ct-base §5.1 登记一致），并清掉 Features 表 ④、figure-set、3-round cap、agent rule 等 4 处零散中文注。仅保留 `## Language` 段「中文指南」链接标签（与范本一致）及运行期回显块字面串。
+- **🟢 跨轮连续性/菜单设定对齐 ct-base（本轮"都做"的 A/B/C/D）**：① merge_spec 软约束诚实说明（call() 网络层不强制、默认路径是 LLM 行为约定）；② §5.1 登记前缀同步为 `## 当前分析设定：`；③ Vague 深挖 3-round cap 与参数缺失澄清 2 轮（AGENTS.md §6.1）显式区分；④ 发布态 merge_spec 路径改相对 `scripts/merge_spec.py`（避免发布后失效）。
+- **🟢 version 字段对齐 CHANGELOG（ct-base §9）**：`version: 5.3.0` → `5.3.12`，与最新发布条目一致。
+- **纯文档改动，未改代码、未重部署 coze**。
+
+## v5.3.11 (2026-08-28) · 待发布：coze 信封契约漂移检测按 ct-base §20.9 定稿重构（单入口 _assess_contract）
+
+- **🔴 删除旧 `_check_coze_version_drift`（三通道提醒）**：原实现 `!=` 即提醒、缺标记也提醒、且经 `sys.stderr` + `meta._upgrade_advisory` + `Result.text`（结论区）三处重复提示升级。
+- **🟢 新增 `_assess_contract(parsed) → (parsed, drift_notes, needs_upgrade)`（ct-base §20.9 单入口）**：综合「结构漂移（主·自愈）+ 版本漂移（显式）」，照搬 meta-analysis 范本并据 ct-samplesize 信封微调别名表（`content`→`narrative`、图体 `svg/image/svg_data/base64`→`content`、`figures` dict→list）。两路信号汇入同一返回；映射发生时记 drift 说明。
+- **🟢 版本比较改语义化（修 5.10.0>5.3.9 字典序误判）**：新增 `_coze_version_higher(a, b)` 按段数值比较（裸字符串 `>` 对 `"5.10.0">"5.3.9"` 会判错）。版本漂移判定由 `!=` 改为**高于**期望才显式触发；**缺标记不视为漂移**（零噪音原则）。
+- **🟢 用户可见提示收敛到 HTML 唯一出口**：`compute()` 写回信封 `_needs_upgrade`（bool）/`_contract_drift`（list[str]），`rendering.py` 在报告顶部 `.banner` 渲染"已在本地自动适配，如频繁出现建议升级 ct-samplesize 技能到最新版"（技能名取实际技能）；`scripts/samplesize_power.py` 透传标记至 `_report_env`。删除全部 `sys.stderr` 升级文案与结论区污染。
+- **纯本地改动，无需重部署 coze**：信封版本 `_COZE_ENVELOPE_VERSION` 仍为 `"5.3.9"`（coze 端 `_coze_version` 恒内联已达标，未动）；仅本地消费逻辑重构。
+- **验证**：`py_compile` 三文件通过；`verify_drift_v2.py` 18 项全 PASS——语义版本比较（5.4.0/5.10.0>5.3.9、5.3.9/5.3.8 不高于）、A 一致零噪音、B 结构别名 content→narrative 自适应+提示、C 版本高于触发、D 缺标记零噪音、E 图体 svg→content 自适应、F figures dict→list、渲染横幅（含漂移/一致零横幅）全过。
+
+## v5.3.10 (2026-08-28) · 待发布：coze 出站并发限流（相邻 ≥1 秒，ct-base §20.10）
+
+- **🟢 coze 调用并发限流（用户定）**：`adapters/coze_client.py` 新增模块级 `_RATE_LIMIT_LOCK` +
+  `_LAST_CALL_TS` 与 `_acquire_rate_limit()`，在 `call()` 真实 POST 前串行化"间隔决策"并强制
+  相邻两次 coze /run 调用**至少间隔 1 秒**，防止触发 coze 端 429 频控（meta-analysis 实测曾因此
+  被限流至次日）。间隔秒数由环境变量 `COZE_META_MIN_INTERVAL`（浮点秒，默认 1.0；`<=0` 关闭）覆写，
+  与 meta-analysis 同名跨技能一致。
+- **纯本地改动，无需重部署 coze**：限流仅作用于本地出站节奏，`_COZE_ENVELOPE_VERSION` 信封版本不变
+  （仍为 `"5.3.9"`）。mock 模式（`CTSS_COZE_MOCK=1`）不触网、不受限流约束。
+- **作用域边界**：同进程多线程并发已被 `threading.Lock` 覆盖；跨进程并发未实现（ct-base §20.10 已标注）。
+- **验证**：`py_compile` 通过；`verify_rate_limit.py` 3 线程并发打桩（不连网），出站时刻
+  `0.0xx / 1.0xx / 2.0xx`、相邻间隔均 ≥1.0s → PASS。
+
+## v5.3.9 (2026-08-28) · 待发布：coze 返回版本漂移检测——自适应兼容 + 升级提醒
+
+- **🟢 coze 信封新增 `_coze_version` 版本标记（coze 端 `samplesize.py::_COZE_ENVELOPE_VERSION="5.3.9"`）**：恒内联（纳入 `_CORE_INLINE`，不走 manifest 外置/丢弃），随每个响应返回 coze 端契约版本。
+- **🟢 本地版本漂移检测（`coze_client.py::compute`）**：新增 `EXPECTED_COZE_ENVELOPE_VERSION="5.3.9"` 与 `_check_coze_version_drift(env)` 辅助。coze 返回信封的 `_coze_version` 与本地期望**不一致或缺失**即判定为"coze 返回与本地代码对不上"：
+  - **自适应修改（兼容）**：`compute()` 在检测前先 `env.setdefault` 归一化 `stats/narrative/figures/warnings/notes/repro` 缺省字段，旧契约回退路径（`_fill_external_svgs_legacy` / manifest 重组）本就在 `call()` 内生效 —— 漂移响应不下崩、仍产出可用 `Result`。
+  - **提醒用户升级**：三处同步透出 —— ① `sys.stderr` 打印 `[ct-samplesize] ⚠️ 版本漂移：...`；② `meta["_upgrade_advisory"]` 机器可读；③ 追加进 `Result.text`（报告"结论"区可见）"⚠️ 提示：...建议升级 ct-samplesize 技能（含 coze 端）到最新版"。版本一致时零噪音。
+- **🟢 契约同步**：`r-assets/coze_contract.md` §3 响应信封字段列表补 `_coze_version`，标注须与 coze 端 `_COZE_ENVELOPE_VERSION` 及本地 `EXPECTED_COZE_ENVELOPE_VERSION` 三方同步。
+- **验证**：`py_compile` 两端 OK；`verify_drift.py` 实跑 3 场景 —— A) 版本一致（无提醒、Result 正常）✅；B) coze 缺 `_coze_version`（触发提示、自适应兼容、Result 正常）✅；C) coze 版本旧（"5.3.1"≠"5.3.9"，触发提示、Result 正常）✅；stderr / `meta._upgrade_advisory` / `text` 三处均含提醒文案。
+
+## v5.3.8 (2026-08-28) · 待发布：HTML 风格修正——结论区真正两端对齐，hero 回退
+
+- **🔴 回退 hero-kv 网格（v5.3.7 第 9 条方向被否定）**：用户确认 Cohen's d / 目标功效 应保留在**结论区**而非顶部摘要。撤销 `.hero-kv` 两列网格与「Cohen's d 纳入 hero」改动，`_render_hero` 恢复原始结构（每组 n 大字主值 + `.sub` 副行显示目标功效/给定 n + 达标徽章）；对应 CSS `.hero .sub` 还原、暗色模式删除失效的 `.hero-kv .k/.v` 死规则。
+- **🔴 结论区数值真正两端对齐（修正 v5.3.7 第 8 条的空操作）**：原仅给 `.concl-row .cv` 加 `text-align:right`，但 `.concl-row` 是 flex 行、`.cv` 收缩成内容宽度，右对齐不生效（数值贴标签右侧而非最右端）。补 `flex:1` 让 `.cv` 占满剩余空间，`text-align:right` 才真正把数值顶到最右 —— Cohen's d / 目标功效 / 每组 n 等结论条目实现标签左、数值右的两端对齐。
+- **验证**：`py_compile` OK；`render_html_report` 实跑样本信封生成报告，自动断言：hero 无渐变 ✅、数值加粗 ✅、4 类小标题图标命中 ✅、分组卡图标保留 ✅、hero-kv 无残留（CSS+HTML）✅、`.concl-row .cv` 含 `flex:1`+`text-align:right` ✅、结论区三行（Cohen's d / 目标功效 / 每组 n）均在场且以 `.cv` 右对齐 ✅、hero 区块内 Cohen 计数 0 ✅。
+
+## v5.3.7 (2026-08-28) · 待发布：HTML 报告风格对齐 meta-analysis 参考（3 处）
+
+- **🔴 `adapters/rendering.py` `_CTSS_REPORT_TEMPLATE` 顶部 Hero 去底色**：原 `.hero` 为蓝色渐变（`linear-gradient(135deg,#1e3a8a,#2563eb)`）+ 白字，改为白色卡片（`background:var(--card)` + 边框 + 阴影），文字转深（`var(--text)`/`var(--muted)`），徽章转浅色（`.badge.ok` 浅绿 / `.badge.warn` 浅橙 / `.badge.bad` 浅红，`currentColor` 圆点）——与 meta-analysis 参考报告视觉一致。
+- **🟡 数值列表加粗**：`table.stats td.v` 与结论 `.concl-row .cv` 增加 `font-weight:700`（对齐 meta-analysis `.kv .v` 加粗），关键数值更醒目。
+- **🟡 小标题加图标**：三个 `.card h2`（📊 图形 / 🧮 计算结果 / 📝 结论）与结论小节 `.concl-sec`（📌）加 emoji 图标，对齐 meta-analysis `.cap .ico` / `.group h3 .ico` 风格；stats 语义分组卡原有图标（🎯⚙️📋📦📈）保留不变。
+- **🟡 数值列右对齐**：`table.stats td.v`（计算结果表数值列）与结论 `.concl-row .cv` 增加 `text-align:right`，标签列 `td.k` 保持左对齐 —— 形成"标签贴左、数值贴右"的两端对齐效果，数值纵列更易扫读。
+- **🟡 顶部摘要 hero 副指标改为 `.kv` 网格两端对齐**（**该方案已于 v5.3.8 回退**）：原 hero 副指标（目标功效 / 给定 n）为横排 `.sub` 附注，与下方结果表视觉不一致；一度改为 `.hero-kv` 两列网格并把 Cohen's d 纳入 hero。用户确认 Cohen's d / 目标功效 应留在结论区，故 v5.3.8 撤销此改动，hero 恢复 `.sub` 原始结构。
+- **验证**：`py_compile` OK；`render_html_report` 实跑样本信封生成报告，自动断言 hero 无渐变、数值加粗、4 类图标全部命中、分组卡图标保留，全过。
+
+## v5.3.6 (2026-08-28) · 待发布：coze 端代码模块化去重（R 渲染统一 + Python solve_for_power）
+
+- **🔴 R 端 SVG 渲染块统一为 `.render_fig()`（消除 6 处重复）**：`run_task.R` 新增 `.render_fig(draw, type, caption, warns, fallback, width, height)` 辅助函数，统一 svglite 渲染逻辑（`requireNamespace` + `svgstring` + `dev.off()` + 失败兜底 warns）。原 6 处重复块（`.run_dist`/`.run_surv_time`/`.run_heatmap`/`.run_curve`×2/adaptive visualize）全部改为调用该函数。adaptive 分支的 width=8、内联 tryCatch 也统一（抽 `.draw_adaptive`）。`.render_fig` 返回 `list(fig, warns)` 保证 warns 正确回传（R 按值传递，避免 `<<-` 只改局部）。本地 R 回归 11 场景（9 方法默认全图集 + 显式 dist/heatmap）全过：`FINAL_RENDER_REGRESSION=True`。
+- **🟡 Python 端 `build_core_r_code` 的 `solve_for_power` 预计算（消除 28 处重复）**：`local_r_backend.py` 函数开头预计算 `_sfp = str(solve_for_power).upper()`，28 处 `.format(solve_for_power=str(solve_for_power).upper())` 统一改为 `solve_for_power=_sfp`。纯去重、不改 R 模板输出（已验证 `.format` 关键字传参等价）。7 个 test（mixed_model/roc/poisson/cluster/bland_altman/be_tost/ttest_ind）mock 生成 R 代码全过，py_compile OK。
+- **已知未做（高风险，待用户决定）**：`build_core_r_code` 的 14+ 分支 cat 骨架（`R_XXX + f"""cat(...)"""` 手写，约 55-65% 重复，预计可减 250-300 行）、7 处 `print(t(...)); sys.exit(1)` → `_fail` helper。涉及 R 字符串模板重写，回归风险高，需用户确认后再动。
+
+## v5.3.5 (2026-08-28) · 待发布：i18n.py 对齐 ct-base（消除 shared_sync_check 漂移，方案 A）
+
+- **🔴 `scripts/i18n.py` 对齐 ct-base（消除 shared_sync_check 漂移）**：旧版 593 行内置 `_MESSAGES` 大字典（201 键）替换为 ct-base 165 行版（从 json 加载，数据外置单一真源）。公共 API 一致（set_lang/is_chinese_os/_current_lang/t/_=t），对调用方零破坏。
+- **🆕 `scripts/i18n_skill_messages.json`（技能级词条文件，ct-base v1.1.77 新机制）**：把旧版内置的 **183 个技能专有统计词条**（label.* 102 / r_header.* 42 / error.* 21 / header.* 16 / info.* 1 / safe_preview.* 1）迁入该文件。这些词条是 ct-samplesize 专有文案，不污染 ct-base 通用 json。
+- **vendor 补齐 json**：`scripts/i18n_messages.json`（237 键，从 ct-base 复制，严格一致）；`scripts/i18n_r_messages.json` 补齐 5 个 `error.rscript_*` 键至与底座一致（subset 满足）。
+- **移除旧版自覆盖的 `auth.coze_outbound`**：旧版用自己的样本量授权文案覆盖了 ct-base 标准词条；现改走底座标准版（"不含 PII/受试者/未公开项目数据"通用表述，语义兼容），符合 §16.8。
+- **验证**：替换后 i18n.py + 三 json 取到旧版全部 201 键（0 回退键名）；samplesize_power/coze_client/compute_backend 导入 OK；`shared_sync_check` **全部一致 ✓**。
+- **备份**：旧 `scripts/i18n.py` → `scripts/i18n.py.bak_20260828`。
+- **边界**：coze 端 `adapters/coze/ct_r_lib/i18n.py` 为独立自包含部署实例（无 json、不在闸门范围），本次未动（改需动 Docker 打包，独立任务）。
+
+## v5.3.4 (2026-08-28) · 待发布：coze 默认全图形集 + figures type 字段 + 展示策略重构（对话流不内联、HTML 报告全量）
+
+- **🟢 默认全图形集（用户定，2026-08-28）：显式图形模式改为默认出图**：`run_task.R` 新增 `.default_figures()` + `.default_solved_n()`，用户未显式请求图形时，为支持的 test **一次性累积生成多张图**——(1) 曲线（9 个 curve solver：forward→样本量曲线 / reverse→效能曲线）；(2) 分布重叠图（ttest*/proportion*/survival）；(3) 效应量轴曲线（9 个 solver，按 test 语义自动构造 effect_seq 默认序列）；(4) 效能热力图（9 个 solver，n_seq × effect_seq 自动网格，forward 用解出的 n 构造 n_seq）；(5) 随访-效能曲线（survival only，需 event_rate；缺省时跳过并记 warning）。每张图独立 tryCatch，失败仅跳过不阻断其余。本地 R 回归 9 方法 forward + reverse + 显式不触发场景全过：8/9 方法默认全图集完整（curve+dist+effect_curve+heatmap），survival 提供 event_rate 时 5 张图全出、缺省时随访曲线跳过并带双 warning。显式请求任一图形时仅出该图（不触发默认集，防重复）。
+- **🔴 展示策略重构（用户定：对话流不展示图形，HTML 报告全量）**：`scripts/samplesize_power.py` `render_figures` 与 `render_curve_fallback` 的 `__SVG_WIDGET__` / `__FIGURE__ svg/png` 内联标记**默认关闭**（设 `CTSS_INLINE_WIDGET=1` 恢复），图形不再内嵌对话流；全量展示完全交给 `render_html_report`（stats + 全量内联 SVG + R 复现脚本，单文件 HTML）。`__FIGURE__ html`（报告入口）保留。SKILL.md L61/L173 内联规则同步修订。端到端冒烟：coze anova→1 张 curve→`render_html_report` 全量内联成功（HTML 含图形卡 + 1 个 `<svg>`）。
+- **🔴 coze 云端默认自动曲线补齐（修复文档-代码不一致）**：此前**云端 R 引擎从未实现**默认曲线（仅本地 `samplesize_power.py` 有），导致 coze 出站 `figures=[]`，与 SKILL.md L61「★ Auto-curve…默认附曲线」及 ROADMAP 状态 ✅ 不符。本地 R 回归 10 case（5 方法 × forward/reverse）全过。
+- **🔴 figures 缺 `type` 字段（出站信息不完整）**：`run_task.R` 全部 6 处 figure 构造（dist/surv_time/heatmap/curve/effect_curve/adaptive）补 `type` 字段。此前 `samplesize.py:_externalize_figures` 用 `fig.get("type","ctss_fig")` 永远降级为无语义文件名 `ctss_fig_*.svg`；补后 S3 外置文件名变 `curve_0.svg` 等，下游（HTML 报告 / coze 卡片）可按类型路由渲染。本地 R 回归确认 `type` 正确进入出站 JSON。
+- **🟢 图形名称自动双语化（2026-08-28）**：`common.R` `.messages` 字典新增 `fig.curve`/`fig.effect_curve`/`fig.dist`/`fig.heatmap`/`fig.surv_time`/`fig.adaptive` 六个双语键（en/zh），`run_task.R` 全部 6 处 figure caption 由硬编码英文改为 `sprintf(t("fig.xxx"), test)`。`figures[].caption` 随 locale 双语化（zh→中文 / en→英文），作为 HTML 报告展示的图形名称。SVG 内部 `main` 标题保持英文（coze 服务器无 CJK 字体避免豆腐块，中文由本地 HTML 渲染处理）。本地 R 回归 en/zh 双 locale 全过：ttest_ind 默认 4 图 caption 中英正确、survival 全图集 5 图含随访曲线双语正确。`samplesize.py` docstring 同步修订（原「图形始终英文」说明过时）。
+
+> ⚠️ **部署红线**：以上 coze 端改动（默认全图形集 + type 字段）均需**重部署 coze 端点后线上生效**，需用户确认后执行。
+
+## v5.3.2 (2026-08-28) · 待发布：对齐 meta-analysis 输出方式（HTML 报告 + repro 外链 + 每 test 默认出图可配置）
+
+- **🟢 本地 HTML 聚合报告（对齐 meta-analysis 方案 B）**：`adapters/rendering.py` 新增 `render_html_report()` + 自包含单文件模板（亮色主题），把 stats 表 + 内联 SVG（复用 `build_figure_widget`，S3 链接过期不影响查看）+ 结论 narrative + 折叠 R 复现脚本（语法高亮 + 复制按钮）固化成 `outputs/ctss_report_<test>_<ts>.html`。`samplesize_power.py` main() 在 `render_figures` 后自动调用并打 `__FIGURE__ html` 标记。实测非曲线请求全区块渲染正常；曲线请求 repro=None 属合理（R 引擎曲线分支不带 repro）。
+- **🟢 coze 端 `_externalize_repro`（R 代码外链）**：`samplesize.py` 新增函数，把 `out['repro']['r']`（R 复现脚本 ~1-2KB）上传 S3（text/plain），返回 `{type:"repro",format:"r",storage:"s3",key,url,r_version,packages}`（r_version/packages 保留内联）；S3 不可用降级内联。`samplesize_node` 在 `_externalize_figures` 后调用。**待重部署 coze 端点后生效**（当前端点 repro 仍内联，属预期）。
+- **🟢 本地 repro 回填**：`coze_client._fill_external_svgs` 扩展——`repro` 为 dict 且含 `url` 无 `r` → 按 url 下载回填 `repro['r']`，失败标 `_repro_fetch_failed` 不抛错（对齐 meta-analysis `coze_client.py:252-258`）。
+- **🟢 每 test 默认出图可配置**：`coze_cases/_contract_index.json` 49 test 全部新增 `default_curve` 字段（ttest×3 + proportion×2 = true，其余 44 = false，与原硬编码行为一致）；`samplesize_power.py` 硬编码 `_AUTO_CURVE_TESTS` 改为 `_auto_curve_tests()`（带缓存，读契约 `default_curve=true`，契约缺失回退硬编码集合）。**改契约 JSON 即可改默认出图，无需改代码**。
+- **🔴 修 `_highlight_r` 嵌套 span bug**：原实现"先整体 `_html_escape` 再 4 个正则逐步加 span"，导致后一个 pattern 匹配前一个生成的 `class="c"` 等标签属性 → 嵌套损坏 span（`<span class=<span class="s">"c"</span>>`）。改为单遍扫描：注释（`#`）与字符串（`"…"`/`'…'`）先隔离成 span，再对普通代码段做函数/数字高亮。实测污染=[]，边界用例（字符串内 `#`、转义引号、多行注释）全过。**meta-analysis 同源缺陷已同步修复**（`meta-analysis/adapters/rendering.py:691`）。
+- **🆕 图形扩展待办**：新增 `ROADMAP.md`（6 大类参考清单分类：3 项已实现 / 热力图+事件数图等 5 项可实现 / 非参数对比等 3 项不做；实施顺序建议：分布重叠图 → 效能热力图 → 事件数-随访时间图）。ggplot2 由用户确认已在 coze 部署环境。
+- **🆕 连续效应量轴曲线（`--effect_seq`）**：R 端 `run_task.R` 新增 `.solve_effect_axis()` + `.run_curve` 的效应量主轴分支，`curve_effect_seq` 协议将效应量作为连续 X 轴。语义——`--effect_seq` + `--nobs`/`--n_seq` → y=效能（固定 n）；`--effect_seq` + `--power_seq` → y=样本量（固定 target power）；单独 `--effect_seq` 默认固定当前 nobs、y=效能。覆盖 9 个曲线 test（ttest×3/anova/比例×2/生存/等效/BE-TOST），固定值优先取 companion 序列首值（`curve_n_seq[1]`/`curve_power_seq[1]`）回退 `nobs`/`power`。本地 R 回归全过（含 n_seq 固定值 bug 修复：原 `axis` 判定只看 `curve_n_seq` 且固定 n 只认 `nobs`，导致 `--effect_seq --n_seq 250` 错用 n=100；现集中 `fix_n`/`fix_power` 计算）。`coze_client.build_params` 新增 `effect_seq→curve_effect_seq` 映射并加入 `_PARAM_EXCLUDE`；`scripts/samplesize_power.py` 与 `adapters/coze/ct_r_lib/samplesize_power.py` 均加 `--effect_seq` CLI 标志；SKILL.md / ROADMAP.md / references/cli_examples.md 同步。**待重部署 coze 端点后线上生效**。
+
+## v5.3.3 (2026-08-28) · 待发布：三类新图形（分布重叠 / 生存随访效能 / 效能热力图）
+
+- **🆕 ① H0/H1 分布重叠图（`--dist_plot`）**：R 端 `run_task.R` 新增 `.dist_delta()` + `.run_dist()`。在标准化效应空间画 H0/H1 两条正态密度并着色 α/β 区，重叠面积=1−power（构造上成立），对方案解释/审阅/教学价值最高。支持 `ttest_ind/paired/one`（Cohen's d 标准化）、`proportion_two/one`（Arcsin 标准化 δ）、`survival`（log-HR 标准化 δ）；`anova` 等无单一效应量语义的 test 优雅报错。base R `polygon()` + svglite，零新依赖。
+- **🆕 ③ 生存随访-效能曲线（`--power_time_seq`，survival 仅）**：R 端 `run_task.R` 新增 `.run_surv_time()`。指数事件累积闭式（uniform accrual + 指数 dropout，Schoenfeld 反推效能(τ)）算 x=研究时长、y=效能，并标注达到 target power 的时长点。需 `--event_rate`（单位时间事件风险 λ）+ `--accrual_time` 与序列**同时间单位**。本地 R 回归：n=200/HR=0.7/λ=0.1/入组=1yr 时 1→4yr 效能 0.08→0.278 单调正确；缺 event_rate 优雅报错。
+- **🆕 ④ 效能热力图（`--heatmap`）**：R 端 `run_task.R` 新增 `.ss_power_ne()` + `.run_heatmap()`。`--n_seq`（样本量）× `--effect_seq`（效应量）网格算效能，base R `filled.contour` 填充。**无需 ggplot2**（与原 ROADMAP 假设一致，规避「部署完才发现包缺失」）。覆盖 9 个曲线 test；本地 R 回归 5×5 网格数值合理（n=30 时 d=0.2→0.12、d=1.0→0.97）。
+- **🔴 survival 契约补全（顺带修复预存隐患）**：`coze_cases/_contract_index.json` survival `required` 由 `['hazard_ratio','alpha']` 增补 `event_rate`/`accrual_time`。原 R 端 `ss_survival_logrank` 对这两个字段有 `%||%` 默认值（0.05/1），导致**用户指定的事件率/入组时长被静默忽略**；补全后主线 survival 计算与 `--power_time_seq` 均按用户取值。属行为修正（此前默认 0.05/1 掩盖了契约缺字段）。
+- **Python 侧接线**：`coze_client.build_params` 新增 `dist_plot→plot_dist` / `power_time_seq→curve_power_time_seq` / `heatmap→curve_heatmap` 映射并加入 `_PARAM_EXCLUDE`；`scripts/samplesize_power.py` 与 `adapters/coze/ct_r_lib/samplesize_power.py` 均加三枚 CLI 标志，`ctx["curve"]` 判定同步含三者。dispatch 顺序：dist → surv_time → heatmap → effect_seq 轴 → 一般曲线（避免热力图被误判为效应量轴）。SKILL.md / ROADMAP.md / references/cli_examples.md 同步。
+- **本地验证**：R 端 6+ 场景（分布重叠 ttest/proportion/survival + 不支持报错；随访曲线正常/缺参报错；热力图正常/缺参报错）+ Python 端 `build_params` 三模式映射 + 契约转发全过。**待重部署 coze 端点后线上生效**（部署红线，需用户确认）。
+
+## v5.3.1 (2026-08-28) · 待发布：请求参数精简 + 飞书日志去污染（本地修复）
+
+- **🔴 `build_params` 只发本 test 所需参数**：原实现遍历整个 argparse 命名空间，把 ~80 个参数的默认值（varcorr/sigma/nsim/theta0/cv/design/ve_*/prior_a0/prob_*/n_doses/target_dlt/win_ratio_theta/...）全量序列化进 `params` → 飞书 `querystr` 看起来像"全参数扫描"，无法区分真实请求与测试。改为以 `coze_cases/_contract_index.json` 的 `required` 字段为白名单（与 CLI choices / R 引擎 dispatch 三者一致的单一真相源），只发送：本 test 的 `required` 非 None 参数 + 通用 `alpha` + 模式关键参数（求 n → `power`；求 power → `nobs`）+ 派生量（`solve_for_power`/`alt`/`d_val`）+ 曲线参数（`curve_*`）。契约缺失/未登记时退化为原全量行为，保证不丢参。
+- **🔴 图形 S3 外置（对齐 meta-analysis 2026-08-26 方案 B）**：coze 端 `samplesize_node` 新增 `_get_s3()` + `_externalize_figures()`，把 `figures[].content`（SVG，可达数 KB）上传 S3、替换为 `{type,format,storage:"s3",key,url}` 引用（url 仅数十~数百字符），大幅缩减 coze 响应体与飞书 `resultstr` 体积。本地 `coze_client._fill_external_svgs()` 按 url 下载回填 `content`（键名对齐 ct-samplesize 本地 `Figure.content`），下游 `render_figures` 契约不变。S3 不可用时两侧均降级内联，不影响结果。
+- **🔴 `query_origin` 透传修复**：`state.py` 的 `GraphInput`/`SamplesizeNodeInput`/`SamplesizeNodeOutput` 增加 `query_origin` 字段；`samplesize_node` 把入参 `query_origin`（客户端 `sha256(hostname)`）经 `SamplesizeNodeOutput` 写回 `GlobalState`，使 `feishu_save` 能读到并写入飞书 `query_origin` 列（原 bug：`GraphInput` 无该字段 → 入参被丢弃 → 飞书恒为空）。
+- 计算正确性不受影响（R 引擎只读所需键，%||% 回落默认值）；自动曲线（auto-curve）保持默认出图，第二次 coze 调用返回值改为 S3 引用、体积显著缩小。
+
+## v5.3.1-coze (2026-08-28) · coze 端合入：adaptive_sim.R K=1 陷阱修复 + base 流水线整合
+
+- **🔴 `adaptive_sim.R` R 经典陷阱修复（coze 端）**：原 `efficacy_boundaries` 与 `futility_boundaries` 两处用 `for (k in 2:K)`；当 `K=1`（即 `interim_looks=1`，单次期中分析）时 `2:1` 生成降序序列 `c(2,1)`，导致循环误执行、访问不存在的 `times[2]` → 卷积矩阵全 NA → 边界二分法崩溃（`missing value where TRUE/FALSE needed`）。改为 `for (k in seq_len(K - 1L) + 1L)`：`K≥2` 行为完全不变，`K=1` 时 `seq_len(0)+1L = integer(0)` 循环体不执行。已测：ttest/survival 曲线及 adaptive 模拟均成功产出 SVG。
+- **🔴 整合 coze base 流水线，使本地源码自洽**：经逐文件 MD5 比对，本地 `adapters/coze/` 此前是 coze 项目的**子集**（缺失 base 层的 langgraph R 代码生成/修复流水线）。本次从 coze 现状 zip（`coze_project_5.3.1_code_af22817b.zip`）合入 12 个源文件：`src/graphs/loop_graph.py`、`src/graphs/nodes/{requirement_parse,r_code_generation,r_code_fix,r_code_execution,template_resolver,result_output}_node.py`、`src/tools/r_executor.py`、`config/{requirement_parse,r_code_generation,r_code_fix}_cfg.json`、`README_zh-CN.md`（原乱码名 `README_中文.md` 重命名）。这些节点属 `cozeloop` 平台框架装饰器节点（运行时由 cozeloop 注册），本地仅做 `py_compile` 语法校验通过。
+- **🔴 本地改动与 coze 端零冲突**：`samplesize.py`（S3 外置）、`state.py`（`query_origin`）在 coze 现状 zip 中与本地字节一致（diff=0），coze 端未回退；唯一差异文件即 `adaptive_sim.R`（已用修复版覆盖）。
+- **部署包重建为完整自洽包**：`_archive_20260828/coze_project_5.3.1.zip` 由 67 文件扩至 **79 文件**（含上述 12 个 base 文件 + adaptive_sim.R 修复），重生成 `manifest.json`（5.3.1 / 79 文件 / 含 base 流水线），MD5 `6bddd768d0493f14cc097011e3b47b9a`。下次干净部署不再依赖 coze base 镜像残留。
+
+## v5.3.0 (2026-08-25) · 上下文交互菜单改造：两级路由 + 有界 grill-me（Type-Compute 对齐第二轮）
+
+- **🔴 Quick Menu 两级化**（对齐 meta-analysis level-1 → level-2 范式）：SKILL.md 的 Quick Menu 从"一次甩 6 大类 + ~40 个 test 名"压缩为 **level-1 摘要**（仅 6 大终点类 + 高频设计族入口 + ③ 解释差异入口）；用户选类后 LLM 才进 `references/menu.md` Part 1 弹该类子列表（level-2）——Complex 首屏从 ~40 项降到 ~8 项，遵守"逐步确认、不甩全量菜单"（ct-base compute_menu §5）。
+- **Vague 有界 grill-me 落地**（落地 ct-base compute_menu §4「有界 grill-me」细则，源自 ct-advisor clarify_loop.py 经验）：SKILL.md 明确 **LLM 自计数轮次、硬上限 3 轮**（超限带问题画像强制收敛）；每轮 1–3 个聚焦问题 + 推荐默认；累积 question_profile；结束时回显「需求画像 + 推荐检验 + 待补参数」摘要确认再计算。
+- **triage 表述统一**：`references/menu.md` 顶部 gate 由 3 分类（§5.2）改为与 SKILL.md 一致的 4 档（Simple/Middle/Complex/Vague），并注明 Complex 走两级路由。
+- **类别级参数提示**（对齐 meta level-2 数据格式提示）：`references/menu.md` Part 1 六类各加一行"常见参数"（①--effect ②--p1/--p2 或 OR/RR ③--lambda1/--lambda2 ④--hazard_ratio ⑤⑥按设计族），选完 test 后参数收集更顺。
+- **README Example 1 拆轮**（遵守"每轮 1–3 个聚焦问题"上限）：grill-me 示例由一轮 4 题改为**两轮各 2 题**（Round 1 终点类型+设计；Round 2 优效/非劣/等效+效应量表达），双语文案同步，示例展示"需求画像+推荐检验"收尾。
+- 无代码改动，纯提示/文档层；回显块前缀（`## 当前分析设定：`）与解释差异入口措辞延续 v5.2.0 不变。
+
+## v5.2.0 (2026-08-25) · Type-Compute 交互框架对齐（ct-base 计算型统一规范）
+
+- **🔴 回显块前缀统一**：`## 当前设定：` → `## 当前分析设定：`（SKILL.md §Cross-turn Continuity 4 处）——对齐家族计算型统一前缀（ct-base `compute_menu.md` §6.2 / `interaction_frameworks.md` §5.3）。此前沿用 continuity 通用前缀，与 meta-analysis（范式）不一致。
+- **🔴 「解释差异」入口措辞逐字对齐**：`references/menu.md` + `README.md` + `README_zh-CN.md` 统一为家族标准版（`interaction_frameworks.md` §5.2：英文 `I'll clarify the clinical/statistical meaning before you choose` / 中文 `我先讲清临床与统计含义再让你决定`），去除自定义变体。
+- **✨ 新增 few-shot 对话示例**：`references/menu.md` 末尾新增「Conversation Examples」节——Simple（点名检验直接算 + 回显块）/ Complex（能力路由菜单 + ③ 解释差异入口）/ Vague（grill-me 逐分支追问）三分支真实对话骨架，对齐 meta-analysis `interactive_menu.md` 范式风格。
+- **依据**：ct-base `compute_menu.md`（2026-08-25 由 meta-analysis 提炼为家族计算型框架，明确 meta-analysis 与 ct-samplesize 同属 Type-Compute）；`interaction_frameworks.md` §5 轻量对齐三件套。
+
 ## v5.1.0 (2026-08-22) · 增加 bug report 功能（ct-base §20.3 接入完成）
 
 - **🔴 发布前检查修正**：`config/config.json` `auto_approve_endpoints` 补齐统一 bug-report 端点 `https://ct-bugreport.coze.site/run`（此前仅含计算端点，违反 §20.3.5——各技能接入须一并加入 bugreport 公共端点）。

@@ -1,0 +1,23 @@
+{
+  "id": "ttest_ind_reverse",
+  "test": "ttest_ind",
+  "desc": "两样本t检验给定n求power",
+  "cli": [
+    "--test",
+    "ttest_ind",
+    "--effect",
+    "0.5",
+    "--nobs",
+    "30"
+  ],
+  "expect": {
+    "mode": "power",
+    "must_include_params": [
+      "nobs",
+      "effect"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}

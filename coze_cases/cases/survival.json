@@ -1,0 +1,23 @@
+{
+  "id": "survival",
+  "test": "survival",
+  "desc": "logrank生存分析求n",
+  "cli": [
+    "--test",
+    "survival",
+    "--hazard_ratio",
+    "0.7",
+    "--power",
+    "0.9"
+  ],
+  "expect": {
+    "mode": "n",
+    "must_include_params": [
+      "hazard_ratio",
+      "alpha"
+    ],
+    "forbidden_params": [
+      "test"
+    ]
+  }
+}
