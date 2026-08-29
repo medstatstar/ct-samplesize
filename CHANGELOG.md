@@ -1,6 +1,25 @@
 # Changelog / 版本历史
 
-## v5.3.12 (2026-08-28) · 待发布：SKILL.md 对齐 ct-base §3/§4 正文规范 + 跨轮连续性/菜单设定对齐 ct-base
+## v5.3.14 (2026-08-29) · 待发布：coze 回传结构大调整——完整 JSON 外置 S3 临时文件 + 内联仅轻量删减版
+
+- **🔴 coze 回传结构反转**：R 引擎生成的**完整信封**（含 figures/repro/narrative/stats/warnings/notes）整体写入**单个 S3 临时文件**，内联 `result` 仅保留轻量删减版——**直接删除 figures 与 repro**；若仍 > 4000 字符按「现有逻辑」从大到小丢 stats 子块（极端截断 narrative）直到 < 4000；删减掉的内容**不再**存入文件（完整数据已在 S3，零丢失）。
+- **🟢 本地优先取完整数据**：`coze_client.py::call` 解析内联 result 后优先检测 `_coze_full`，经 URL **下载完整 JSON** 作为分析源（含 figures/repro，零删减）；下载失败 / 无链接降级到旧 `_coze_manifest`（manifest 重组）或 `figures[].url`（legacy 回填），保持对旧 coze 端向后兼容。
+- **🟢 内联轻量版仅用于飞书 + 老版本兼容**：coze 端 `feishu_save_node` 写飞书 `resultstr` 列消费的是内联删减版；老版本本地技能（不识 `_coze_full`）也只解析内联版。两者均不参与本地完整分析。
+- **🟢 重写 coze 端 `_externalize_to_manifest` → `_externalize_full`**：删 manifest 拆块逻辑；新增 `_build_inline`（删 figures/repro）+ `_trim_inline_to_limit`（丢 stats 子块/截断 narrative 至 < 4000）；保留 daemon 90s 超时守护与 S3 不可用降级（降级为无 `_coze_full` 的内联删减版，绝不因超 4000 被平台截断破坏 JSON）。
+- **✅ 已对齐 ct-base §20.8（2026-08-29 用户拍板同步 → 2026-08-29 再收窄为单一标准）**：§20.8 先由「统一 manifest 外置」增补为「两种已批准模式」（模式 A manifest 外置 + 模式 B 完整 JSON 单文件外置，本技能采用 B）；用户进一步拍板「§20.8 只保留模式 B、模式 A 删除」，ct-base 随即删除模式 A、收敛为「完整 JSON 单文件外置」单一全库标准。ct-base `BASE.md` §20.8 索引 + `docs/07-coze-engine.md` §20.8 已改写为单模式标准；本技能 `coze_contract.md`（本地层/coze 层）对齐提示改为「已对齐 §20.8（完整 JSON 单文件外置）」。meta-analysis 仍为旧 manifest 外置、待迁移（§20.8 标注为现状例外）。
+- **验证**：`py_compile` 两侧通过；`verify_coze_full.py` 全链路 **20/20 PASS**——① `_externalize_full` 产出内联 < 4000、无 figures/repro、含 `_coze_full`；② 本地 `_fetch_full_json` 经 `file://` 还原完整数据（figures/repro 全等）；③ 旧 `_coze_manifest` 内联 → `_fetch_full_json` 返回 None（降级旧契约）；④ S3 不可用 → 降级内联删减版（无 `_coze_full`）；⑤ 内联超 4000 → `_trim_inline_to_limit` 反复丢 stats 子块 / 截断 narrative 至 < 4000，且**含 `_coze_truncated` 标记**整体仍严格 < 4000。
+- **🐞 ⑤ 修复（2026-08-29 收尾）**：初版 `_trim_inline_to_limit` 循环仅把 `inline` 本身压到 < 4000，但末尾追加的 `_coze_truncated` 诊断标记（被删字段名列表，极端 ~117 字符）把**最终**序列化结果推回 > 4000，导致 ⑤ 失败。修复：循环条件与 narrative 额度均把 `_coze_truncated` 标记自身大小计入预算（`_marker_sz`），末尾再加一次兜底「逐条缩减标记直至整体 < limit（不恢复已删数据）」，确保最终内联恒 < 4000。
+
+## v5.3.13 (2026-08-29) · 待发布（已并入 v5.3.14 发布）：coze 信封漂移检测修订——版本号差异不再提醒，仅数据内容/结构不一致触发（同步 ct-base §20.9）
+
+- **🔴 删除版本号比较提醒**：`adapters/coze_client.py` 移除 `EXPECTED_COZE_ENVELOPE_VERSION` 常量与 `_coze_version_higher()` 语义版本比较辅助函数，以及 `_assess_contract` 内的「② 版本漂移」分支。`coze` 返回 `_coze_version` / `_contract_version` 高于本地期望**不再触发任何提醒**。
+- **🟢 仅保留结构/数据内容漂移提醒**：`_assess_contract` 现只检测字段别名/结构形变（如 `content`→`narrative`、`figures` dict→list、图体 `svg/image/svg_data/base64`→`content`）并自适应归一化；映射发生时记 drift 说明 → 经 HTML `.banner`（`_needs_upgrade`/`_contract_drift` 驱动）提示升级。版本由 coze 端随发布同步，本地不比对版本号，避免无谓打扰。
+- **🟢 ct-base §20.9 规范同步（单一真相源）**：标题改为「仅数据内容/结构不一致触发」；删除「② 版本漂移」小节与「版本号三方同步」要点；「跨技能通用性」「设计要点」「落点」各段移除对 `EXPECTED_COZE_ENVELOPE_VERSION` / 版本标记比对的引用；验证口径改为「版本号差异不再触发 drift」。
+- **🟢 叶子契约 `coze_contract.md` 同步**：`_coze_version` 改为仅诊断透出、明确「本地不比对版本号」；删除「版本漂移」子弹点与「三方同步」要求。
+- **纯本地改动，无需重部署 coze**：coze 端 `_COZE_ENVELOPE_VERSION`（`"5.3.9"`）保持不变，仅本地消费逻辑收敛。
+- **验证**：`py_compile` 通过；`verify_drift_v3.py` 5 项全 PASS——① 版本号高/结构一致→不提醒、② 结构别名漂移→提醒、③ figures 结构形变→提醒、④ 完全一致→不提醒、⑤ 缺版本标记/结构一致→不提醒。
+
+## v5.3.12 (2026-08-28) · ✅ 已发布（GitHub / SkillHub / ClawHub 三平台）：SKILL.md 对齐 ct-base §3/§4 正文规范 + 跨轮连续性/菜单设定对齐 ct-base
 
 - **🔴 SKILL.md 正文英文化（ct-base §3 排版规则 + §4 正文规范）**：原 `## Cross-turn Continuity（跨轮连续性·必须）` 整段为中文指令散文，违反「SKILL.md 正文（YAML 之外）一律英文（agent-facing）」；按范本 meta-analysis §5.1 英文结构重写（英文指令 + 回显块字面串保留 `## 当前分析设定：` 前缀，与 ct-base §5.1 登记一致），并清掉 Features 表 ④、figure-set、3-round cap、agent rule 等 4 处零散中文注。仅保留 `## Language` 段「中文指南」链接标签（与范本一致）及运行期回显块字面串。
 - **🟢 跨轮连续性/菜单设定对齐 ct-base（本轮"都做"的 A/B/C/D）**：① merge_spec 软约束诚实说明（call() 网络层不强制、默认路径是 LLM 行为约定）；② §5.1 登记前缀同步为 `## 当前分析设定：`；③ Vague 深挖 3-round cap 与参数缺失澄清 2 轮（AGENTS.md §6.1）显式区分；④ 发布态 merge_spec 路径改相对 `scripts/merge_spec.py`（避免发布后失效）。

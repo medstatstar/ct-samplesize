@@ -45,50 +45,25 @@ if _HERE_DIR not in sys.path:
     sys.path.insert(0, _HERE_DIR)
 
 # ---------------------------------------------------------------------------
-# coze 信封契约漂移检测（ct-base §20.9 单入口 · 2026-08-28 综合定稿）
+# coze 信封契约漂移检测（ct-base §20.9 单入口 · 2026-08-29 修订：仅结构/数据内容不一致触发）
 # ---------------------------------------------------------------------------
-# 本地期望的 coze 信封契约版本（须与 coze 端 samplesize.py 的 _COZE_ENVELOPE_VERSION 同步）。
-# 两者随技能一同发布；coze 端升级后若与本地消费代码不一致，先自适应兼容产出可用结果，
-# 再经 HTML 横幅（_needs_upgrade / _contract_drift 驱动）统一提示升级——不写 stderr、不污染 notes。
-EXPECTED_COZE_ENVELOPE_VERSION = "5.3.9"
-
-
-def _coze_version_higher(a, b) -> bool:
-    """语义化版本比较：a 是否高于 b（支持 X.Y.Z，段内取数字、非数字段记 0）。
-
-    ct-samplesize 信封版本为语义版本（如 5.3.9），不能用裸字符串 `>` 比较
-    （'5.10.0' > '5.3.9' 字典序会判错）。与 meta-analysis 的日期串 `>` 不同，
-    这里按段数值比较，保证 5.4.0 / 5.10.0 均能正确判定高于 5.3.9。
-    """
-    def _seg(v):
-        out = []
-        for part in str(v).split("."):
-            digs = "".join(ch for ch in part if ch.isdigit())
-            out.append(int(digs) if digs else 0)
-        return out
-    try:
-        pa, pb = _seg(a), _seg(b)
-    except Exception:
-        return str(a) > str(b)
-    n = max(len(pa), len(pb))
-    pa += [0] * (n - len(pa))
-    pb += [0] * (n - len(pb))
-    return pa > pb
+# 仅当 coze 返回的数据内容与本地消费接口不一致（字段别名 / 结构形变）时，自适应兼容并
+# 经 HTML 横幅（_needs_upgrade / _contract_drift 驱动）提示升级。
+# ⚠️ 版本号差异**不再**触发任何提醒：版本由 coze 端随发布同步，本地不比对版本号，避免无谓打扰。
 
 
 def _assess_contract(parsed: dict) -> tuple:
-    """综合「结构漂移（主·自愈）+ 版本漂移（显式）」的契约检测，单一入口（ct-base §20.9）。
+    """结构/数据内容漂移检测（自愈优先），单一入口（ct-base §20.9 · 2026-08-29 修订）。
 
-    两路信号汇入同一结果：
-      1) 结构漂移（主、自愈）：识别已知字段别名并自适应归一化，保证报告仍能渲染；
-         映射发生时记 drift 说明（既是自适应日志、也是升级信号）。对无法自适应的结构
-         缺失仅记录告警、不臆造数据。别名表按 ct-samplesize 信封微调。
-      2) 版本漂移（显式，若 coze 注入版本标记）：coze 返回 `_coze_version`
-         （或旧 `_contract_version`）高于本地期望 → 显式升级信号。
-         ⚠️ 缺标记（coze 未注入版本）**不**视为漂移——避免每响应都误报。
+    仅检测「结构漂移（主·自愈）」：识别已知字段别名并自适应归一化，保证报告仍能渲染；
+    映射发生时记 drift 说明，交给 rendering.py 在 HTML 横幅提示升级。对无法自适应的
+    结构缺失仅记录告警、不臆造数据。别名表按 ct-samplesize 信封微调。
+
+    ⚠️ 版本号差异**不再**触发任何提醒：版本由 coze 端随发布同步，本地不比对版本号，
+    避免无谓打扰。仅当返回的「数据内容 / 结构」与本地消费接口不一致时才提示。
 
     Returns: (parsed, drift_notes, needs_upgrade)
-      drift_notes 非空 => 已自适应或检测到不一致，交给 rendering.py 在 HTML 横幅提示升级；
+      drift_notes 非空（= 检测到数据内容/结构不一致）=> 交给 rendering.py 在 HTML 横幅提示；
       needs_upgrade 仅为机器可读标记（写回 parsed），本函数**不产生任何用户可见提示**
       （用户可见提示统一只在渲染层的 HTML 横幅，避免 stderr / notes 重复提示）。
     """
@@ -120,14 +95,6 @@ def _assess_contract(parsed: dict) -> tuple:
                         notes.append(
                             f"coze 响应字段已变更：figures[{i}] 图体由 `{fa}` 改为 `content`，已自动适配")
                         break
-
-    # 3) 版本漂移：coze 注入标记（优先 _coze_version，兼容旧 _contract_version）
-    cv = p.get("_coze_version") or p.get("_contract_version")
-    if isinstance(cv, str) and _coze_version_higher(cv, EXPECTED_COZE_ENVELOPE_VERSION):
-        notes.append(
-            f"coze 响应契约版本 {cv} 高于本地技能期望 {EXPECTED_COZE_ENVELOPE_VERSION}，"
-            f"检测到结构已升级，建议升级 ct-samplesize 技能到最新版"
-        )
 
     # 去重（保持顺序）
     seen, uniq = set(), []
@@ -561,6 +528,32 @@ def _fill_external_svgs_legacy(parsed, timeout=30):
     return parsed
 
 
+def _fetch_full_json(parsed, timeout=30):
+    """新契约（2026-08-29）：coze 把 R 引擎生成的完整信封整体写入单个 S3 文件，
+    内联挂 `_coze_full = {storage:"s3", url}`。本地经 url 下载完整 JSON 作为分析源
+    （含 figures/repro，零删减）。内联的轻量删减版（无 figures/repro）仅用于飞书日志
+    与老版本技能兼容，本地分析不使用。
+
+    返回完整 dict；下载失败 / 无链接 / 非 dict → 返回 None（调用方降级到旧契约或内联）。
+    """
+    if not isinstance(parsed, dict):
+        return None
+    full = parsed.get("_coze_full")
+    if not (isinstance(full, dict) and full.get("storage") == "s3" and full.get("url")):
+        return None
+    try:
+        with urllib.request.urlopen(full["url"], timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        parsed["_full_fetch_failed"] = True
+        return None
+    if not isinstance(data, dict):
+        parsed["_full_fetch_failed"] = True
+        return None
+    data.pop("_coze_full", None)
+    return data
+
+
 def _mock_envelope(test, params, mode, return_r_code):
     """本地 mock：演示用样例信封（v5 结构：status/stats/narrative/figures）。"""
     sample_svg = (
@@ -689,10 +682,16 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None):
         result_str = outer.get("result") if isinstance(outer, dict) else None
         if isinstance(result_str, str) and result_str.strip().startswith("{"):
             try:
-                # 方案 B：figures[].content 已在 coze 端外置 S3，按 url 回填（失败保留 url）
-                return _fill_external_svgs(json.loads(result_str))
+                parsed = json.loads(result_str)
             except ValueError:
                 return outer
+            # 新契约（2026-08-29）：完整 JSON 存 S3，内联仅轻量删减版。
+            # 本地优先经 _coze_full 下载完整数据做分析（含 figures/repro，零删减）；
+            # 失败 / 无链接则降级到旧契约（manifest / figures[].url）或直接使用内联删减版。
+            full = _fetch_full_json(parsed, timeout=30)
+            if full is not None:
+                return full
+            return _fill_external_svgs(parsed)
         if isinstance(outer, dict):
             return _fill_external_svgs(outer)
         return {"status": "error", "notes": "coze 返回空/非对象响应"}
@@ -741,7 +740,7 @@ class CozeBackend(ComputeBackend):
         if not isinstance(env, dict):
             raise RuntimeError("coze 返回非对象响应")
         # ── 契约漂移检测 + 结构自适应兼容（ct-base §20.9 单入口 _assess_contract）──
-        # coze 端信封携带 _coze_version；结构别名自愈 + 版本高于期望才显式提醒。
+        # 仅结构/数据内容不一致触发提醒：结构别名自愈兼容，无需比对版本号。
         # 用户可见提示统一只在渲染层 HTML 横幅（_needs_upgrade/_contract_drift 驱动），
         # 不写 stderr、不污染 narrative/notes（零噪音原则）。
         env, drift_notes, needs_upgrade = _assess_contract(env)
