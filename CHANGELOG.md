@@ -1,5 +1,53 @@
 # Changelog / 版本历史
 
+## v5.3.18 (2026-08-29) · 待发布：本地模拟验证闭环（P1-C）
+
+### Added / 解析解↔Monte-Carlo 独立验证
+- **新增 `scripts/verify.py`（纯本地、零联网、零患者数据）**：把样本量解析解（来自 pwr / gsDesign / rpact / coze 的 n）**回代**到独立实现的 Monte-Carlo 数据生成过程，检验它实际达到的操作特性：
+  - empirical **power** vs 名义 power（容差 **±2 pp**）
+  - empirical **type-I error** vs 名义 alpha（容差 **±0.5 pp**）
+  - 生存设计额外校验**期望事件数**（容差 **±5%**）
+- **独立性原则（防自证）**：验证器**不复用**被验证对象的样本量公式/检验边界——只接收「解析解给出的 n（与组序贯边界）」作输入，其余（数据生成、检验统计量、判定）全部独立实现。因此同源公式错会被抓出，而非互相盖章。
+- **方向性判定**：`power` 用双边容差；组序贯/适应性设计可调方向——SSR（promising-zone 扩样）本就**预期**把 power 抬高于名义值，故用 `lower`（不低于目标-2pp 即 PASS）；TIE 用 `upper`（不超过 alpha+0.5pp）。每项同时给出 MC 95% 置信区间；若 MC 误差已逼近容差，判 `INCONCLUSIVE` 并提示提高 `--verify-nsim`，**绝不给出看似确定的伪 PASS/FAIL**。
+- **组序贯边界**：强烈建议传 `--verify-boundaries`（rpact/gsDesign 输出的 z 边界），此时为**真·独立验证**；不传时内置 Lan-DeMets 递归数值积分自算边界，结果明确标注 `self_derived_boundaries`——仅 sanity check，**不构成独立验证**。
+- **支持设计**：`ttest_ind / ttest_one / ttest_paired / proportion_two / survival(log-rank) / group_sequential / adaptive_reestimate(promising-zone SSR)`。
+- **主流程桥接**：`--verify` 触发（默认关闭）；配套 `--verify-design / --verify-n / --verify-effect-size / --verify-p1/--verify-p2 / --verify-hr / --verify-median-control / --verify-accrual / --verify-followup / --verify-boundaries / --verify-nsim / --verify-json` 等。`--verify-n` 必填（无 n 则验证无意义）。
+
+### Verified / R 交叉核对（本机 R 4.6.1）
+- **独立核实验证器本身正确**：固定样本 `ttest_ind` n=175/d=0.3 → 模拟 power 0.801，R `pwr.t.test` 解析 0.6385@n=120、0.80 需 n≈175（量级吻合且趋势一致）；组序贯 `n=175/d=0.3` + R/gsDesign 权威边界 `2.9626,1.9686` → 模拟 power 0.803（PASS）、TIE 0.026（≤0.025+0.5pp，PASS）。
+- **阴性对照**：故意给错 n（如 ttest n=40 → 真 power≈0.59）判定 **FAIL**（exit 2），证明验证器有真实鉴别力，非对一切输入盖章 PASS。
+- `py_compile` 通过（`verify.py` / `samplesize_power.py`）；主流程 `--verify` 桥接端到端冒烟通过。
+
+### Compatibility / 兼容性
+- 新增 `--verify*` 参数组，默认全部关闭，不影响既有样本量计算路径；无 R 依赖（标准库即可，`numpy`/`scipy` 可选加速与精确分位数）。
+
+## v5.3.17 (2026-08-29) · 待发布：移除功效曲线上的功率水平参考线（仅用竖线标输入量）
+
+- **🔴 移除功效曲线上的功率水平参考线**：v5.3.16 在 reverse 分支保留了 `abline(h = p$power %||% 0.8)` 水平线「作对照」，但 power 是**输出**（reverse）或**既定参数**（forward 曲线已转置为 x=效能），该水平线交点恰好落在「计算所得样本量」上——既误导又无法代表"理想 power"。用户指出 forward（直接计算样本量）本就不该有水平 0.8 线。据此统一原则：**任何功效曲线只画「竖线标用户输入量」，不画功率水平线**。
+  - `adapters/coze/src/r_engine/run_task.R::.run_curve`：`n_seq`（power-vs-N）分支删除 `abline(h = ...)`；仅当 `p$nobs` 给定（reverse）时画 `abline(v = nobs)` 竖线标输入样本量；`else`（`power_seq`，N-vs-power）分支保留 `abline(v = p$power %||% 0.8)` 竖线标目标效能。
+  - 本地 SVG 兜底 `scripts/samplesize_power.py::_curve_svg_from_stats`：删除 `ref_power` 水平线绘制（`power = X` 文本块），仅保留 `ref_n` 样本量竖线。
+  - 休眠镜像 `r_templates/r_curve.py`（coze 镜像 + r-assets 两份）：`_CURVE_POWER_*` 模板删除 `abline(h = __TARGET__)`，保留 `__N_REF__` 竖线占位。
+- **验证**：`py_compile` 三文件过；SVG 兜底功能测试——reverse（ref_n=100）含 `n = 100` 竖线且**不再含** `power = 0.8` 水平线、forward(x=效能) 亦无 `power =` 水平线；两份 r_curve.py 无残留 `abline(h = __TARGET__)` 且 `__N_REF__` 保留（各 2 处）。
+- ⚠️ 同上，`run_task.R` 改动**需重新部署 coze 镜像线上生效**（与本次会话其余 coze 端修复同红线）。
+- 📝 注：效应量轴曲线（`效应量轴曲线` 图）的 `abline(h = 0.8)` 属"目标效能水平线"语义（看什么效应量达到 80% 功效），与本次"power-vs-N 曲线"不同，暂未改动；如你也想在该图去掉，告诉我。
+
+## v5.3.16 (2026-08-29) · 待发布：修复反向求 power 时功效曲线参考线错位
+
+- **🔴 反向求 power 曲线参考线修复**：此前 reverse（给定 --nobs 求 power）自动附带的「把握度随样本量」曲线（x=样本量、y=效能）只画**水平的目标效能线**（`abline(h = target_power)`，即 power=0.8），其交点恰是「达到 0.8 所需的计算样本量」——这正对应"参考线仍按计算样本量绘制"的观感，而用户期望**按自己输入的样本量 n 标参考线**直接读出该 n 的效能。
+  - `adapters/coze/src/r_engine/run_task.R::.run_curve`（传统曲线模式）：reverse 分支新增 `abline(v = p$nobs, lty=3, col="blue")` 竖直参考线（按给定样本量），水平目标效能线保留作对照；forward 分支（此前无参考线）补 `abline(v = p$power)` 竖直目标效能线，与 reverse 对称。
+  - 本地 SVG 兜底 `scripts/samplesize_power.py::_curve_svg_from_stats` / `render_curve_fallback` 同步：新增 `ref_n` 参数，reverse 时在给定 n 处画蓝色竖直虚线（`n = X`），forward（x=目标效能、y=n）语义下不画该竖线；主流程与 auto-curve 两处调用点透传 `--nobs`。
+  - 休眠镜像 `r_templates/r_curve.py`（coze 镜像 + r-assets 两份）+ `local_r_backend.py`（两份）的 `build_curve_code` 同步加 `__N_REF__` 占位与 `n_ref` 注入（reverse 注入 `abline(v = nobs)`，forward 因 `_CURVE_N_*` 自身已画目标效能竖线故不注入、无残留占位符），保持镜像一致。
+- **验证**：`py_compile` 五文件全过；`_curve_svg_from_stats` 功能测试——reverse（ref_n=100）含 `n = 100` 竖直线 + `power = 0.8` 水平线、无 ref_n 时竖线缺失、forward(ylim=n) 语义下 ref_n 不画竖线；`r_curve.py` 模板替换测试——reverse 注入竖线无残留 `__N_REF__`、forward(nobs=None) 无残留占位符、`_CURVE_N_SINGLE` 自身 `abline(v=__TARGET__)` 不变。
+- ⚠️ `run_task.R` 改动**需重新部署 coze 镜像后线上生效**（与本次会话其余 coze 端修复同红线）。
+
+## v5.3.15 (2026-08-29) · 待发布：修复「默认不回传 R 代码」+ coze 冷启动 15s 无应答
+
+- **🔴 修复「默认分析不回传 R 代码」**：`scripts/samplesize_power.py` 的 `ctx["return_r_code"]` 原默认 `False`（仅 `--show-code` / `CTSS_RETURN_R_CODE` 时置 True），导致 coze **默认根本不被要求**返回 `repro.r`，HTML 报告与对话都拿不到 R 代码。改为**默认 `True`**，对齐 meta-analysis「每个分析默认回传可复现 R 代码」。`compute` 内 `r_code=repro.get("r") if ctx.get("return_r_code") else None` 现恒能取到；R 代码默认进 HTML 报告 + 对话展示（`info.r_code_shown_default` 旧提示逻辑随之移除）。
+  - ⚠️ 这**反转了**早先 audit #7 的「R 代码默认不提供，仅使用者明确要求时提供」决策（见下方 v3.4.x 第 465 行），现按用户 2026-08-29 规则改为默认回传。
+- **🔴 修复 coze 冷启动 15s 无应答**：`adapters/coze_client.py::_urlopen_with_proxy_fallback` 用 `http.client.HTTPSConnection(host, timeout=15)`，其 timeout 实际作用于**所有** socket 操作（connect 与 recv 共享同一超时）——旧注释"读取不设限"是**错误**的；coze serverless 冷启动 >15s 时读取被 15s 杀掉，表现为「每次都 15s 无应答」。meta-analysis 用 `urllib.urlopen(timeout=600)` 故无此问题。
+  - 修正：拆成 connect / read 两个独立超时——`connect_timeout=15`（连接失败快速报错，不空等）、`read_timeout`（默认 **600s**，可由 `CTSS_COZE_READ_TIMEOUT` 覆盖，对齐 meta-analysis 的 `COZE_META_TIMEOUT=600`）；`conn.request()` 完成后把底层 socket 超时改为 `read_timeout` 再 `getresponse()` / `read()`。Windows 代理残留直连重试逻辑不变。
+- **验证**：`py_compile` 通过；mock 模式 dry-run 信封 `return_r_code: true`；mock 实算对话出现 `[R 代码 — 本次分析生成]` 段、HTML 报告含 `repro.r`。
+
 ## v5.3.14 (2026-08-29) · 待发布：coze 回传结构大调整——完整 JSON 外置 S3 临时文件 + 内联仅轻量删减版
 
 - **🔴 coze 回传结构反转**：R 引擎生成的**完整信封**（含 figures/repro/narrative/stats/warnings/notes）整体写入**单个 S3 临时文件**，内联 `result` 仅保留轻量删减版——**直接删除 figures 与 repro**；若仍 > 4000 字符按「现有逻辑」从大到小丢 stats 子块（极端截断 narrative）直到 < 4000；删减掉的内容**不再**存入文件（完整数据已在 S3，零丢失）。

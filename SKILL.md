@@ -3,12 +3,12 @@ slug: ct-samplesize
 displayName: Clinical Trial Sample Size & Power / 临床试验样本量与检验效能专家
 name: ct-samplesize
 cn_name: 临床试验样本量与检验效能专家
-version: 5.3.14
+version: 5.3.18
 invocable: true
 required_commands: [python]
-summary: 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，可应要求返回完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
+summary: 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
 license: MIT
-description: "Sample size and power calculation tool for clinical trial practitioners. No local R install needed — a cloud R compute service covers all 49 test types and returns publication-grade SVG figures. Natural-language driven; full R code can be returned on request; default output in Chinese or English per OS language setting (prompt can force-switch). / 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，可应要求返回完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。"
+description: "Sample size and power calculation tool for clinical trial practitioners. No local R install needed — a cloud R compute service covers all 49 test types and returns publication-grade SVG figures. Natural-language driven; full reproducible R code is returned by default; default output in Chinese or English per OS language setting (prompt can force-switch). / 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。"
 triggers:
   - "clinical trial sample size"
   - "样本量计算"
@@ -40,7 +40,7 @@ permissions:
 
 ## Purpose
 
-This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. **The default authoritative engine is a remote coze R compute service** (rpact / gsDesign / TrialSize / PowerTOST, 20+ packages — running server-side, so your machine needs **no local R**), covering all 49 test types. Results come in Chinese or English per the OS language setting (prompt can force-switch). Reproducible R code is available on request (coze returns it, or forced via `CTSS_RETURN_R_CODE`).
+This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. **The default authoritative engine is a remote coze R compute service** (rpact / gsDesign / TrialSize / PowerTOST, 20+ packages — running server-side, so your machine needs **no local R**), covering all 49 test types. Results come in Chinese or English per the OS language setting (prompt can force-switch). Reproducible R code is returned by default (coze returns it on every analysis).
 
 ---
 
@@ -104,6 +104,10 @@ Minimal unit: `{"test":"ttest_ind","effect":0.5,"alpha":0.05,"power":0.8,"solve"
 
 `--test adaptive_simulate` validates adaptive / group-sequential designs empirically (power, type I error, expected N). Designs / spending / futility / `--optimize` / legacy fallback / full guide → [`references/adaptive_simulator.md`](references/adaptive_simulator.md).
 
+### P1-C: local verification loop (analytic n → Monte-Carlo)
+
+`--verify` (default OFF) re-simulates an **analytic** sample-size solution with an **independent** Monte-Carlo engine and checks empirical **power (±2 pp)** and **type-I error (±0.5 pp)** against the nominal targets. The verifier does **not** reuse the analytic formulas — it only takes the n (and, for group-sequential, the rpact/gsDesign z-boundaries via `--verify-boundaries`) as input, so a wrongly-derived n is caught instead of rubber-stamped. Supports `ttest_* / proportion_two / survival(log-rank) / group_sequential / adaptive_reestimate`. Each check reports its MC 95% CI; if Monte-Carlo error approaches the tolerance it returns `INCONCLUSIVE` rather than a false PASS. Pure local, no network, no patient data.
+
 ---
 
 ## Requirements
@@ -119,7 +123,7 @@ Minimal unit: `{"test":"ttest_ind","effect":0.5,"alpha":0.05,"power":0.8,"solve"
 ## ⚠️ Safety
 
 - **No local R / shell is ever executed.** The published skill never runs R or a shell on your machine. The default engine is the remote **coze** compute service: only trial-design parameters (never patient data) are sent, and results come back as numbers + optional figures — inherently safe (stateless compute, no local code execution).
-- **SAFE PREVIEW is the default for inspection.** `--dry-run` prints the exact request envelope (test, params, mode) that *would* be sent to coze, without sending anything. `--show-code` reveals the coze request JSON (and, on request, the R source coze used). The legacy `--yes` gate applies only to the optional local-R dev backend (offline dev only).
+- **SAFE PREVIEW is the default for inspection.** `--dry-run` prints the exact request envelope (test, params, mode) that *would* be sent to coze, without sending anything. `--show-code` reveals the coze request JSON (the R source coze used is included in every result by default). The legacy `--yes` gate applies only to the optional local-R dev backend (offline dev only).
 - **First-use outbound disclosure (audit follow-up):** even though the public coze endpoint is pre-whitelisted (never prompts), the assistant MUST state on first outbound use in a session — in one line: "This will send your trial-design parameters plus a hostname hash (query_origin) and locale to the cloud service https://ct-samplesize.coze.site/run for computation — proceed?" (localized zh version in `references/security_model.md`). Custom endpoints still trigger the one-time AUTH-BLOCK confirmation. **Output for reference only; validate before regulatory submissions.**
 
 ### Security model (transparent disclosure)

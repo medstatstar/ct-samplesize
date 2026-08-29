@@ -37,6 +37,15 @@ import argparse, sys, os, io, tempfile, re, json, time
 from i18n import t
 from compute_backend import select_backend, Result, Figure
 
+# P1-C: local Monte-Carlo verification of an analytic sample-size solution
+# (power ±2pp / TIE ±0.5pp). Independent implementation — does NOT reuse the
+# analytic formulas, so a wrongly-derived n is caught, not rubber-stamped.
+try:
+    from verify import run_verify as _verify_run, format_report as _verify_fmt
+except Exception:  # pragma: no cover — verify.py always ships alongside
+    _verify_run = None
+    _verify_fmt = None
+
 # ── E1/E2: 本地确定性 NL 路由 + 参数别名解析（零 LLM，仅作 coze LLM 之前的快速预路由）──
 # 同目录 import（脚本可直接运行，也兼容从其他 cwd 经 subprocess 调用）
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -239,7 +248,8 @@ def render_figures(figures, test: str, figure_mode=None):
     print("# render_elapsed_seconds=%.3f render_svg_kb=%.1f figure_mode=%s" % (_elapsed, _svg_kb, mode))
 
 
-def _curve_svg_from_stats(stats: dict, test: str, target_power: float = None) -> str:
+def _curve_svg_from_stats(stats: dict, test: str, target_power: float = None,
+                          ref_n: float = None) -> str:
     """coze 端无图时（svglite/cairo 缺失），用曲线数值 stats{x,y,series} 纯 Python 生成 SVG。
 
     对齐 ct-base §19 内联渲染：700x500、网格线、多系列折线 + 图例、动态轴标签。
@@ -269,12 +279,17 @@ def _curve_svg_from_stats(stats: dict, test: str, target_power: float = None) ->
         ymax = ymin + 1
     ymin, ymax = ymin - (ymax - ymin) * 0.05, ymax + (ymax - ymin) * 0.05
 
-    # ★ Power 参考线判定：y 轴语义为 Power（非 x_is_power）且 target_power 在 y 范围内
+    # ★ 功率水平参考线：不再绘制。power 是输出（reverse 求 power）或既定参数（forward 求 n），
+    # 在 power-vs-N 图上画水平线会使其交点落在「计算所得样本量」上，正是此前被误读的来源；
+    # 与 run_task.R 对齐——只画「竖线标用户输入量」（见下方 ref_n）。
     ref_power = None
-    if not x_is_power and target_power is not None:
-        tp = float(target_power)
-        if ymin - 1e-9 <= tp <= ymax + 1e-9:
-            ref_power = tp
+    # ★ 样本量竖直参考线（reverse 求 power 场景）：x 轴语义为样本量且 ref_n 在 x 范围内
+    # → 画竖直虚线，直接读出该样本量对应的效能（对齐 run_task.R 的 abline(v = nobs)）。
+    ref_n_val = None
+    if not x_is_power and ref_n is not None:
+        rn = float(ref_n)
+        if xmin - 1e-9 <= rn <= xmax + 1e-9:
+            ref_n_val = rn
 
     def sx(v):
         return PAD_L + (v - xmin) / (xmax - xmin) * PW
@@ -314,13 +329,16 @@ def _curve_svg_from_stats(stats: dict, test: str, target_power: float = None) ->
         grid.append('<text x="%.1f" y="%d" font-size="10" fill="#888" text-anchor="middle">%.2f</text>'
                     % (gx, H - PAD_B + 14, xmin + (xmax - xmin) * g / 4))
     ref = ""
-    if ref_power is not None:
-        ry = sy(ref_power)
-        ref = (
-            '<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" stroke="#c0392b" '
-            'stroke-width="1.2" stroke-dasharray="6,4"/>' % (PAD_L, ry, W - PAD_R, ry)
-            + '<text x="%d" y="%.1f" font-size="10" fill="#c0392b" text-anchor="end" '
-              'font-weight="bold">power = %s</text>' % (W - PAD_R, ry - 4, format(ref_power, "g"))
+    # 样本量竖直参考线（reverse 求 power）：x 轴为样本量时，在给定 n 处画蓝色虚线，
+    # 直接读出该 n 对应的效能（与 run_task.R abline(v = nobs) 对齐）。
+    refn = ""
+    if ref_n_val is not None:
+        rx = sx(ref_n_val)
+        refn = (
+            '<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="#2980b9" '
+            'stroke-width="1.2" stroke-dasharray="6,4"/>' % (rx, PAD_T, rx, H - PAD_B)
+            + '<text x="%.1f" y="%d" font-size="10" fill="#2980b9" text-anchor="middle" '
+              'font-weight="bold">n = %s</text>' % (rx, PAD_T - 4, format(ref_n_val, "g"))
         )
     svg = (
         '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" '
@@ -328,6 +346,7 @@ def _curve_svg_from_stats(stats: dict, test: str, target_power: float = None) ->
         + '<rect width="100%%" height="100%%" fill="#ffffff"/>'
         + "".join(grid)
         + ref
+        + refn
         + '<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#999" stroke-width="1"/>'
           % (PAD_L, H - PAD_B, W - PAD_R, H - PAD_B)
         + '<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#999" stroke-width="1"/>'
@@ -346,10 +365,12 @@ def _curve_svg_from_stats(stats: dict, test: str, target_power: float = None) ->
     return svg
 
 
-def render_curve_fallback(meta: dict, test: str, target_power: float = None):
+def render_curve_fallback(meta: dict, test: str, target_power: float = None,
+                          ref_n: float = None):
     """coze 端无图但返回曲线数值时，本地生成 SVG 并输出内联标记（ct-base §19）。
 
     target_power：Power 参考线目标值（默认 None 不画；reverse 场景传 0.8 或用户 --power）。
+    ref_n：样本量竖直参考线位置（reverse 求 power 场景传用户输入的 --nobs；None 不画）。
     """
     stats = (meta or {}).get("stats") if isinstance(meta, dict) else None
     if not isinstance(stats, dict):
@@ -360,7 +381,7 @@ def render_curve_fallback(meta: dict, test: str, target_power: float = None):
     ys = stats.get("y")
     if not xs or not ys:
         return
-    svg = _curve_svg_from_stats(stats, test, target_power=target_power)
+    svg = _curve_svg_from_stats(stats, test, target_power=target_power, ref_n=ref_n)
     if not svg:
         return
     outdir = _outputs_dir()
@@ -658,6 +679,52 @@ def build_parser():
     p.add_argument("--out", type=str, default=None,
                    help="曲线 PNG 输出路径 (默认系统临时目录)")
 
+    # ── P1-C: 本地模拟验证闭环（verify.py 桥接，默认关闭）──
+    # 把解析解（来自 pwr/coze 的 n 及组序贯边界）回代 Monte-Carlo，独立验证其
+    # 真实 power / TIE。默认不触发；--verify 显式开启。模块纯本地、零联网。
+    pv = p.add_argument_group("P1-C verification (本地模拟验证闭环)")
+    pv.add_argument("--verify", action="store_true",
+                    help="P1-C: 开启本地 Monte-Carlo 验证闭环（对 --verify-design 指定的设计，"
+                         "用 --verify-n 回代模拟，校验 power ±2pp / TIE ±0.5pp）")
+    pv.add_argument("--verify-design", default="ttest_ind",
+                    choices=["ttest_ind", "ttest_one", "ttest_paired",
+                             "proportion_two", "survival", "group_sequential",
+                             "adaptive_reestimate"],
+                    help="P1-C 验证对象设计类型（默认 ttest_ind）")
+    pv.add_argument("--verify-n", type=int, default=None,
+                    help="P1-C 回代的样本量 n（解析解给出的 n；必填，否则验证无意义）")
+    pv.add_argument("--verify-power", type=float, default=0.8,
+                    help="P1-C 名义功效目标（待验证）")
+    pv.add_argument("--verify-nsim", type=int, default=20000,
+                    help="P1-C Monte-Carlo 重复次数（上限 500000）")
+    pv.add_argument("--verify-side", choices=["one", "two"], default="two")
+    pv.add_argument("--verify-effect-size", type=float, default=None,
+                    help="P1-C 连续端点 Cohen's d（ttest_*/group_sequential/adaptive）")
+    pv.add_argument("--verify-p1", type=float, default=None, help="P1-C 治疗组比例")
+    pv.add_argument("--verify-p2", type=float, default=None, help="P1-C 对照组比例")
+    pv.add_argument("--verify-hr", type=float, default=None, help="P1-C 风险比 HR")
+    pv.add_argument("--verify-median-control", type=float, default=None,
+                    help="P1-C 对照中位生存（与 HR 同单位）")
+    pv.add_argument("--verify-accrual", type=float, default=None, help="P1-C 入组期")
+    pv.add_argument("--verify-followup", type=float, default=None, help="P1-C 末例随访期")
+    pv.add_argument("--verify-boundaries", type=str, default=None,
+                    help="P1-C 组序贯 z 边界（rpact/gsDesign 输出，逗号分隔）。"
+                         "强烈建议提供——这才是独立验证；不提供则用内置 Lan-DeMets 自算（仅 sanity）")
+    pv.add_argument("--verify-looks", type=int, default=2)
+    pv.add_argument("--verify-spending", default="obrien_fleming",
+                    choices=["obrien_fleming", "pocock"])
+    pv.add_argument("--verify-expected-events", type=float, default=None,
+                    help="P1-C 生存设计解析期望事件数（校验容差 ±5%%）")
+    pv.add_argument("--verify-interim-fraction", type=float, default=None,
+                    help="P1-C 适应性 SSR interim 信息比例")
+    pv.add_argument("--verify-target-cp", type=float, default=None,
+                    help="P1-C 适应性 SSR 目标条件功效")
+    pv.add_argument("--verify-max-inflation", type=float, default=None,
+                    help="P1-C 适应性 SSR 二阶段样本量上限倍数")
+    pv.add_argument("--verify-json", default=None, help="P1-C 验证报告 JSON 输出路径")
+    pv.add_argument("--verify-no-tie", action="store_true",
+                    help="P1-C 跳过 H0 TIE 检验")
+
     # ── 出图模式（ct-base §19.9）──
     p.add_argument("--figure-mode", dest="figure_mode", choices=["svg_inline", "png_file"],
                    default=None,
@@ -800,9 +867,11 @@ def main():
                      or args.dist_plot or args.power_time_seq or args.heatmap),
         "show_code": bool(args.show_code),
         "dry_run": bool(args.dry_run),
-        # R 真相源开关：要求随结果回传完整 R 源码 + R 数值（repro.r）
-        "return_r_code": (bool(args.show_code)
-                          or os.environ.get("CTSS_RETURN_R_CODE") in ("1", "true", "yes")),
+        # R 真相源开关：默认回传完整 R 源码 + R 数值（repro.r），对齐 meta-analysis 的
+        # "每个分析默认回传可复现 R 代码" 行为（用户规则 2026-08-29：默认分析回传 R 代码）。
+        # 旧逻辑仅在 --show-code / CTSS_RETURN_R_CODE 时开启，导致 coze 默认根本不被要求
+        # 返回 R 代码、HTML 报告与对话都拿不到（即用户报的"默认不回传 R 代码"）。
+        "return_r_code": True,
     }
 
     try:
@@ -873,7 +942,8 @@ def main():
     # fallback 两份输出），且持久化文件可能被无参考线的 fallback 版覆盖（2026-08-20 修复）。
     if not res.figures:
         render_curve_fallback(res.meta, args.test,
-                              target_power=getattr(args, "power", None) or 0.8)
+                              target_power=getattr(args, "power", None) or 0.8,
+                              ref_n=getattr(args, "nobs", None))
 
     # ── 自动附带曲线（v5.3.2 起每种检验的默认出图由契约 default_curve 分别配置）──
     # 规则: forward（求 n）→ 自动补「样本量随把握度」曲线；reverse（求 power）→
@@ -907,7 +977,8 @@ def main():
             else:
                 # coze 无图 → 本地兜底（★ 参考线目标 = 用户 --power 或默认 0.8）
                 render_curve_fallback(getattr(res2, "meta", None), args.test,
-                                      target_power=getattr(args2, "power", None) or 0.8)
+                                      target_power=getattr(args2, "power", None) or 0.8,
+                                      ref_n=getattr(args2, "nobs", None))
             print("# 已自动附带%s曲线（简单单/两组问题默认出图；如需关闭请显式指定 "
                   "--n_seq / --power_seq 或 --dry-run）" % _what)
         except Exception as _e:  # noqa: BLE001 - 自动曲线失败不阻断主结果
@@ -917,19 +988,57 @@ def main():
     if _png:
         print(t("info.png_saved", path=_png))
 
-    # ── R 源码 / R 数值（CTSS_RETURN_R_CODE=1 或 coze 主动回传）──
-    _want_r = args.show_code or os.environ.get("CTSS_RETURN_R_CODE") in ("1", "true", "yes")
-    if res.r_code and not gated and _want_r:
+    # ── R 源码 / R 数值（默认回传并展示，对齐 meta-analysis；2026-08-29 修订）──
+    # 旧逻辑仅在 --show-code / CTSS_RETURN_R_CODE 时展示；现默认展示（coze 始终回传 repro.r）。
+    if res.r_code and not gated:
         print("=" * 60)
         print(t("header.r_code"))
         print("=" * 60)
         print(res.r_code)
-    if res.r_result and _want_r:
+    if res.r_result and not gated:
         print("-" * 60)
         print(json.dumps(res.r_result, ensure_ascii=False, indent=2))
-    if gated and not args.show_code:
-        print(t("info.r_code_shown_default"))
     print("=" * 60)
+
+    # ── P1-C: 本地模拟验证闭环（独立 Monte-Carlo，默认关闭）──
+    if args.verify:
+        if _verify_run is None:
+            print("# [verify] 模块 verify.py 不可用，跳过验证。")
+        elif not args.verify_n:
+            print("# [verify] 未提供 --verify-n（解析解给出的样本量）；无 n 则验证无意义，跳过。")
+        else:
+            try:
+                bnds = None
+                if args.verify_boundaries:
+                    bnds = [float(x) for x in
+                            args.verify_boundaries.replace(" ", "").split(",") if x]
+                vparams = {k: v for k, v in {
+                    "effect_size": args.verify_effect_size, "p1": args.verify_p1,
+                    "p2": args.verify_p2, "hazard_ratio": args.verify_hr,
+                    "median_control": args.verify_median_control,
+                    "accrual": args.verify_accrual, "followup": args.verify_followup,
+                    "interim_fraction": args.verify_interim_fraction,
+                    "target_cp": args.verify_target_cp,
+                    "max_inflation": args.verify_max_inflation,
+                }.items() if v is not None}
+                vrep = _verify_run(
+                    args.verify_design, args.verify_n, alpha=args.alpha,
+                    power=args.verify_power, side=args.verify_side,
+                    nsim=args.verify_nsim, params=vparams, boundaries=bnds,
+                    looks=(len(bnds) if bnds else args.verify_looks),
+                    spending=args.verify_spending,
+                    expected_events=args.verify_expected_events,
+                    check_tie=not args.verify_no_tie)
+                print(vrep if isinstance(vrep, str) else _verify_fmt(vrep))
+                if args.verify_json:
+                    with open(args.verify_json, "w", encoding="utf-8") as _vf:
+                        json.dump(vrep, _vf, ensure_ascii=False, indent=2)
+                    print("\n[verify] JSON -> %s" % args.verify_json)
+            except SystemExit as _se:
+                print("# [verify] 中止: %s" % _se)
+            except Exception as _e:  # noqa: BLE001 - 验证失败不阻断主样本量结果
+                print("# [verify] 验证失败（不影响主结果）: %s" % _e)
+
 
 if __name__ == "__main__":
     main()
