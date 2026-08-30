@@ -2,17 +2,17 @@
 
 Module: `--test adaptive_simulate` in the main CLI. **In the published skill, the
 authoritative engine is an inlined pure base-R function library** `ADAPTIVE_SIM_R`,
-maintained in `adapters/r-assets/local_r_backend.py` (no extra R packages), running **server-side
+maintained in `adapters/coze/ct_r_lib/local_r_backend.py` (no extra R packages), running **server-side
 on coze**. The CLI shows the coze request envelope in SAFE PREVIEW and computes via
 coze (no local R/shell). **Dev / offline:** the equivalent local-R path writes the
 inlined engine to a temp `.R` file, `source()`s it and calls `run_adaptive_sim()`
 (SAFE PREVIEW, `--yes` to run). A legacy pure-Python module
-`adapters/r-assets/legacy/adaptive_simulator.py` is retained for offline dev/testing.
+`adapters/coze/ct_r_lib/legacy/adaptive_simulator.py` is retained for offline dev/testing.
 Ported from the ClawHub skill `adaptive-trial-simulator` (aipoch-ai) and
 re-implemented to fit ct-samplesize.
 
 > **No standalone `.R` file is shipped in the published skill.** The R engine lives
-> inline in `adapters/r-assets/local_r_backend.py` as `ADAPTIVE_SIM_R` (excluded from the publish
+> inline in `adapters/coze/ct_r_lib/local_r_backend.py` as `ADAPTIVE_SIM_R` (excluded from the publish
 > package; synced to coze). To drive the engine from R yourself, run the CLI with
 > `--show-code` (or `-y`) and copy the printed R code into R.
 
@@ -47,10 +47,10 @@ complementary.
 
 > **coze is the primary compute path** in the published skill: the CLI shows the
 > coze request envelope (SAFE PREVIEW) and computes via coze (server-side R, base R
-> only, no extra packages). The optional local-R dev backend (`adapters/r-assets/`) behaves
+> only, no extra packages). The optional local-R dev backend (`adapters/coze/ct_r_lib/`) behaves
 > like v3.x — R code is generated and shown, re-run with `--yes` to execute locally.
 > If neither coze nor a local R install is available, the legacy pure-Python engine
-> (`adapters/r-assets/legacy/adaptive_simulator.py`) still gives a result offline.
+> (`adapters/coze/ct_r_lib/legacy/adaptive_simulator.py`) still gives a result offline.
 
 ## Capabilities (6)
 

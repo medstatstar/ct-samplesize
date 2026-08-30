@@ -19,16 +19,16 @@
 - **Python 3.8+**: stdlib only, drives the CLI / orchestration (no third-party compute
   deps; the v5 local pure-Python fallback was removed).
 - **R 4.x (dev / optional, NOT in published skill):** only the local-R backend
-  (`adapters/r-assets/`, `CTSS_BACKEND=local-r`) needs R. Detected by `find_rscript` (which
+  (`adapters/coze/ct_r_lib/`, `CTSS_BACKEND=local-r`) needs R. Detected by `find_rscript` (which
   locates `Rscript`); search order: `PATH` → `C:\Tools\R-4.5.1\bin\x64\Rscript.exe`
   → `C:\Program Files\R\R-4.5.1\bin\x64\Rscript.exe` → `/usr/local/bin/Rscript`,
   `/usr/bin/Rscript`. If none found, emit `error.rscript_not_found`.
 - **R packages (coze-side):** `stats`, `pwr`, `rpact`, plus base R — all run
   server-side on coze; nothing to install locally in the published skill.
-- Inline R engines: `.R` logic lives in `adapters/r-assets/local_r_backend.py` (`I18N_R`,
+- Inline R engines: `.R` logic lives in `adapters/coze/ct_r_lib/local_r_backend.py` (`I18N_R`,
   `ADAPTIVE_SIM_R`); synced to coze. The CLI shows the coze request envelope in
   SAFE PREVIEW and computes via coze.
-- Install helpers (dev only, removed from published CLI in v5.0.2): R packages run server-side on coze; the legacy `--install-all-packages` / `--run-install` flags exist only in the dev backend (`adapters/r-assets/`, not shipped) — use the printed `install.packages()` snippet instead.
+- Install helpers (dev only, removed from published CLI in v5.0.2): R packages run server-side on coze; the legacy `--install-all-packages` / `--run-install` flags exist only in the dev backend (`adapters/coze/ct_r_lib/`, not shipped) — use the printed `install.packages()` snippet instead.
 
 ## 3. Agent invocation
 
@@ -125,12 +125,12 @@ early-stop rates. Use `--sim_output results.json` and `--visualize` for artifact
 |`error.rscript_not_found`|Rscript missing (local-R dev backend)|install R or set `RSCRIPT_PATH` / `find_rscript`|
 |`pwr` / `rpact` missing|package not installed (local-R dev backend)|run `install.packages("rpact")` etc. (legacy `--install-all-packages` removed in v5.0.2)|
 |coze endpoint not configured|`CTSS_COZE_ENDPOINT` unset|set `CTSS_COZE_ENDPOINT` (real) or `CTSS_COZE_MOCK=1` (demo)|
-|coze unreachable (no local fallback in v5)|test requires coze|configure coze (`CTSS_COZE_ENDPOINT` / `CTSS_COZE_MOCK=1`); dev-only alternative: `adapters/r-assets/` + `CTSS_BACKEND=local-r`|
+|coze unreachable (no local fallback in v5)|test requires coze|configure coze (`CTSS_COZE_ENDPOINT` / `CTSS_COZE_MOCK=1`); dev-only alternative: `adapters/coze/ct_r_lib/` + `CTSS_BACKEND=local-r`|
 |locale shows zh|OS language is zh/CN|expected; output follows OS locale|
 
 ## 9. Maintenance
 
 - In the published skill, R logic lives server-side on coze (synced from
-  `adapters/r-assets/local_r_backend.py` + `adapters/r-assets/r_templates/`), not in standalone `.R` files.
+  `adapters/coze/ct_r_lib/local_r_backend.py` + `adapters/coze/ct_r_lib/r_templates/`), not in standalone `.R` files.
 - The optional local-R dev backend runs the code under `--yes` after a SAFE PREVIEW;
   the v3.7.1 fix renamed `._qt` to `._qt` consistently (historical).

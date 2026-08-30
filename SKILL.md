@@ -3,7 +3,7 @@ slug: ct-samplesize
 displayName: Clinical Trial Sample Size & Power / 临床试验样本量与检验效能专家
 name: ct-samplesize
 cn_name: 临床试验样本量与检验效能专家
-version: 5.3.18
+version: 5.6.0
 invocable: true
 required_commands: [python]
 summary: 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
@@ -40,7 +40,7 @@ permissions:
 
 ## Purpose
 
-This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. **The default authoritative engine is a remote coze R compute service** (rpact / gsDesign / TrialSize / PowerTOST, 20+ packages — running server-side, so your machine needs **no local R**), covering all 49 test types. Results come in Chinese or English per the OS language setting (prompt can force-switch). Reproducible R code is returned by default (coze returns it on every analysis).
+This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. **The default authoritative engine is a remote coze R compute service** (rpact / TrialSize / PowerTOST and 20+ other packages — running server-side, so your machine needs **no local R**), covering all 49 test types. Results come in Chinese or English per the OS language setting (prompt can force-switch). Reproducible R code is returned by default (coze returns it on every analysis).
 
 ---
 
@@ -51,11 +51,12 @@ This skill provides clinical trial researchers with an easy-to-use, comprehensiv
 | **① Sample size ⇄ Power (bidirectional)** | Solve n given target power, AND solve achievable power given fixed n. `--power` (forward) and `--nobs` (reverse) are mutually exclusive; covers all 49 types. | Sample size fixed, evaluate if power meets target |
 | **② Power curve** | Given a sample-size sequence, batch-compute and plot the **Power curve** (x=sample size, y=power), with a target-power reference line. | Sample-size sensitivity analysis, protocol reporting |
 | **③ Sample-size curve** | Given a power-target sequence, batch-compute and plot the **sample-size curve** (x=target power, y=required n). | Resource planning, feasibility assessment |
-| **④ Deterministic NL pre-route (zero-LLM)** | `--nl "<natural language>"` runs a local zero-LLM deterministic detector that identifies `--test` and extracts params (power 80%→0.8, rate 70%→0.7, "enroll 30"→reverse-solve power, etc.), emitting a strong signal for the coze request; when confidence is low / params incomplete it prints a structured prompt and **never silently mis-params**, handing the rest to the coze LLM. Logic in `scripts/classify_test.py` + `scripts/param_aliases.py`; per-test contract baselines in `coze_cases/` (`tests/coze_cases_regression.py` offline regression), 49-test enumeration in `adapters/r-assets/coze_contract.md`. | User phrases it colloquially, e.g. "non-inferiority survival trial, NI margin 1.25…" |
+| **④ Deterministic NL pre-route (zero-LLM)** | `--nl "<natural language>"` runs a local zero-LLM deterministic detector that identifies `--test` and extracts params (power 80%→0.8, rate 70%→0.7, "enroll 30"→reverse-solve power, etc.), emitting a strong signal for the coze request; when confidence is low / params incomplete it prints a structured prompt and **never silently mis-params**, handing the rest to the coze LLM. Logic in `scripts/classify_test.py` + `scripts/param_aliases.py`; per-test contract baselines in `tests/coze_cases/` (`tests/coze_cases_regression.py` offline regression), 49-test enumeration in `adapters/coze/coze_contract.md`. | User phrases it colloquially, e.g. "non-inferiority survival trial, NI margin 1.25…" |
 
 - ②③ curve mode: list `"20,40,200"` or auto-seq `"20:20:200"` (start:step:stop); overlay multiple effect-size curves for sensitivity (continuous/survival solvers; proportion solvers plot the single p1/p2 series); returns the figure (SVG default per the ct-* uniform figure spec, PNG fallback) **plus the numeric series as machine-readable stats (x/y arrays)**. Full parameters & 49-test examples → `references/cli_examples.md`.
 - **Specialized curve modes (`--effect_seq` / `--dist_plot` / `--power_time_seq` / `--heatmap`, added 2026-08-28):** effect-axis / H0–H1 overlap / follow-up-power / 2-D sensitivity scans for the 9 curve solvers; full parameters & 49-test examples → `references/cli_examples.md`.
-- **★ Default full figure-set (user rule 2026-08-20, expanded 2026-08-28):** when no figure is requested, the R engine auto-attaches the full set for the 9 curve solvers (sample-size/power/effect curves + dist-overlap + heatmap) and the survival follow-up–power curve; each carries a `type` field + bilingual `caption`. Opt out via any explicit figure flag / `--dry-run`. 2026-08-28 revision: coze emits all figures, stream does not inline — see Figure Output.
+- **★ Default full figure-set (user rule 2026-08-20, expanded 2026-08-28):** when no figure is requested, the R engine auto-attaches the full set for the 9 curve solvers (curves + dist-overlap + heatmap) and the survival follow-up–power curve; each carries a `type` field + bilingual `caption`. Opt out via any explicit figure flag / `--dry-run`. coze emits all figures, stream does not inline — see Figure Output.
+- **★ Default figure for *every* one of the 49 methods (v5.6):** all figure generation moved to the coze side — coze R (`coze_figure_layer.R`) is the primary plotter, `figure_kit.py` is the coze-internal fallback; the local CLI is a **thin client** consuming coze-returned `figures[]` — see [Default Figures (v5.6)](#default-figures-v56) and `references/default_figures.md`. **Zero new R packages** on the coze side.
 
 ---
 
@@ -65,8 +66,7 @@ Before answering, triage the request into the four-level difficulty **Simple / M
 - **Simple** (test already named, params mostly given) → answer directly, **no menu**.
 - **Middle** (single-point but deep — ICH guidance detail, statistical parameter, compliance gray zone, needs 3–4 points) → still answer **directly, no menu** (same path as Simple; mark `difficulty = "middle"` for a richer multi-point answer). When Simple vs Middle is unclear, prefer **Middle**.
 - **Complex** (pick test type / design family / many params) → show the **routing menu** below (**the `## Quick Menu` is for the Complex branch only**).
-- **Vague** ("not sure which test to use") → **bounded grill-me** (branch-by-branch probing), do **not** dump the menu. **Hard cap: ≤3 rounds** (count your own rounds; on reaching the cap with the test still undecided, **converge with the accumulated question profile** — pick the best-fit test family and confirm). Each round ask 1–3 focused questions with a recommended default; accumulate confirmed fields into a **question profile**; when the test is locked, **echo a "needs portrait + recommended test + missing params" summary for confirmation** before computing.
-  - Note: this **3-round cap** targets the "Vague deep-probe to lock the test" scenario; the global cap for missing-parameter clarification is **2 rounds then use defaults** (ct-base AGENTS.md §6.1) — the two are different dimensions and do not conflict.
+- **Vague** ("not sure which test to use") → **bounded grill-me** (branch-by-branch probing), do **not** dump the menu. **Hard cap: ≤3 rounds** (on reaching the cap with the test still undecided, **converge with the accumulated question profile** — pick the best-fit test family and confirm). Each round ask 1–3 focused questions with a recommended default; accumulate confirmed fields into a **question profile**; when the test is locked, **echo a "needs portrait + recommended test + missing params" summary for confirmation** before computing. (This 3-round cap targets locking the test; the global missing-parameter cap is **2 rounds then use defaults** per ct-base AGENTS.md §6.1 — different dimensions, no conflict.)
 
 **Routing gate (audit follow-up — avoid accidental remote compute):** a **remote coze compute** (data leaves the machine) happens **only** when the user's intent is explicitly a sample-size / power / curve **calculation**. General consulting — "help me figure out my trial design", methodology questions, ICH guidance, "what test should I use" — must be answered **locally without sending anything**, and may use the menu / grill-me flow. Do not fire a coze request on vague or advisory phrasing; ask for the calculation intent first.
 
@@ -74,14 +74,10 @@ Before answering, triage the request into the four-level difficulty **Simple / M
 
 > **Runtime is stateless.** The coze R engine re-supplies `test`+`params` each call and never persists prior fields. Semantic drift (effect/α/power/n silently changing) = highest-risk failure for a stateless remote.
 
-#### Cross-turn spec (thread-resident, no on-disk dataset)
-Minimal unit: `{"test":"ttest_ind","effect":0.5,"alpha":0.05,"power":0.8,"solve":"n","side":"two","sd":1.0}` — canonical keys: test/effect/α/power/n/sd/side; `—` = not-yet-known. Full rules → ct-base/references/continuity.md (Mode A, §5.1).
-
-#### Three hard rules
+**Hard rules** (full rules → ct-base/references/continuity.md Mode A §5.1; minimal unit = `{test, effect, alpha, power, solve, side, sd}`, `—` = not-yet-known):
 1. **Echo a `## 当前分析设定：` block after every calculation (mandatory):** `## 当前分析设定： test=ttest_ind | effect(d)=0.5 | alpha=0.05 | power=0.8 | solve=n | side=two | sd=1.0 | n=— | ratio=—`. No field omitted (`—` placeholder). `solve=n` solves n given power; `solve=power` reverses; `side=two/one_greater/one_less`.
 2. **On follow-up, change only the changed fields:** read the most recent `## 当前分析设定：` block, override only the changed field, inherit the rest verbatim, then send to coze.
-3. **Deterministic merge (default path, not optional):** every follow-up **MUST run** `merge_spec.py` for a lossless merge, then send the merged spec to coze — never assemble params from LLM memory alone. `prev` = most recent `## 当前分析设定：` block; `cur` = this round's parsed spec; `echo '{"prev":{...},"cur":{"power":0.9}}' | python scripts/merge_spec.py` (injected copy; dev: `ct-base/scripts/merge_spec.py`). If `missing_required` is non-empty, clarify first.
-4. **coze contract enhancement (landed):** the `compute` payload carries `resolved_spec` (this round's full snapshot); additive, does not affect older remotes.
+3. **Deterministic merge (default path, not optional):** every follow-up **MUST run** `merge_spec.py` for a lossless merge, then send the merged spec to coze — never assemble params from LLM memory alone. `echo '{"prev":{...},"cur":{"power":0.9}}' | python scripts/merge_spec.py` (dev: `ct-base/scripts/merge_spec.py`). If `missing_required` is non-empty, clarify first. (The `compute` payload also carries `resolved_spec`, a full snapshot — additive, landed.)
 
 > Red line: ct-samplesize's coze is a **stateless remote compute**; continuity MUST be solved locally — the remote cannot help unless you actively send history. `merge_spec.py` is the local **deterministic merger** (code-fixed, LLM-executed), not a fragile classifier — upholds family red line 4.
 
@@ -100,13 +96,7 @@ Minimal unit: `{"test":"ttest_ind","effect":0.5,"alpha":0.05,"power":0.8,"solve"
 
 > The menu is a *navigation aid*, not a strict taxonomy: the same test is reachable from multiple categories (e.g. `gsd_survival` from both ④ Survival and the Group-Sequential index). Still unsure where to start? Use **Part 0** in `references/menu.md` — find your test by *research question*, no jargon needed.
 
-### Adaptive-trial Monte-Carlo simulator
-
-`--test adaptive_simulate` validates adaptive / group-sequential designs empirically (power, type I error, expected N). Designs / spending / futility / `--optimize` / legacy fallback / full guide → [`references/adaptive_simulator.md`](references/adaptive_simulator.md).
-
-### P1-C: local verification loop (analytic n → Monte-Carlo)
-
-`--verify` (default OFF) re-simulates an **analytic** sample-size solution with an **independent** Monte-Carlo engine and checks empirical **power (±2 pp)** and **type-I error (±0.5 pp)** against the nominal targets. The verifier does **not** reuse the analytic formulas — it only takes the n (and, for group-sequential, the rpact/gsDesign z-boundaries via `--verify-boundaries`) as input, so a wrongly-derived n is caught instead of rubber-stamped. Supports `ttest_* / proportion_two / survival(log-rank) / group_sequential / adaptive_reestimate`. Each check reports its MC 95% CI; if Monte-Carlo error approaches the tolerance it returns `INCONCLUSIVE` rather than a false PASS. Pure local, no network, no patient data.
+**Advanced:** `--test adaptive_simulate` empirically validates adaptive / group-sequential designs (power, type I error, expected N) — full guide → [`references/adaptive_simulator.md`](references/adaptive_simulator.md). `--verify` (default OFF) re-simulates an **analytic** solution with an **independent** Monte-Carlo engine (checks empirical power ±2 pp / type-I error ±0.5 pp; takes only the n as input, so a wrongly-derived n is caught) — supports `ttest_* / proportion_two / survival(log-rank) / group_sequential / adaptive_reestimate`; reports MC 95% CI, returns `INCONCLUSIVE` rather than a false PASS. Pure local, no network.
 
 ---
 
@@ -170,11 +160,17 @@ Curves and any coze-returned `figures[].svg` follow the **uniform SVG spec share
 
 ---
 
+## Default Figures (v5.6)
+
+**Every** method produces at least one figure; all generation runs **on the coze side** (coze R `coze_figure_layer.R` primary → coze-internal `figure_kit.py` fallback), and the local CLI is a thin client that only consumes coze-returned `figures[]`. Engine figures come first, defaults are appended; when the engine already returned a power-N curve, the default primary is deduped out (alloc suite always kept). 8 default kinds (`power_n` / `power_events` / `power_n_multi` / `margin_tradeoff` / `icc_sens` / `gs_boundary` / `assurance_n` / secondary `alloc_suite`); curves are pinned exactly through the R anchor via the family-level noncentrality law (z/t/F/X), each with an effect ±20 % sensitivity band. Zero new R packages (`svglite` already tier1); coze platform deployment is manual (user-side), the local `adapters/coze/` mirror stays latest.
+
+> Full spec — layer table, figure-kind table, alloc suite math (Schoenfeld identity, Neyman optimal k*), accuracy, env knobs → [`references/default_figures.md`](references/default_figures.md).
+
+---
+
 ## Formulas & Reports
 
-**Formulas:** `references/formulas.md` (all 49 types) | **Full functions:** `references/extended_functions.md`
-
-Key analytic formulas — e.g. independent t: $n_1 = 2(\frac{Z_{1-\alpha/2} + Z_{1-\beta}}{d})^2$; Schoenfeld survival: $d = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(\log HR)^2}$; Cox w/ covariate (Vittinghoff): $d = \frac{(Z_{1-\alpha/2} + Z_{1-\beta})^2}{(1-R^2)\,p(1-p)\,(\log HR)^2}$; Cluster DEFF: $DEFF = 1 + (m - 1) \times ICC$. Full table → `references/formulas.md`.
+**Formulas:** `references/formulas.md` (all 49 types, incl. independent t / Schoenfeld survival / Cox-with-covariate / Cluster DEFF) | **Full functions:** `references/extended_functions.md`
 
 ---
 
@@ -197,7 +193,4 @@ Agent behavior only; implementation → `adapters/bug_report.py`, protocol → `
 
 ## Related skills (ct- library, agent chains as needed)
 
-- **Upstream (context)**: `ct-registry` (competitor / disease landscape, Tier B, via `ct-pipeline` public-intel orchestration)
-- **Downstream (handoff)**: `ct-protocol` (protocol skeleton) → `ct-ecrf` (CRF + SDTM mapping spec)
-- **Same category (design scope)**: `ct-protocol` / `ct-ecrf` / `ct-eligibility` (D)
-- **Public-intel orchestration (Tier B)**: `ct-pipeline` (dispatches `ct-registry` / `ct-safety` / `ct-literature`)
+- **Upstream (context)**: `ct-registry` (via `ct-pipeline` public-intel orchestration) · **Downstream**: `ct-protocol` (protocol skeleton) → `ct-ecrf` (CRF + SDTM mapping spec) · **Same category (design)**: `ct-protocol` / `ct-ecrf` / `ct-eligibility` · **Public-intel (Tier B)**: `ct-pipeline` (dispatches `ct-registry` / `ct-safety` / `ct-literature`)

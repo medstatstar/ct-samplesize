@@ -1,5 +1,213 @@
 # Changelog / 版本历史
 
+## v5.6.0 补丁（2026-08-30 夜间）· 删除 r-assets，coze 镜像为唯一真相源
+
+- **废除 `adapters/r-assets/`（本地 R 后端「源」目录）**：它与 `adapters/coze/ct_r_lib/` 是「源 vs 镜像」的平行副本，且未进 git、长期与部署包漂移（与 coze 版有 934 行差异）。按用户「只保留 coze 镜像」指令，将 `adapters/r-assets/` 整体移入 `archives/r_assets_legacy_20260830/`（gitignored，仅作安全留存），活跃树不再有第二份 R 后端。
+- **本地加载器改指 coze 镜像**：`scripts/compute_backend.py::_load_local_r_backend` 与 `adapters/coze/ct_r_lib/compute_backend.py::_load_local_r_backend` 均改为从 `adapters/coze/ct_r_lib/` 加载 `local_r_backend.py`，并临时把该目录置顶 `sys.path` 以解析 `r_templates / i18n / compute_backend` 依赖、执行后还原，避免污染全局导入路径。两加载器真实复测均成功实例化 `LocalRBackend`。
+- **离线仿真器归位 coze 镜像**：`legacy/adaptive_simulator.py` 移入 `adapters/coze/ct_r_lib/legacy/`（纯 Python，无 r-assets 依赖），保留「只保留 coze 镜像」原则；同步更新 `AGENTS.md` / `references/adaptive_simulator.md` 路径引用。
+- **文档引用全量改写**：12 个活跃文件（AGENTS / SKILL / scripts/* / coze_client.py / _contract_index.json / references/*.md / coze README_zh-CN）中的 `adapters/r-assets/...` 批量改为 `adapters/coze/...`；`coze_contract.md` §6 同步流程改写为「r-assets 已废弃、coze 镜像为唯一真相源」；`gen_contract_doc.py` 输出路径改为 `adapters/coze/coze_contract.md` 并重渲染。CHANGELOG 历史条目保留原貌（不改动）。
+- 校验：活跃树 `r-assets` 残留引用清零（仅剩「已废弃/已移除」说明性提及）；被改 Python 全部 `py_compile` 通过；`_contract_index.json` 合法（49 例）。
+
+## v5.6.0 补丁（2026-08-30 晚间）· 技能主目录二次整理
+
+- **去重发布包**：删除与 `ct-samplesize_coze_deploy_v5.6.0.zip` 完全重复（md5 一致）的 `ct-samplesize_coze_deploy_5.6.0.zip`（缺 `v`）；`adapters/coze/_build_deploy_subset.py` 输出名统一为 `ct-samplesize_coze_deploy_v{VERSION}.zip`，杜绝再生成重复文件。
+- **`ADVANCED.md` / `ADVANCED_zh-CN.md` 移入 `docs/`**（原在技能根，与 ROADMAP.md 同归 `docs/`）；同步修正 `README.md` / `README_zh-CN.md` 内 `[ADVANCED.md](...)` 链接至 `docs/` 路径（`git mv` 保留历史）。
+- **`tests/` 内运行产物归位**：`*_output*.txt` / `*_report*.json` / 演示 `*.svg` 共 21 个移入 `tests/outputs/`；`final_retest.py` / `focus_retest.py` / `nl_full_test.py` / `scan_all_tests.py` / `verify_be_curve.R` 等临时调试脚本移入 `tests/scratch/`；`nl_test_report.json` 因被 `test_natural_language.py:243` 引用保留原位。
+- **清理根 `outputs/`、`scripts/outputs/`、`dist/`**：历史运行产物（SVG / HTML / 审计报告 / 端点检查报告，约 3.1MB）与构建报告统一归档到 `archives/runtime_20260830/`，删除这些运行/构建目录（CLI 运行时会在 `outputs/` 重新生成，已 gitignore）。
+- **删本地备份** `scripts/i18n.py.bak_20260828`（`.gitignore` 已忽略的 `*.bak_*`）。
+- **`.gitignore` 补忽略项**：`archives/`、`ct-samplesize_*.zip`、`tests/outputs/`、`tests/scratch/`，避免归档与发布包误提交。
+- 整理后技能根仅留：6 个顶层 md（AGENTS/CHANGELOG/LICENSE/README×2/SKILL）+ `requirements.txt` + 3 个发布 zip；源码按 `adapters / archives / assets / config / docs / references / scripts / tests` 八目录归位。
+
+## v5.6.0 补丁（2026-08-30 傍晚）· coze 目录整理：单一真源重构
+
+- **删除冗余 `coze_deploy/`**：其 6 个文件与 `adapters/coze/` 完全重复（md5 一致）且未进 git；新增 `adapters/coze/_build_deploy_subset.py` 从 `adapters/coze/scripts/` 直接生成「最小部署包」`ct-samplesize_coze_deploy_v5.6.0.zip`（6 文件），消除平行副本失同步风险。
+- **`coze_cases/` → `tests/coze_cases/`**：回归 fixtures 归位测试目录；更新 3 处 Python 路径引用（`tests/coze_cases_regression.py`、`adapters/coze_client.py`、`scripts/samplesize_power.py`）+ 相关文档/生成器路径；`git mv` 保留历史。
+- **清理 `adapters/coze/` 内 `_archive_*`**（3 个历史构建包 ~2.6MB）→ 移出到技能根 `archives/`；删除被取代的旧 `_build_deploy.py`，并将 `_build_deploy_new.py` 重命名为 `_build_deploy.py`（输出改到 `archives/`，不再在镜像内生成 `_archive_*`）。
+- 顶层 3 个发布 zip 仍保留在技能根（用户未要求移动）。
+- 文档一致性：`SKILL.md` / `references/default_figures.md` / `adapters/coze/DEPLOY.md` / 生成器脚本中 `coze_deploy`、`coze_cases` 路径同步更新为 `adapters/coze` 与 `tests/coze_cases`；`adapters/r-assets/coze_contract.md` 由生成器重新渲染。
+
+## v5.6.0 补丁（2026-08-30 下午）· SKILL.md 瘦身回 §16.1 红线 + GSD 修复/去重上线验证
+
+- **SKILL.md 256 → 196 行（§16.1 ≤200 达标）**：v5.6 出图细节（层模型 / 图型表 / alloc-suite 数学 / 精度 / 依赖说明）整体下沉至新文件 `references/default_figures.md`，SKILL.md 保留一段摘要 + 链接；顺带压缩 Cross-turn Continuity（4 条并为 3 条）、Interaction Vague 轮次说明、Advanced 小节、Formulas 与 Related skills。内容零删失，只做搬家与合并。
+- **修正过时表述**：出图「Deployment boundary」中 "(AI does not touch `adapters/coze/`)" 按用户 2026-08-30 红线澄清改为「coze 平台部署为人工操作；本地 `adapters/coze/` 镜像必须保持最新」。
+- **frontmatter version 5.5.0 → 5.6.0**：与正文 v5.6 及云端已部署实现对齐。
+- **线上回归全绿（部署后）**：group_sequential（GSD 双 bug 修复生效，n 正常 + 2 默认图）、ttest_ind（去重生效，9→8 图）、poisson（5 图）；15 张 SVG `<g>` 配对合法（svglite 修复生效）。回归脚本 `regress_v560.py` / `regress_v560_report.json`（会话目录）。
+- `merge_spec.py` / `resolved_spec` 行为不变；无代码变更，仅文档层。
+
+## v5.6.0 (2026-08-30) · 待发布：默认图形全部上 coze（R 为主 + figure_kit coze 内部兜底，本地退为瘦客户端）
+
+> **背景与取舍**：v5.5 把 49 方法的默认图形层实现在「本地 Python figure_kit」。但用户要求**所有绘图都上 coze 端、本地只承接结果**。
+> 出图从本地 Python 改为 coze 端 R 时做了利弊评估：R 端口用原生非中心分布（`pnorm`/`pt`/`pf`/`pchisq`）严格精确、与 coze 数值同源；
+> 且 **coze 端零新增包**（`svglite` 已在 tier1 安装清单）。故采纳「coze R 为主 + figure_kit 作为 coze 内部兜底」，**本地彻底退为瘦客户端**。
+
+### Changed / 出图架构（v5.5 本地 → v5.6 coze 端）
+- 新增 `coze_deploy/` 部署包（4 文件）：`coze_figure_layer.R`（主出图 R 模块）、`figure_kit.py`（coze 内部 Python 兜底）、`alloc_curve.py`（figure_kit 依赖）、`coze_fallback.py`（两级兜底编排器）。
+- `scripts/samplesize_power.py`：删除本地 `_render_default_figures_safely()` 及与 `render_figures` 重复的默认图形透出循环；本地只把 coze 回传的 `figures[]` 交给既有 `render_figures` 统一落盘 / 内联 / 聚合进 HTML 报告。**本地零渲染**。
+- `figure_kit.py`：新增 CLI 入口（`--test/--meta/--out-dir/...`），使其可作为 coze 端独立进程调用（不再只是被本地 import 的库）。
+
+### Added / coze 端 R 主出图模块 `coze_figure_layer.R`
+- 四族精确 power 函数（`power_normal`/`power_nct`/`power_ncf`/`power_ncchi2`），非中心参数由 R 原生分布给出，**锚点穿越严格成立**。
+- 8 种图型渲染器：`render_power_n` / `render_power_n_multi` / `render_margin_tradeoff` / `render_icc_sens` / `render_gs_boundary` / `render_assurance_n` / `render_alloc_suite`（A/B/C/D 四图 + 速查表）。
+- `METHOD_FIGURES` 49 方法 → (primary, secondary) 映射，与 `scripts/figure_kit.py` 及 `coze_cases/_contract_index.json::default_figure` 三处语义一致。
+- **优雅降级**：`margin_tradeoff` 主图缺 `--margin` 时自动退为 `power_n`，避免写出 0 字节文件。
+- **ASCII-only 运行期字符串**：标题 / 轴标 / 图例全用英文 ASCII（`side_label()` 返回 "one-sided"/"two-sided"）。原因：coze 容器若以 `LC_CTYPE=C.UTF-8` 启动，中文会破坏成控制字节、产生非法 XML（实测 35 张图全挂）。注释可中文，运行时字符串必须 ASCII。
+
+### Added / 两级兜底编排 `coze_fallback.py`
+- 主出图失败（R 缺失 / `svglite` 未装 / 参数不全 / R 报错）→ 清空 capture-dir 残留 → 回退 `figure_kit.py`。
+- 退出码：产出 ≥1 张 SVG 返回 0（`{"backend":"R"|"figure_kit","figures":[...]}`）；两级都失败返回 1（`{"backend":"none"}`，**主数值结果不受影响**）。
+
+### Validated / 本机实测（用真实 R 4.6.1）
+- R 主路径：12 个代表方法覆盖 8 种图型 → 全部 `exit 0`、SVG 数量正确、严格 XML 解析通过、无 NaN/Inf。
+- 兜底路径：R 缺失时 `coze_fallback.py` 自动回退 `figure_kit.py` 并产出有效 SVG。
+- Unicode 安全：R 模块全 ASCII 运行期字符串，35 张测试 SVG 全部合法 XML。
+
+### Docs
+- 新增 `coze_deploy/DEPLOY.md`：部署步骤 + 两级兜底链路 + 图形契约 + 调用示例 + 包评估结论。
+- `SKILL.md`：「Default Figures」章节改为 v5.6 coze 端架构；依赖说明由「本地零依赖、coze 零改动」改为「coze 需部署 4 文件、零新增 R 包」。
+- `coze_cases/_contract_index.json`：`_meta.default_figure_note` 由 v5.1 本地 figure_kit 描述改为 v5.6 coze 端生成、本地只承接。
+
+## v5.5.0 (2026-08-30) · 待发布：每种方法的默认图形层 + 分配比诊断（本地零依赖，coze 端零新增包）
+
+> **背景与取舍**：v5.4 之前只有契约里 `default_curve: true` 的 5 种方法会出图，其余 44 种算完只回一个数字。
+> 补齐的路线有两条：(A) 让 coze 端 R 为 49 种方法各画一张图 —— 需改云端 R 并引入额外图形依赖；
+> (B) 数值锚点仍由 R 给出，曲线形状由**本地族级解析结构**外推 —— 零依赖、零联网、coze 端零改动。
+> **本次选 B**：R 依然是数值真相源，曲线精确穿过 R 给出的锚点。
+
+### Added / 默认图形层 `scripts/figure_kit.py`（零第三方依赖，仅 stdlib `math`）
+- **原理**：几乎所有常用检验的非中心参数对样本量只有两种缩放 ——
+  `z`/`t` 族 `λ(n)=λ*·√(n/n*)`，`F`/`χ²` 族 `λ(n)=λ*·(n/n*)`。
+  因此**给定 R 返回的一个锚点 `(n*, power*)`，整条曲线的形状在数学上被唯一确定**，
+  本地无需知道 coze 内部用的是 pwr、TrialSize 还是 rpact。
+  - 锚点穿越性实测：49 方法 × 3 锚点（n=64/200/30，power=0.80/0.90/0.65）**残差 ≤1.1e-16，全部单调**。
+- **分布内核（自实现，已与 R 4.6.1 逐点交叉核对）**：正则化不完全 Γ（级数+连分数）、
+  不完全 Β（连分数）、中心/非中心 χ²（泊松混合）、中心/非中心 F（泊松混合）、`qf`/`qchisq`（二分）。
+  - 精度：中心 χ²/F 与非中心 χ² **≤5e-13**；非中心 F **≤3e-10**；`qf`/`qchisq` **≤8e-11**。
+- **8 种图型，49 方法全覆盖**（映射见 `METHOD_FIGURES`，已镜像进 `_contract_index.json::default_figure`）：
+
+  | 图型 | 轴 | 方法数 | 回答的问题 |
+  |:---|:---|:---|:---|
+  | `power_n` | N → Power | 20 | 少招人会掉多少效能 |
+  | `power_events` | 事件数 → Power | 6 | 事件驱动设计的余量 |
+  | `power_n_multi` | N → Power（按组数分系列） | 5 | 加一个臂的代价 |
+  | `margin_tradeoff` | 界值倍数 → Power | 4 | 放宽界值能换回多少 |
+  | `icc_sens` | ICC → Power | 2 | 设计效应对 ICC 误设的暴露 |
+  | `gs_boundary` | 信息分数 → z 边界 | 10 | OBF vs Pocock 消耗函数（Lan-DeMets 闭式） |
+  | `assurance_n` | N → Assurance | 2 | 成功概率规划 |
+  | `alloc_suite`（副图） | 分配比 k=n₂/n₁ | 13 | 不等例分配的代价 |
+
+- **诚实的边界声明**：曲线**穿过锚点是精确的**，锚点以外依赖族级结构假设（大样本下误差可忽略；
+  n<20 或含连续性校正的方法误差变大）。故每张图带**效应量 ±20% 敏感带**，把假设的可见后果画出来。
+  图中红点即 R 数值 —— **图用于沟通趋势，协议里引用数值一律以 R 为准**。
+
+### Added / 分配比诊断 `scripts/alloc_curve.py`（v5.5 合入技能，原为独立脚本）
+- 13 个两独立组方法自动附带**分配比四图 + 速查表**：A 所需总 N vs 比（U 形，底在 1:1）·
+  B 固定 N 下 power vs 比（倒 U）· C (n₁,n₂) 平面等效能等高线（与 1:1 对角线**相切**，1:1 最优的几何证明）·
+  D 按效应量分层的效能损失。
+- 统摄恒等式 `N(k)/N(1) = (1+k)²/(4k)`（Schoenfeld 膨胀），两均数 / 两率 / log-rank **通用**。
+- ⚠️ **两率比较时 1:1 不是最优**：Neyman 最优 `k* = √(p₂(1−p₂)/p₁(1−p₁))`。
+  p₁=0.10 vs p₂=0.30 → k*=1.53（n₁:n₂=2:3），**113 例 vs 1:1 的 118 例，省 4.2% 且 power 更高**。
+  故最优比标记**从实际曲线三分搜索动态求解**，未写死 `[2/3, 3/2]` —— 否则恰好在最有价值的场景标错。
+- 新增 `--prefix` 参数：13 个方法各自隔离文件名前缀（此前固定 `ctss_alloc_*` 导致互相覆盖，
+  实测 68 张图里只剩 4 张 alloc 图）。
+- **第 4 个后端 `z`（通用两独立组 z 族）**：`ncp = θ·√(n₁n₂/N)`，与 t / log-rank 同形。
+  覆盖 `poisson / vaccine_efficacy / win_ratio` —— 这三者效应量无统一尺度（率比、VE、获胜比），
+  故 θ **由 R 锚点反解**（`theta_from_anchor`），与主图共用同一个锚点（ct-base §19.13）。
+  实测：θ 回代锚点误差 ≤1.1e-16；`N(k)/N(1)` 与理论 `(1+k)²/(4k)` 差 ≤4.4e-16；
+  `N(1:1)` 精确还原锚点（如 n/组=64 → N=128）。
+
+### Changed / 主流程集成
+- `scripts/samplesize_power.py`：新增 `_render_default_figures_safely()` 桥接，在计算完成后调用。
+  **与既有出图逻辑互斥，绝不重复**：
+  - coze 已返权威曲线，或用户显式指定 `--n_seq`/`--power_seq`/`--plot_effects` → 只出**专项副图**（coze 不提供的分配比/界值/ICC/序贯边界）；
+  - coze 无图 → 出**主图 + 专项副图**。
+- 图形层全程 try/except 包裹，**任何异常都不阻断主结果**；无锚点时静默不出图（不画无根据的曲线）。
+- 契约 `coze_cases/_contract_index.json` 全部 49 test 新增 `default_figure: {primary, secondary}` 字段，
+  `_meta.default_figure_note` 说明语义；改图型映射仍以 `scripts/figure_kit.py::METHOD_FIGURES` 为准源。
+
+### Fixed
+- **`--hr` 参数名陷阱**：CLI 的 HR 参数是 `--hazard_ratio`，`--hr` 只是 argparse 前缀缩写，
+  解析后属性名为 `hazard_ratio`。原 `getattr(args, "hr")` 恒为 None → 全部生存类方法静默不出分配比图。
+  改为 `_first(args, (候选名...))` 多候选取值。
+- **簇大小/期中分析参数名**：`--m`（非 `--cluster_size`）、`--interim_looks`（非 `--n_looks`）。
+- **assurance 字段名**：coze 实际返回 `assurance`，契约登记的是 `assurance_prob` → 锚点提取落空。
+  `_pick_power` 改为优先序列举（`power/achieved_power/conditional_power/assurance/assurance_prob/...`）。
+- 新增 `CTSS_FIGURE_DEBUG=1` 打印「为什么没出图」，避免静默失败无法诊断。
+- **契约与实现不一致（contract drift）**：契约登记 13 个方法带 `alloc_suite` 副图，
+  但 `_render_alloc_suite` 只实现了 3 个分支（ttest_ind / prop / logrank），
+  `poisson / vaccine_efficacy / win_ratio` 落入 `else: return []` 静默不出图 —— 全量回归实测只出 10 个。
+  该问题由「统计产出张数（104）与契约推算（116）对不上」发现。修复方式不是注销契约，
+  而是补上第 4 个 z 族后端（见 Added），**13/13 全部兑现**。
+
+### Verified
+- 分布内核 vs R 4.6.1：16 组参考值，最大偏差 3e-10。
+- 标定器：49 方法 × 3 锚点，锚点残差 ≤1.1e-16、单调递增 100%。
+- 端到端（mock meta）：**49/49 全部出图**，共 **116 张** SVG
+  （49 主图 + 15 副图 + 13×4 分配比），**与契约逐项吻合**；全部通过 XML 解析、无 NaN/Inf、坐标在画布内。
+- z 族后端精度：θ 回代锚点误差 ≤1.1e-16；`N(k)/N(1)` 与 `(1+k)²/(4k)` 差 ≤4.4e-16。
+- 真实 coze 调用：`ttest_ind`（n=64, power=0.8）、`survival`（events=247）、`proportion_two`、
+  `non_inferiority`、`assurance`、`vaccine_efficacy`、`poisson`（`--lambda1/--lambda2`）、
+  `win_ratio` 均正确产出主图 + 分配比四图。
+- 已知非本层问题（coze 端 R 引擎自身报错，与本改动无关）：`cluster` 报
+  `the condition has length > 1`、`group_sequential` 报 `argument is of length zero`。
+
+### 依赖评估 / Dependency assessment
+
+**结论：coze 端新增 R 包 = 0 个；新增本地 Python 第三方包 = 0 个；无需重新部署 Coze。**
+
+评了两条路线。路线 A（让 coze R 为 44 个无图方法各画一张）**同样不需要装新包** ——
+`svglite` 已在 9 个必装包内，渲染设备不是瓶颈；各方法所需的计算包（`pwr`/`rpact`/`PowerTOST`/
+`powerSurvEpi`/`simr`/`lme4`）也都在。真正的代价是**工程量与运行期延迟**，不是依赖。
+
+| 图型 | 常规 R 做法 | 若走路线 A 需要的包 | 在现有 9 包内？ |
+|:---|:---|:---|:---|
+| `power_n`（20） | 逐方法写向量化 power 网格 | 无新增（各方法已在用的包）+ `svglite` | ✅ |
+| `power_events`（6） | `powerSurvEpi` 事件数曲线 | `powerSurvEpi` | ✅ |
+| `power_n_multi`（5） | `pwr::pwr.anova.test` 等 | `pwr` | ✅ |
+| `margin_tradeoff`（4） | `PowerTOST` / `TrialSize` | `PowerTOST`、`TrialSize` | ✅ |
+| `icc_sens`（2） | 设计效应闭式（精确需 `clusterPower`） | `clusterPower` | ❌ 未装 |
+| `gs_boundary`（10） | `rpact` 或 `gsDesign` | `rpact`、`gsDesign` | ✅ |
+| `assurance_n`（2） | 正态闭式（精确需 `bsurvival`） | `bsurvival` | ❌ 未装 |
+| `alloc_suite`（13） | 无现成包，需手写非中心 t 循环 | 无 | — |
+
+**仅 2 处存在「本来想装但忍住了」的包**（`clusterPower`、`bsurvival`）：二者都改用**闭式近似 +
+锚点标定**解决 —— 锚点由 R 给出，误差只落在「锚点以外的曲线形状」上，而形状的不确定性已由
+图上的 ±20% 敏感带显式表达。装包换来的精确度提升，小于引入新依赖与镜像重做的成本。
+
+**最终新增包清单（空）**：
+
+| 侧 | 新增包 | 数量 |
+|:---|:---|:---|
+| coze 端 R | — | **0** |
+| 本地 Python | — | **0**（仅 stdlib `math`，`figure_kit.py` / `alloc_curve.py` 均零第三方依赖） |
+
+> 顺带核清：仓库中 `escalation` / `BuyseTest` / `powerMediation` / `gsDesign` 的出现均为
+> **注释里的使用建议**或已随 v5 coze-only 重构剔除的遗留函数（`install_all_packages`），
+> 无实际 `library()` 加载 —— 不构成依赖。
+
+## v5.4.0 (2026-08-30) · 待发布：两组不等例（ratio）支持（全 21 个两组检验）
+
+### Added / 不等例 ttest_ind
+- **引擎 `ss_ttest` 新增 `ratio` 参数（`type='two.sample'` 时启用 `pwr.t2n.test`）**：`ratio=n2/n1`，`n` 视为第一组 n₁。求 power 用 `pwr.t2n.test` 正解；反解 n₁ 用 `uniroot` 包非中心 t（与 `pwr.t2n.test` 逐点一致）。等例（ratio=NULL/1）行为完全不变。
+- **`run_task.R` 新增 `.ratio()`**，主求解 / 曲线求解器 / 效应轴 / 热力图 / `default_solved_n` 全部透传。
+- **CLI `--ratio`**：仅 `ttest_ind` 用，缺省=1 等例；提供时 `--nobs` 视为 n₁。
+- **契约**：`_contract_index.json` 与 `coze_contract.md` 的 `ttest_ind` required 增加 `ratio`（否则 `build_params` 白名单不会透传该字段）。
+- **本地验证**：等例 50/50→0.6969（与旧 coze 一致）；不等例 30/70→0.6213（与 statsmodels 一致）；反解 30/70 到 0.8→n1=46,n2=107,total=153；等例反解→64。契约回归 ALL PASSED。
+
+### Extended / 不等例扩展到全部 21 个两组检验（2026-08-30）
+- **范围判定（49 检验 → 21 可行）**：剩余 28 个为配对/单组/多组(k≥3)/交叉/回归-事件数/历史对照/整群/多终点等，**ratio 无意义**，正确排除。21 个两组结构全部支持 `--ratio`（n₂/n₁）。
+- **本次新增 9 个引擎分支（含 Schoenfeld/rpact 兜底）**：
+  - 率：`non_inferiority`、`superiority_margin`、`equivalence`（均值 TOST）、`poisson`、`vaccine_efficacy`
+  - 生存：`ni_survival`、`survival_equivalence`、`survival_superiority`、`survival_exact`
+- **统一契约 `n2 = ceil(n1 * ratio)`**：比例函数（noninf/prop/poisson/vaccine/eq_means/sup_margin）原本即此；4 个 Schoenfeld 生存函数（surv_equiv / surv_sup / ni_survival / survival_exact 兜底分支）原本独立 `ceiling(D·r/(1+r)/er)` 导致 r=2 时 `n2` 与 `2·n1` 因取整差 1 → **改为 `ceil(n1*r)`**，与比例函数一致、r=2 时精确 `n2=2·n1`。
+- **`ss_survival_exact` 健壮性修复**：原硬依赖 rpact `getDesignGroupSequential`（rpact 缺失即报错）。现 `tryCatch` 包裹，rpact 不可用时整体退化为纯 Schoenfeld 兜底（与 ni_survival/surv_equiv 同构），不再硬报错。
+- **`run_task.R` 分发**：9 个主求解分支透传 `ratio = .ratio(p)`；`ss_eq_means` 的曲线/效应轴/主求解共 3 处调用点均透传；Schoenfeld 反向 power 的 `sqrt(r)/(1+r)` 缩放沿用（r=1 退化为 /2）。输出在 `!is.null(res$n2)` 时报告 `label.n2_per_group`。
+- **契约**：`_contract_index.json` 的 9 个 test required 增加 `ratio`，全量 21 个 ratio-enabled test 确认无误；`coze_contract.md` 表格 9 行追加「可选 --ratio 支持不等例（n2/n1）」，输出列头统一为 `n_per_arm`。
+- **本地验证（屏蔽 library 强制基R兜底，`outputs/verify_unequal2.R`，本机 R 4.6.1）**：20/20 全过——
+  - 9 函数 ×（等例 ratio=1→n2=NULL 且 total=2·n1；ratio=2→n2=ceil(n1·2) 精确、total=n1+n2、n1<等例 n1）共 18 项 OK；
+  - 反向（固定总 N=400）unequal power ≤ equal power（poisson / noninf）2 项 OK，确认不等例对固定总量确实更低效（数学正确）。
+  - `py_compile` 三文件（coze_client/main/samplesize 节点）过；契约回归 `tests/coze_cases_regression.py` **ALL PASSED**。
+- ⚠️ 需 **Coze 重新部署** 才在生产生效（重新发布清内存缓存，需干净 zip + MD5 校验双侧同步，待授权）。覆盖本次 21 个 test 的全部 `run_task.R` / `samplesize_functions.R` 改动。
+
 ## v5.3.18 (2026-08-29) · 待发布：本地模拟验证闭环（P1-C）
 
 ### Added / 解析解↔Monte-Carlo 独立验证

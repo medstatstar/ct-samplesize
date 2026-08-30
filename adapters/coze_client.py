@@ -10,7 +10,7 @@ coze_client.py — ct-samplesize v4.0 coze 后端（权威计算引擎）
     XOR+base64 混淆内嵌）；可用 env(CTSS_COZE_ENDPOINT / CTSS_COZE_TOKEN) 覆盖。
   - mock 模式（CTSS_COZE_MOCK=1）仍保留，用于无网络/演示场景返回样例信封。
 
-出站授权（ct-base §5 安全模型 / docs/02-governance-redlines.md，2026-08-19 应用）：
+出站授权（ct-base §5 安全模型 / docs/02-security-model.md，2026-08-19 应用）：
   - 任何发往外部端点的请求在真正发送前经 `_check_outbound_authorization` 门控：
     命中 config/config.json 的 auto_approve_endpoints 白名单（公共端点已由作者预置，
     永不弹确认）或本会话内存已授权 → 放行；否则 stderr 输出 AUTH-BLOCK + 全库统一
@@ -19,7 +19,7 @@ coze_client.py — ct-samplesize v4.0 coze 后端（权威计算引擎）
   - Windows 系统代理残留（WinError 10061）→ 绕过代理直连重试一次。
   - 异常与日志绝不回显 token / payload 明文（只打异常类型与端点）。
 
-信封契约见 adapters/r-assets/coze_contract.md。
+信封契约见 adapters/coze/coze_contract.md。
 """
 import hashlib
 import json
@@ -312,7 +312,7 @@ _PARAM_EXCLUDE = frozenset({
 })
 
 
-# 契约索引缓存（coze_cases/_contract_index.json 的 required 字段 = 每 test 所需参数白名单）
+# 契约索引缓存（tests/coze_cases/_contract_index.json 的 required 字段 = 每 test 所需参数白名单）
 _CONTRACT_REQUIRED_CACHE = None
 _CONTRACT_LOAD_FAILED = False
 
@@ -330,7 +330,7 @@ def _load_contract_required(test):
     _CONTRACT_REQUIRED_CACHE = {}
     try:
         idx_path = (Path(__file__).resolve().parent.parent
-                    / "coze_cases" / "_contract_index.json")
+                    / "tests" / "coze_cases" / "_contract_index.json")
         data = json.loads(Path(idx_path).read_text(encoding="utf-8"))
         for entry in data.get("tests", []):
             _CONTRACT_REQUIRED_CACHE[entry["test"]] = frozenset(entry.get("required", []))
@@ -345,7 +345,7 @@ def build_params(test, args, ctx):
     仅发送「本 test 实际需要」的参数，避免把 argparse 全家族默认值（varcorr/sigma/
     nsim/theta0/cv/design/ve_*/prior_a0/prob_*/n_doses/target_dlt/win_ratio_theta/...）
     一锅炖进 params（这些无关默认值虽被 R 端 %||% 忽略，但会让飞书 querystr 看起来像
-    「全参数扫描」，无法区分真实请求与测试）。白名单取自 coze_cases/_contract_index.json
+    「全参数扫描」，无法区分真实请求与测试）。白名单取自 tests/coze_cases/_contract_index.json
     的 required 字段（与 CLI choices / R 引擎 dispatch 三者一致的单一真相源）。
 
     发送集合 = 该 test 的 required 参数（非 None）+ 通用参数 alpha + 模式关键参数
@@ -582,26 +582,35 @@ def _mock_envelope(test, params, mode, return_r_code):
     return env
 
 
-def _urlopen_with_proxy_fallback(req, connect_timeout=15):
+def _urlopen_with_proxy_fallback(req, connect_timeout=15, read_timeout=None):
     """HTTP POST + Windows 系统代理残留直连重试（ct-base 出站容错）。
 
-    v5.3.2 修复：原实现把 `timeout=(15, None)` 直接传给 urllib.request.urlopen，
-    而 urllib 的 timeout 只接受 int/float → 真实调用在连接阶段抛
-    `TypeError: 'tuple' object cannot be interpreted as an integer`，live 端点
-    永远发不出。本函数改用 http.client：**连接阶段受 connect_timeout（15s）
-    限制，读取阶段不设超时**（Monte-Carlo / 大规模模拟可远超 180s，由远端
-    main.py TIMEOUT_SECONDS=900 兜底）。
+    ⚠️ 关键修正（2026-08-29，对齐 meta-analysis）：
+    旧实现 `http.client.HTTPSConnection(host, timeout=15)` 的 timeout 实际作用于
+    **所有** socket 操作（connect 与 recv 共享同一超时）——注释里"读取不设限"是
+    **错误**的。coze serverless 冷启动常 >15s，导致**读取响应阶段**被 15s 杀掉，
+    表现为"每次都 15s 无应答"。meta-analysis 用 `urllib.urlopen(timeout=600)` 因此无此问题。
+
+    修正方案：把 connect 与 read 拆成两个独立超时——
+      - connect_timeout=15：连接握手失败快速报错（主机不可达时不空等）；
+      - read_timeout（默认 600s，可由 CTSS_COZE_READ_TIMEOUT 覆盖）：允许冷启动
+        与大规模 Monte-Carlo 计算的长时间响应读取，不被中途杀掉。
+    实现：conn.request() 内部完成 connect+send（受 connect_timeout 约束），
+    之后把底层 socket 超时改为 read_timeout，再 getresponse()/read()（受 read_timeout 约束）。
 
     返回对象实现 `.read()` 与上下文管理器，`call()` 的
     `with ... as resp: resp.read()` 契约保持不变。
     """
     import http.client
 
+    if read_timeout is None:
+        try:
+            read_timeout = float(os.environ.get("CTSS_COZE_READ_TIMEOUT", "600"))
+        except (TypeError, ValueError):
+            read_timeout = 600.0
+
     def _conn():
-        # http.client 的 timeout 仅作用于 socket 连接（getaddrinfo + connect），
-        # 读取由 .read() 控制、不设限 → 恰好满足"连接 15s、读取无限"。
-        # urllib.Request 不暴露 port（端口已解析进 host 或走默认 443/80），
-        # 故不传端口，由 http.client 按 scheme 取默认。
+        # connect 阶段受 connect_timeout 约束（主机不可达时快速失败，不空等 600s）。
         if req.type == "https":
             return http.client.HTTPSConnection(req.host, timeout=connect_timeout)
         return http.client.HTTPConnection(req.host, timeout=connect_timeout)
@@ -610,6 +619,10 @@ def _urlopen_with_proxy_fallback(req, connect_timeout=15):
         body = req.data if hasattr(req, "data") else None
         headers = dict(req.headers) if hasattr(req, "headers") else {}
         conn.request(req.get_method(), req.selector, body=body, headers=headers)
+        # 连接已建立、请求已发出 → 把底层 socket 超时从 connect 改为 read 长超时，
+        # 避免 coze 冷启动 / 长时间计算被 15s 杀掉（对齐 meta-analysis 的 600s 策略）。
+        if getattr(conn, "sock", None) is not None:
+            conn.sock.settimeout(read_timeout)
         return conn.getresponse()
 
     for attempt in (1, 2):

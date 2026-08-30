@@ -8,7 +8,7 @@
 
 > **Easy-to-use Clinical Sample Size & Power Calculator for Clinical Researchers**
 >
-> You don't need to code or memorize commands — just describe your trial design in **plain language inside a chat**, and the skill performs **49** professional sample-size & power calculations for you. The default authoritative engine is a **remote coze R compute service** (rpact, gsDesign, TrialSize, PowerTOST — 20+ packages running server-side, so your machine needs **no local R**; the published skill has **no local compute fallback**). Results come in Chinese or English per your OS setting (force-switchable via prompt). By default the skill shows a **SAFE PREVIEW** of the exact request it would send to coze — nothing leaves your machine until you confirm; full R code can be returned on request.
+> You don't need to code or memorize commands — just describe your trial design in **plain language inside a chat**, and the skill performs **49** professional sample-size & power calculations for you. The default authoritative engine is a **remote coze R compute service** (rpact, TrialSize, PowerTOST and 20+ other packages running server-side, so your machine needs **no local R**; the published skill has **no local compute fallback**). Results come in Chinese or English per your OS setting (force-switchable via prompt). By default the skill shows a **SAFE PREVIEW** of the exact request it would send to coze — nothing leaves your machine until you confirm; full R code can be returned on request.
 
 ---
 
@@ -121,7 +121,7 @@ Below are 6 real conversational examples ordered by common entry point — from 
 
 Tests are grouped by **endpoint type** (6 categories below). Each row gives the typical **clinical scenario** and a line you can **copy verbatim** under "Try saying". The same test may *also* be reached from a **design-family cross-index** (group-sequential, adaptive, equivalence / non-inferiority, Bayesian, dose-escalation, MAMS, historical control, vaccine, win-statistics …) — see [`references/menu.md`](references/menu.md).
 
-> The underlying R engine runs **server-side on coze** (rpact / gsDesign / TrialSize / PowerTOST …); the published skill ships no R locally. See Section 5 "Advanced Reference" for the architecture note — ordinary users don't need to care.
+> The underlying R engine runs **server-side on coze** (rpact / TrialSize / PowerTOST and 20+ other packages …); the published skill ships no R locally. See Section 5 "Advanced Reference" for the architecture note — ordinary users don't need to care.
 
 ### ① Continuous
 | Test | Clinical Scenario | Try saying in chat |
@@ -241,7 +241,7 @@ You stay in full control: the report is shown to you **before** anything is sent
 
 ## 5. Advanced Reference (moved to a separate file)
 
-CLI examples, bidirectional solving, curve mode, core formulas, system requirements, common errors, file structure, and references for developers have been moved to **[ADVANCED.md](ADVANCED.md)**. Ordinary users don't need it; see Sections 1-4 for daily use.
+CLI examples, bidirectional solving, curve mode, core formulas, system requirements, common errors, file structure, and references for developers have been moved to **[ADVANCED.md](docs/ADVANCED.md)**. Ordinary users don't need it; see Sections 1-4 for daily use.
 
 ---
 
@@ -253,11 +253,9 @@ For feature requests, bug reports, or other feedback, please contact the author 
 
 ## Confidentiality Notice
 
-> The CT series consists of 20+ specialized domain skills, organized into **two tiers — A, B** — by "confidential-data-exfiltration risk + whether external retrieval is needed", providing full coverage of the entire new-drug clinical trial (Clinical Trial) lifecycle.
+> The CT series consists of 20+ specialized domain skills, organized into **two tiers — A, B** — by "whether the input contains confidential information" (network / egress / publish are independent orthogonal attributes; see ct-base §11), providing full coverage of the entire new-drug clinical trial (Clinical Trial) lifecycle.
 >
-> - **Tier A (non-confidential, public)**: ordinary data only; runs fully locally (`network=off`) or uses public retrieval (`network=public-retrieval`, e.g. ct-registry / ct-advisor) — no confidential information. Tier A skills are published openly on GitHub.
-> - **Tier B (confidential, internal)**: involve strictly confidential clinical-trial data and internal information from pharma sponsors (e.g., ct-analysis, ct-sdtm, ct-eligibility); processed locally (`egress=none`, data never leaves the boundary) or require approval for egress (`egress=approval-req`, e.g. ct-eligibility). Tier B skills are designated for internal enterprise use only and are not publicly released at present.
->
-> If you do have a genuine need for these confidential skills, please contact the author to request custom installation.
+> - **Tier A (non-confidential input)**: run fully locally using only ordinary data; Tier A may need external public retrieval but involves no confidential information. These skills are published openly on GitHub.
+> - **Tier B (confidential input)**: accept strictly confidential clinical-trial data / protocols / CRFs from pharma sponsors (e.g., ct-analysis, ct-sdtm, ct-protocol, ct-eligibility); Tier B is processed locally and never leaves the boundary (egress=none), or additionally requires policy approval (egress=approval-req, e.g. ct-eligibility). Tier B packages contain zero confidential data but are NOT publicly published (stays fully local) — confidential input never ships with the package or leaves the machine. For custom / on-prem deployment, contact the author.
 >
 > 📧 Contact: medstatstar@gmail.com (Wintone Zhang / 张文彤)

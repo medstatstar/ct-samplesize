@@ -8,7 +8,7 @@ Architecture (v5):
 - v5 removed the local pure-Python fallback (LocalPythonBackend) and all
   third-party compute deps (statsmodels / numpy / scipy no longer required).
   select_backend() returns ONLY CozeBackend; coze unreachable → error, no fallback.
-- Local R backend (LocalRBackend, in adapters/r-assets/) is dev/transition only and is
+- Local R backend (LocalRBackend, in adapters/coze/ct_r_lib/) is dev/transition only and is
   NOT shipped in the published package.
 - Safe by default: --dry-run previews the exact coze request envelope; coze is
   a stateless compute service, so no local code is ever executed. The legacy
@@ -116,7 +116,7 @@ _AUTO_CURVE_TESTS_CACHE = None
 
 
 def _auto_curve_tests() -> frozenset:
-    """从 coze_cases/_contract_index.json 读取 default_curve=true 的 test 集合。
+    """从 tests/coze_cases/_contract_index.json 读取 default_curve=true 的 test 集合。
 
     单一真相源（v5.3.2）：每种检验方法「默认是否自动出曲线」由契约的
     default_curve 字段分别配置（改契约即改默认出图，无需改代码）；
@@ -127,7 +127,7 @@ def _auto_curve_tests() -> frozenset:
         return _AUTO_CURVE_TESTS_CACHE
     try:
         idx_path = (Path(__file__).resolve().parent.parent
-                    / "coze_cases" / "_contract_index.json")
+                    / "tests" / "coze_cases" / "_contract_index.json")
         data = json.loads(Path(idx_path).read_text(encoding="utf-8"))
         s = frozenset(
             t["test"] for t in data.get("tests", [])
@@ -265,10 +265,12 @@ def _curve_svg_from_stats(stats: dict, test: str, target_power: float = None,
         return ""
     xs = [float(v) for v in xs]
     ys = [float(v) for v in ys]
-    # 轴语义启发式：x 全在 [0,1] 且 y 远超 1 → x=目标功效、y=样本量；否则 x=样本量、y=功效
+    # ★ 2026-08-30 用户定稿：样本量-把握度曲线统一为 X=样本量 N、Y=把握度 Power（习惯方向）。
+    #   若 coze 端返回的是转置数据（x=power∈[0,1]、y=n>1），此处交换回标准方向。
     x_is_power = all(0.0 <= v <= 1.0 for v in xs) and max(ys) > 1.0
-    xlab = "Power (target)" if x_is_power else "N"
-    ylab = "N" if x_is_power else "Power"
+    if x_is_power:
+        xs, ys = ys, xs
+    xlab, ylab = "N", "Power"
     W, H, PAD_L, PAD_R, PAD_T, PAD_B = 700, 500, 70, 30, 30, 55
     PW, PH = W - PAD_L - PAD_R, H - PAD_T - PAD_B
     xmin, xmax = min(xs), max(xs)
@@ -279,14 +281,18 @@ def _curve_svg_from_stats(stats: dict, test: str, target_power: float = None,
         ymax = ymin + 1
     ymin, ymax = ymin - (ymax - ymin) * 0.05, ymax + (ymax - ymin) * 0.05
 
-    # ★ 功率水平参考线：不再绘制。power 是输出（reverse 求 power）或既定参数（forward 求 n），
-    # 在 power-vs-N 图上画水平线会使其交点落在「计算所得样本量」上，正是此前被误读的来源；
-    # 与 run_task.R 对齐——只画「竖线标用户输入量」（见下方 ref_n）。
-    ref_power = None
-    # ★ 样本量竖直参考线（reverse 求 power 场景）：x 轴语义为样本量且 ref_n 在 x 范围内
-    # → 画竖直虚线，直接读出该样本量对应的效能（对齐 run_task.R 的 abline(v = nobs)）。
+    # ★ 参考线（2026-08-30 用户定稿；X=N、Y=Power 标准方向下）：
+    #   正向求解（求 n）→ 在「给定 power」处画【水平线】Y=power，交点 X 即所需样本量；
+    #   反向求解（求 power）→ 在「给定样本量」处画【竖线】X=n，交点 Y 即对应效能。
+    #   与 run_task.R 对齐（forward: abline(h=power) / reverse: abline(v=nobs)）。
+    #   forward 由 target_power 标识（传了 target_power 即求 n），reverse 由 ref_n 标识（求 power）。
+    ref_power_val = None
+    if target_power is not None and ref_n is None:
+        rp = float(target_power)
+        if ymin - 1e-9 <= rp <= ymax + 1e-9:
+            ref_power_val = rp
     ref_n_val = None
-    if not x_is_power and ref_n is not None:
+    if ref_n is not None:
         rn = float(ref_n)
         if xmin - 1e-9 <= rn <= xmax + 1e-9:
             ref_n_val = rn
@@ -340,12 +346,24 @@ def _curve_svg_from_stats(stats: dict, test: str, target_power: float = None,
             + '<text x="%.1f" y="%d" font-size="10" fill="#2980b9" text-anchor="middle" '
               'font-weight="bold">n = %s</text>' % (rx, PAD_T - 4, format(ref_n_val, "g"))
         )
+    # 目标把握度水平参考线（forward 求 n，X=N、Y=Power 标准方向）：在「给定 power」处画红色
+    # 水平虚线 Y=power，交点 X 即达到该效能所需样本量（与 run_task.R abline(h = power) 对齐）。
+    refp = ""
+    if ref_power_val is not None:
+        ry = sy(ref_power_val)
+        refp = (
+            '<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" stroke="#c0392b" '
+            'stroke-width="1.2" stroke-dasharray="6,4"/>' % (PAD_L, ry, W - PAD_R, ry)
+            + '<text x="%d" y="%.1f" font-size="10" fill="#c0392b" text-anchor="end" '
+              'font-weight="bold">power = %s</text>' % (PAD_L - 6, ry - 4, format(ref_power_val, "g"))
+        )
     svg = (
         '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" '
         'viewBox="0 0 %d %d">' % (W, H, W, H)
         + '<rect width="100%%" height="100%%" fill="#ffffff"/>'
         + "".join(grid)
         + ref
+        + refp
         + refn
         + '<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="#999" stroke-width="1"/>'
           % (PAD_L, H - PAD_B, W - PAD_R, H - PAD_B)
@@ -438,6 +456,8 @@ def build_parser():
     p.add_argument("--alpha", type=float, default=0.05)
     p.add_argument("--power", type=float, default=0.8, help="目标检验效能 (与 --nobs 互斥)")
     p.add_argument("--nobs", type=int, default=None, help="给定样本量求效能 (与 --power 互斥)")
+    p.add_argument("--show-assumptions", action="store_true", default=False,
+                   help="打印本次计算的假设清单（显式输入 / 静默默认值 / 合理区间 / 解读风险）后退出，不做求解")
     # ── t-test / ANOVA ──
     p.add_argument("--effect", type=float)
     p.add_argument("--k_groups", type=int, default=2)
@@ -445,6 +465,8 @@ def build_parser():
                    help="检验方向: one=单侧, two=双侧(默认)")
     p.add_argument("--sd", type=float, default=None,
                    help="标准差。提供时 --effect 视为原始均差(Δ), 自动折算 Cohen's d = effect/sd; 否则 --effect 直接作为 d")
+    p.add_argument("--ratio", type=float, default=None,
+                   help="两组不等例分配比 n2/n1（仅 ttest_ind 用；缺省=1 等例）。提供时 --nobs 视为第一组 n1，n2=nobs*ratio")
     # ── Proportion ──
     p.add_argument("--p1", type=float, default=0.7,
                    help="gsd_proportion 治疗组比例 (difference 模式必填, 默认 0.7)")
@@ -855,6 +877,20 @@ def main():
         else:
             p.error(t("error.test_required"))
 
+    # ── 假设清单显式化（ct-update 建议 ct-samplesize::E）──
+    # 独立于后端（coze/R），仅做可审计性清单输出，不触碰数值真相源。
+    if args.show_assumptions:
+        try:
+            import assumption_block as _ab
+        except ImportError:
+            import scripts.assumption_block as _ab  # 作为脚本子模块时
+        block = _ab.build_assumption_block(args, args.test, p)
+        print("=" * 60)
+        print("假设清单 / Assumption Block")
+        print("=" * 60)
+        print(_ab.json.dumps(block, ensure_ascii=False, indent=2))
+        sys.exit(0)
+
     # ═════════════════════════════════════════════════════════════════════════
     # 统一后端调度（coze 权威 / 本地 Python 兜底 / 本地 R 开发后端）
     # ═════════════════════════════════════════════════════════════════════════
@@ -949,7 +985,7 @@ def main():
     # 规则: forward（求 n）→ 自动补「样本量随把握度」曲线；reverse（求 power）→
     # 自动补「把握度随样本量」曲线。仅当：① 该 test 契约 default_curve=true；② 用户未
     # 显式指定曲线（--n_seq / --power_seq）；③ 非 dry-run；④ coze 路径（非本地 R）。
-    # 关闭/开启方式：编辑 coze_cases/_contract_index.json 的 default_curve 字段，
+    # 关闭/开启方式：编辑 tests/coze_cases/_contract_index.json 的 default_curve 字段，
     # 或显式指定 --n_seq / --power_seq（走用户自己的曲线）、--dry-run 关闭。
     if (not ctx["curve"] and args.test in _auto_curve_tests()
             and not args.dry_run and not gated):
@@ -983,6 +1019,14 @@ def main():
                   "--n_seq / --power_seq 或 --dry-run）" % _what)
         except Exception as _e:  # noqa: BLE001 - 自动曲线失败不阻断主结果
             print("# 自动曲线生成跳过: %s" % _e)
+
+    # ── 默认图形层（v5.6 起全部上 coze）────────────────────────────────────
+    # 架构：coze 端 R（coze_figure_layer.R）为主出图；若其失败，coze 内部回退到
+    #   figure_kit.py（随包上传到 coze 的 Python 兜底，位于 adapters/coze/scripts/）。
+    #   本地是「瘦客户端」：只承接 coze 回传的 `figures` 数组，交由上方 render_figures
+    #   统一落盘 / 内联 / 聚合进 HTML 报告，本地绝不再渲染（详见 SKILL.md v5.6 说明）。
+    #   （历史上此处有一段本地透出循环，与 render_figures 重复，已在 v5.6 删除。）
+
     # coze 返回未填充 meta 时（无 __CTSS_RESULT__ 标记）res.meta 可为 None，防御性取空字典
     _png = (res.meta or {}).get("png_path")
     if _png:

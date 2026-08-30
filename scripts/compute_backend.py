@@ -6,7 +6,7 @@ compute_backend.py — ct-samplesize v5.0 计算后端抽象层
 架构原则（v5.0.0，2026-08-19 重构）：
   1. **唯一后端 = coze 工作流**（CozeBackend，权威引擎，覆盖全部 49 种 test）。
      未配置 coze（且未设 CTSS_COZE_MOCK=1）时直接报错并提示配置，**绝不静默回退**。
-  2. v5 已移除本地计算：本地 R 后端（LocalRBackend，adapters/r-assets/）与
+  2. v5 已移除本地计算：本地 R 后端（LocalRBackend，adapters/coze/ct_r_lib/）与
      本地 Python 兜底均不再参与运行期路由，仅 dev/过渡期维护（发布包剔除）。
   3. R 永远是真相源：用户可经环境变量要求「返回完整 R 代码 + R 结果」
      (CTSS_RETURN_R_CODE)。
@@ -119,7 +119,7 @@ def _return_r_code() -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 后端懒加载（避免发布包导入 adapters/r-assets 中的 R 代码）
+# 后端懒加载（v5.6 起：本地 R 后端唯一真相源 = adapters/coze/ct_r_lib/ 镜像）
 # ─────────────────────────────────────────────────────────────────────────────
 
 _LOCAL_R_BACKEND = None
@@ -127,27 +127,34 @@ _LOCAL_R_TRIED = False
 
 
 def _load_local_r_backend() -> ComputeBackend:
-    """从 adapters/r-assets/ 懒加载本地 R 后端（发布包中不存在，故用懒加载）。"""
+    """从 adapters/coze/ct_r_lib/ 懒加载本地 R 后端（v5.6 起 r-assets 已废弃，coze 镜像为唯一真相源）。"""
     global _LOCAL_R_BACKEND, _LOCAL_R_TRIED
     if _LOCAL_R_TRIED:
         if _LOCAL_R_BACKEND is None:
-            raise RuntimeError("local R backend unavailable (adapters/r-assets not present)")
+            raise RuntimeError("local R backend unavailable (adapters/coze/ct_r_lib not present)")
         return _LOCAL_R_BACKEND
     _LOCAL_R_TRIED = True
     here = os.path.dirname(os.path.abspath(__file__))
-    r_assets = os.path.join(os.path.dirname(here), "adapters/r-assets")
-    if not os.path.isdir(r_assets):
-        raise RuntimeError("adapters/r-assets directory not found (published skill has no local R)")
-    # Security note (audit 2026-08-21): the exec_module below loads the **dev-only**
-    # local-R backend from adapters/r-assets/. That directory is excluded from the
-    # published skill (.clawhubignore/.gitignore), so this path is unreachable in the
-    # published package — the isdir guard above raises first. No external input reaches
-    # this loader; it exists solely for local development (legacy backend).
+    ct_r_lib = os.path.join(os.path.dirname(here), "adapters", "coze", "ct_r_lib")
+    if not os.path.isdir(ct_r_lib):
+        raise RuntimeError("adapters/coze/ct_r_lib not found (coze mirror missing)")
+    # Security note (audit 2026-08-21, updated 2026-08-30): the exec_module below loads the
+    # **dev-only** local-R backend from adapters/coze/ct_r_lib/. That directory ships in the
+    # published skill as the coze compute mirror; this loader exists solely for local
+    # development / regression (legacy backend). local_r_backend.py 通过
+    # `from r_templates / i18n / compute_backend import` 解析依赖，我们把 ct_r_lib 临时置顶
+    # 到 sys.path，执行完再还原，避免污染全局导入路径。
     import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "local_r_backend", os.path.join(r_assets, "local_r_backend.py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    saved_path = list(sys.path)
+    if ct_r_lib not in sys.path:
+        sys.path.insert(0, ct_r_lib)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "local_r_backend", os.path.join(ct_r_lib, "local_r_backend.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        sys.path[:] = saved_path
     _LOCAL_R_BACKEND = mod.LocalRBackend()
     return _LOCAL_R_BACKEND
 

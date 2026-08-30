@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-由 coze_cases/_contract_index.json 生成 adapters/r-assets/coze_contract.md。
+由 tests/coze_cases/_contract_index.json 生成 adapters/coze/coze_contract.md。
 
 单一真相源 = _contract_index.json（与 CLI --test choices / R 引擎 dispatch 三者一致）。
 本脚本把它渲染为人类可读的 49 test 逐枚举契约文档，避免文档与索引漂移。
@@ -11,15 +11,15 @@ import os, json
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(_HERE, "_contract_index.json")
-OUT = os.path.join(_HERE, "..", "adapters", "r-assets", "coze_contract.md")
+OUT = os.path.join(_HERE, "..", "..", "adapters", "coze", "coze_contract.md")
 
 # 信封层级约定（与 coze_client.build_params / call 一致），作为文档前置背景
 ENVELOPE_SECTION = """\
 # ct-samplesize v5 — coze R 引擎契约（coze_contract）
 
-> 单一真相源：`coze_cases/_contract_index.json`（与 CLI `--test` choices、R 引擎
+> 单一真相源：`tests/coze_cases/_contract_index.json`（与 CLI `--test` choices、R 引擎
 > `run_task.R` dispatch 三者名称完全一致）。本文档由该索引自动生成，勿手改；
-> 改契约请改索引后用 `python coze_cases/gen_contract_doc.py` 重新渲染。
+> 改契约请改索引后用 `python tests/coze_cases/gen_contract_doc.py` 重新渲染。
 
 ## 1. 角色与端点
 
@@ -77,7 +77,7 @@ def main():
     rows = "\n".join(render_row(i + 1, t) for i, t in enumerate(idx["tests"]))
     footer = (
         "\n## 5. 一致性校验\n\n"
-        "- `coze_cases/_contract_index.json`：机器可读的 49 test 契约索引（本文档来源）。\n"
+        "- `tests/coze_cases/_contract_index.json`：机器可读的 49 test 契约索引（本文档来源）。\n"
         "- `tests/coze_cases_regression.py`：离线断言每例请求信封契约 + 49 test 全量 smoke\n"
         "  （防 `--yes/--dry-run/--test` 等控制标志外泄进 `params`）；`CTSS_COZE_LIVE=1`\n"
         "  时追加真实 coze 响应信封形态回归。\n"

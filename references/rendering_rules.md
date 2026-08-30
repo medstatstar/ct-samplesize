@@ -2,7 +2,7 @@
 
 > Detail companion to `SKILL.md` §Figure Output & Rendering. English-only per ct-base §4.
 > (Chinese strings below are **user-facing UI phrases** that agents must quote verbatim to Chinese users — same class as the §6.7.2 conversion notice; they are runtime copy, not documentation prose.)
-> Normative source of truth: `ct-base/docs/06-inline-rendering.md` §19 (esp. §19.12).
+> Normative source of truth: `ct-base/docs/09-figure-rendering.md` §19 (esp. §19.12).
 
 ## Rendering priority — mandatory (user rule 2026-08-20, ct-base §19.12)
 
@@ -14,7 +14,7 @@
 
 ## Power reference line & no hand-redraw rule (user rule 2026-08-20)
 
-- The local fallback generator (`_curve_svg_from_stats`) draws the **power reference line itself** — red dashed line + `power = X` label — whenever (a) the y-axis semantic is Power (reverse solves) and (b) `target_power` is passed (default 0.8 via `--power`, or the auto-curve block's default) and lies in the plotted range. Forward solves (y = sample size) draw none. The reference line uses the **same `sy()` mapping as data points and grid labels** — one coordinate system, no axis misalignment (verified: y-extrapolation round-trips to the target exactly).
+- **Reference-line rule (user rule, 2026-08-30 定稿):** the sample-size-vs-power curve is **always drawn in the conventional orientation — X-axis = sample size N, Y-axis = power** — regardless of solve direction. Both solve directions therefore draw a **dashed reference line at the user-supplied quantity** on this standard orientation: forward solves (solve `n`, given `power`) draw a **red horizontal line at the given `power`** (`power = X` label) whose X-intersection is the required sample size; reverse solves (solve `power`, given `n`) draw a **blue vertical line at the given `n`** (`n = X` label) whose Y-intersection is the achieved power. No cross-direction horizontal/vertical mix is used (a horizontal 0.8 line would land its intersection exactly on the computed sample size only if the y-axis were power — which it is in the standard orientation, so the intersection IS the intended sample size). Applies to both `adapters/coze/src/r_engine/run_task.R` (forward `abline(h = p$power)` / reverse `abline(v = p$nobs)`; a forward `pw_seq`-only input is transposed back to X=N before plotting) and the local fallback `_curve_svg_from_stats` (transposes `x=power,y=n` stats to X=N, then draws `ref_power_val` as a horizontal line via `target_power`, `ref_n_val` as a vertical line via `ref_n`). Reference lines use the **same `sx()/sy()` mapping as data points and grid labels** — one coordinate system, no axis misalignment.
 - **★ Agent rule — never hand-redraw:** always present the skill-generated SVG as-is (reference line, labels, axes included). If a figure is needed for a case the skill did not plot (e.g. custom BE margins), either extend the skill or reuse the skill's numeric stats with the same axis-mapping conventions — do **not** rebuild the chart with ad-hoc coordinates inside the reply (2026-08-20 incident: an agent-drawn inline widget misaligned its y-axis ticks vs data points/reference line; charting stays under skill control so errors are fixable in code).
 
 ## figure_mode (ct-base §19.9)

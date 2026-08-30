@@ -1,7 +1,7 @@
 # Command-Line Examples
 
 > This file collects all common CLI examples for `scripts/samplesize_power.py`, referenced by `SKILL.md`.
-> By default the skill runs in SAFE PREVIEW: the exact coze request envelope is shown but NOT sent/computed. On the coze engine the natural-language trigger ("please compute directly" / 请直接计算) fires the compute — **no `--yes` needed**; the legacy `--yes`/`-y` flag applies only to the optional local-R dev backend (`adapters/r-assets/`). `--show-code` displays the coze request JSON (no send); `--dry-run` is the default preview mode (envelope shown, not sent).
+> By default the skill runs in SAFE PREVIEW: the exact coze request envelope is shown but NOT sent/computed. On the coze engine the natural-language trigger ("please compute directly" / 请直接计算) fires the compute — **no `--yes` needed**; the legacy `--yes`/`-y` flag applies only to the optional local-R dev backend (`adapters/coze/ct_r_lib/`). `--show-code` displays the coze request JSON (no send); `--dry-run` is the default preview mode (envelope shown, not sent).
 > Sequences support two formats: comma list `"20,40,200"` or auto-generated `"20:20:200"` (start:step:stop).
 
 ---
@@ -216,7 +216,7 @@ All other test types (incl. odds_ratio, risk_ratio, roc, poisson, non_inferiorit
 
 ## R Package Install
 
-> v5: R packages run **server-side on coze** — the published skill never installs R locally. The legacy CLI flags (`--install-all-packages` / `--run-install`) were **removed in v5.0.2**. The notes below apply only to the optional local-R dev backend (`adapters/r-assets/`, not shipped).
+> v5: R packages run **server-side on coze** — the published skill never installs R locally. The legacy CLI flags (`--install-all-packages` / `--run-install`) were **removed in v5.0.2**. The notes below apply only to the optional local-R dev backend (`adapters/coze/ct_r_lib/`, not shipped).
 
 - **Install on demand (dev backend):** when the skill prints `Warning: 'xxx' package not found.`, run `install.packages("xxx")`.
 - **No R package needed:** `poisson`, `cluster`, `bland_altman`, `survival` (Schoenfeld only), `vaccine_efficacy`, `bayesian`, `dose_escalation` etc.

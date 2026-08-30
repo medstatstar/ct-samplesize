@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-coze_cases 用例库生成器（可复现）。
+tests/coze_cases 用例库生成器（可复现）。
 
-输出：coze_cases/cases/<id>.json —— 每个文件对应一个（或一组）test 的请求/响应契约基线。
+输出：tests/coze_cases/cases/<id>.json —— 每个文件对应一个（或一组）test 的请求/响应契约基线。
 回归脚本 tests/coze_cases_regression.py 读取这些文件，离线断言本地请求信封契约。
 
 字段：

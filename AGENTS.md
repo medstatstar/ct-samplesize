@@ -2,7 +2,7 @@
 
 ## Overview
 
-`ct-samplesize`: An easy-to-use sample size & power tool for clinical trial practitioners. The **default authoritative engine is a remote coze R compute service** (rpact/gsDesign/TrialSize/PowerTOST etc., 20+ packages running server-side — no local R required); it performs all 49 test types via natural-language prompts (output in Chinese or English per OS language setting, prompt can force-switch). In the published skill **no R or shell runs locally and there is no local compute fallback**; only trial-design parameters are sent to coze, and full R code can be returned on request for verification, submission, or re-run.
+`ct-samplesize`: An easy-to-use sample size & power tool for clinical trial practitioners. The **default authoritative engine is a remote coze R compute service** (rpact/TrialSize/PowerTOST etc., 20+ packages running server-side — no local R required); it performs all 49 test types via natural-language prompts (output in Chinese or English per OS language setting, prompt can force-switch). In the published skill **no R or shell runs locally and there is no local compute fallback**; only trial-design parameters are sent to coze, and full R code can be returned on request for verification, submission, or re-run.
 
 ---
 
@@ -10,7 +10,7 @@
 
 ### 1. Compute Backend Detection (coze only)
 - **Published skill:** the ONLY backend is the coze R service (`CTSS_COZE_ENDPOINT`, default pre-whitelisted `https://ct-samplesize.coze.site/run`); all 49 tests compute server-side, no local R and **no local compute fallback**. If the endpoint is unreachable, the skill reports the missing config — it never silently degrades.
-- **Dev-only (not shipped):** a legacy local-R backend exists in `adapters/r-assets/` (`CTSS_BACKEND=local-r` / `CTSS_FORCE_R=1`), used only for offline development/contribution; it is not routed by the v5 `select_backend` and is excluded from the published package.
+- **Dev-only (not shipped):** a legacy local-R backend exists in `adapters/coze/ct_r_lib/` (`CTSS_BACKEND=local-r` / `CTSS_FORCE_R=1`), used only for offline development/contribution; it is not routed by the v5 `select_backend` and is excluded from the published package.
 
 ### 2. Extended Tool Selection
 
@@ -25,7 +25,7 @@
 | Cluster randomized | R: design effect formula |
 | Method comparison | R: Bland-Altman (Lu et al.) |
 | Bioequivalence | R: `PowerTOST` (TOST) |
-| Group sequential / Adaptive | R: `gsDesign` / `rpact` |
+| Group sequential / Adaptive | R: `rpact` (gsDesign on-demand only) |
 | Non-inferiority | R: `TrialSize` (exact) / `powerSurvEpi` |
 | Survival | R: `rpact` |
 | Vaccine efficacy | R: Halloran formula |
@@ -43,7 +43,7 @@
 | Mediation | R: `powerMediation` |
 
 ### 3. Code Execution
-- **Published skill:** no local R/shell and no local compute fallback. The orchestration layer (`scripts/samplesize_power.py`) routes via `ComputeBackend` (`scripts/compute_backend.py`) to `CozeBackend` — the only backend in v5 (legacy local-R dev backend in `adapters/r-assets/` is dev-only, not shipped).
+- **Published skill:** no local R/shell and no local compute fallback. The orchestration layer (`scripts/samplesize_power.py`) routes via `ComputeBackend` (`scripts/compute_backend.py`) to `CozeBackend` — the only backend in v5 (legacy local-R dev backend in `adapters/coze/ct_r_lib/` is dev-only, not shipped).
 - **Default: safe preview.** `--dry-run` prints the exact coze request envelope (no send); the natural-language trigger ("please compute" / 请直接计算) is what sends and computes — **`--yes` is not needed for coze** (stateless remote compute; the legacy `--yes` gate applies only to the optional local-R dev backend).
 - Python (orchestration + fallback) via the bundled interpreter; figures from coze are written to `CTSS_OUTPUT_DIR` (default `./outputs`).
 
@@ -55,8 +55,8 @@ Every analysis includes:
 - Dropout adjustment (if applicable)
 - Assumptions & limitations
 - **Default = SAFE PREVIEW (coze request envelope shown, NOT sent)**; the natural-language trigger ("please compute" / 请直接计算) sends to coze & computes — **no `--yes` needed for coze** (stateless remote compute; `--yes` applies only to the legacy local-R dev backend). `--show-code` displays the coze request JSON (no send), `--dry-run` previews only.
-- The optional local-R dev backend (adapters/r-assets) behaves like v3.x: R code is shown but NOT run unless `--yes` is given; `-y`/`--yes` explicitly executes locally.
-- **`--test adaptive_simulate`**: the authoritative engine is the inlined pure base-R function library `ADAPTIVE_SIM_R` (maintained in `adapters/r-assets/local_r_backend.py`, no extra packages) running **server-side on coze** in the published skill. A legacy pure-Python module `adapters/r-assets/legacy/adaptive_simulator.py` is retained for offline dev/testing. The CLI shows the coze request envelope in SAFE PREVIEW and computes via coze. See `references/adaptive_simulator.md`.
+- The optional local-R dev backend (adapters/coze/ct_r_lib) behaves like v3.x: R code is shown but NOT run unless `--yes` is given; `-y`/`--yes` explicitly executes locally.
+- **`--test adaptive_simulate`**: the authoritative engine is the inlined pure base-R function library `ADAPTIVE_SIM_R` (maintained in `adapters/coze/ct_r_lib/local_r_backend.py`, no extra packages) running **server-side on coze** in the published skill. A legacy pure-Python module `adapters/coze/ct_r_lib/legacy/adaptive_simulator.py` is retained for offline dev/testing. The CLI shows the coze request envelope in SAFE PREVIEW and computes via coze. See `references/adaptive_simulator.md`.
 
 ### 5. Language Detection
 - **Follow OS language setting**: Output language (Chinese or English) follows the OS language setting — Chinese on a Chinese-OS, English otherwise.
@@ -114,19 +114,19 @@ Before any user interaction, triage first (ct-base §6.2) into **Simple / Middle
 ## Dependencies
 
 ### R Packages (dev / coze-side — NOT in published skill)
-In the published skill, all R packages run **server-side on coze**; you never install them locally. This section applies only when running the optional local-R backend (`CTSS_BACKEND=local-r`, requires `adapters/r-assets/`):
+In the published skill, all R packages run **server-side on coze**; you never install them locally. This section applies only when running the optional local-R backend (`CTSS_BACKEND=local-r`, requires `adapters/coze/ct_r_lib/`):
 R packages do NOT need to be pre-installed all at once. When the dev backend detects a missing package it prints the install command in output; the user runs it once.
 
 |Tier|Package|Used for|
 |:---|:---|:---|
-|**Core (high-freq)**|`TrialSize`, `pwr`, `rpact`, `gsDesign`, `PowerTOST`, `powerSurvEpi`|NI, equivalence, survival, superiority margin, group-sequential, BE etc.|
+|**Core (high-freq)**|`TrialSize`, `pwr`, `rpact`, `PowerTOST`, `powerSurvEpi`|NI, equivalence, survival, superiority margin, group-sequential, BE etc.|
 |**Aux (mid-freq)**|`simr`, `lme4`, `pROC`, `survival`|mixed model, ROC, exact survival ROC|
 |**Low-freq**|`BayesCTDesign`, `escalation`, `BuyseTest`, `RBesT`, `MCPAN`, `powerMediation`, `BlandAltmanLeh`|vaccine, dose escalation, Win-Ratio, historical control, Dunnett, mediation|
 |**No R package**|—|`ttest_*` (partial), `anova`, `poisson`, `cluster`, `bland_altman`, `vaccine_efficacy`, `bayesian`, `dose_escalation`, `assurance`, `multiple_endpoints`, `must_win`, `mediation`|
 
 **When the user requests one-click install (dev backend only), run**
 ```r
-install.packages(c("TrialSize", "pwr", "rpact", "gsDesign", "PowerTOST", "simr", "lme4", "pROC", "powerSurvEpi", "survival"))
+install.packages(c("TrialSize", "pwr", "rpact", "PowerTOST", "simr", "lme4", "pROC", "powerSurvEpi", "survival"))
 ```
 (Note: the legacy CLI flag `--install-all-packages` was removed in v5.0.2 — use the R snippet above for the dev backend; the published coze engine needs no local install.)
 

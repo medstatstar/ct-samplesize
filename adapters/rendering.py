@@ -562,7 +562,10 @@ def _pretty_r(code: str) -> str:
             while k < n and code[k] == " ":
                 k += 1
             if re.match(r"[A-Za-z_.][\w.]*\s*=", code[k:]):
-                out.append("\n  " * min(paren, 6))
+                # 只断一次行，缩进 = paren×2 空格；严禁 "\n  "*paren
+                # （paren≥2 时会生成 \n  \n  \n… 相邻换行间仅缩进空格，
+                #  在 HTML white-space:pre-wrap 下渲染成大片空白行）
+                out.append("\n" + "  " * min(paren, 6))
                 i = k
             else:
                 i += 1
@@ -662,9 +665,9 @@ details.repro{{background:#eef1f5;border:1px solid var(--border);border-radius:v
 details.repro summary{{cursor:pointer;padding:13px 18px;font-size:15px;font-weight:600;color:#1e293b;outline:none;display:flex;justify-content:space-between;align-items:center;list-style:none;}}
 details.repro summary::-webkit-details-marker{{display:none;}}
 details.repro .meta{{font-size:12px;color:#57606a;margin:0 0 10px;}}
-details.repro .body{{padding:0 18px 18px;}}
-details.repro pre{{margin:0;max-height:440px;overflow:auto;background:#e3e8ee;padding:14px;border:1px solid #d0d7de;border-radius:8px;}}
-details.repro code{{font-family:"SFMono-Regular",Consolas,Menlo,monospace;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;line-height:1.6;color:#24292e;}}
+details.repro .body{{padding:0 18px 14px;}}
+details.repro pre{{margin:0;max-height:440px;overflow:auto;background:#e3e8ee;padding:10px 12px;border:1px solid #d0d7de;border-radius:8px;}}
+details.repro code{{font-family:"SFMono-Regular",Consolas,Menlo,monospace;font-size:12.5px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;line-height:1.35;color:#24292e;}}
 details.repro code .c{{color:#6a737d;font-style:italic;}}
 details.repro code .s{{color:#032f62;}}
 details.repro code .f{{color:#6f42c1;}}
