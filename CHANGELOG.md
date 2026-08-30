@@ -1,5 +1,12 @@
 # Changelog / 版本历史
 
+## v5.6.0 补丁（2026-08-30 深夜）· 三平台发布（GitHub / SkillHub / ClawHub）
+
+- **三平台同步发布 v5.6.0**：GitHub 推送 `main`（commit `81bf113`，`a235725..81bf113`）并设 upstream；SkillHub 发布 `skillId=98998`；ClawHub `latest=5.6.0`（账户 @medstatstar，经 "Version 5.6.0 already exists" 权威回执确认入库）。
+- **发布前修复 ClawHub 环境**：受管 node 版本迁移（22.22.2→22.22.2-2）清掉了 `clawhub` 包与登录凭据（`~/.workbuddy/AppData/Roaming/clawhub/config.json` 一并丢失）；已在 `22.22.2-2` 的 workspace 重装 `clawhub` v0.23.3 并 `login --token` 写回真实路径 `C:/Users/WintoneFileSrv/AppData/Roaming/clawhub/config.json`。注意 `clawhub publish` 在沙箱内会挂起（沙箱拦截上传），须 `dangerouslyDisableSandbox: true`。
+- **仓库清理**：`tests/` 此前经 `git mv` 误带入 index，发布前 `git rm --cached -r tests/` 取消跟踪（`.gitignore` 已声明 `tests/`、`adapters/coze/`、`archives/` 整目录排除，不进仓库与发布包）。
+- **发布包裁剪**：SkillHub 走 `git archive` 固定路径副本 + `scrub_copy.py --platform skillhub`（RESULT: PASS，删 7 个非白名单文件），并在副本上做双语 frontmatter 本地化（displayName 中文在前、description 仅中文）；ClawHub 走 `git archive` 精简副本（自动排除 coze/tests/archives，1.1MB）直发，遵守 `.clawhubignore` 整目录排除 `coze/`。全程未触碰 `adapters/coze/` 源（coze 平台部署仍由人工处理）。
+
 ## v5.6.0 补丁（2026-08-30 夜间）· 删除 r-assets，coze 镜像为唯一真相源
 
 - **废除 `adapters/r-assets/`（本地 R 后端「源」目录）**：它与 `adapters/coze/ct_r_lib/` 是「源 vs 镜像」的平行副本，且未进 git、长期与部署包漂移（与 coze 版有 934 行差异）。按用户「只保留 coze 镜像」指令，将 `adapters/r-assets/` 整体移入 `archives/r_assets_legacy_20260830/`（gitignored，仅作安全留存），活跃树不再有第二份 R 后端。
