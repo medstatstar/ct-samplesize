@@ -64,6 +64,33 @@ class Result:
     backend: str = ""                               # 实际产出后端名
 
 
+@dataclass
+class BatchItem:
+    """批量结果中的单条（coze v5.7 batch 模式）。"""
+    index: int
+    test: str
+    mode: str
+    status: str                                     # ok | warn | error
+    result: Optional["Result"] = None               # 成功项的标准 Result
+    error: Optional[str] = None                     # 失败项的原因（缺失 test / 外置下载失败 / 规整异常）
+
+
+@dataclass
+class BatchResult:
+    """coze v5.7 batch 模式聚合返回（本地渲染同构体）。
+
+    items 顺序与入参 specs 一一对应；count/ok/errors/tests/modes 优先取自服务端
+    聚合摘要（agg_full），本地计算仅作兜底。本地侧据此一次性渲染全部结果并合并飞书日志。
+    """
+    status: str = "ok"                              # ok | partial | error
+    count: int = 0
+    ok: int = 0
+    errors: int = 0
+    tests: List[str] = field(default_factory=list)
+    modes: List[str] = field(default_factory=list)
+    items: List[BatchItem] = field(default_factory=list)
+
+
 class ComputeBackend:
     """所有计算后端的抽象基类。"""
 
@@ -82,6 +109,10 @@ class ComputeBackend:
         return None
 
     def compute(self, test: str, args, ctx: dict) -> Result:
+        raise NotImplementedError
+
+    def compute_batch(self, specs) -> "BatchResult":
+        """批量计算（coze v5.7）。specs = [(test, args, ctx), ...]。默认未实现。"""
         raise NotImplementedError
 
 

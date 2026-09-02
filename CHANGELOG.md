@@ -1,5 +1,144 @@
 # Changelog / 版本历史
 
+## v5.7.1 补丁（2026-09-02）· coze 入参新增技能版本号 `skill_version`（写入飞书 querystr）
+
+> 触发：需按技能版本归因云端调用量与失败率；飞书调用日志的 `querystr` 要带上发起方版本。
+> 设计定调：**可选字段 + 双向兼容**——老技能不发、coze 端不写键；新技能发到未重新部署的
+> 旧 coze 端也不报错，两端可独立升级、互不阻塞。
+
+- **① 字段语义**：`skill_version: Optional[str]`，由客户端（技能安装设备）随 `/run` 请求体
+  发出，取值 = 技能根 `SKILL.md` frontmatter 的 `version:`（读取失败回退内置常量
+  `_SKILL_VERSION_FALLBACK`）。coze 端透传后写入飞书多维表格的 `querystr`
+  （单条：`{test, params, mode, skill_version}`；批量摘要：`{batch, count, tests, modes, skill_version}`）。
+- **② 本地改动（客户端）**：`adapters/coze_client.py` 新增 `_skill_version()`（读 SKILL.md，
+  单一事实来源 —— 升版本免改代码）；`call()` / `call_batch()` / `CozeBackend.preview()`
+  三处信封均带上该字段（`--dry-run` 预览同样可见）。
+- **③ coze 端改动**：`src/graphs/state.py` 的 `GlobalState` / `GraphInput` /
+  `SamplesizeNodeInput` / `SamplesizeNodeOutput` / `FeishuSaveNodeInput` 增字段；
+  `nodes/samplesize.py` 两条返回分支（单条 / 批量）透传；
+  `nodes/feishu_write_node.py` 的 `build_querystr` 增加可选形参（**非空才写键**）；
+  `nodes/feishu_save_node.py` 读取并传入（批量摘要同理）。
+- **④ 向后兼容（双向，已实测）**：
+
+  | 场景 | 行为 |
+  |---|---|
+  | 老技能 → 新 coze 端 | 请求体无该字段 → `None` → `querystr` 不含该键（与旧格式逐字节一致） |
+  | 新技能 → 未重新部署的旧 coze 端 | 多发的键由 pydantic v2 默认忽略策略丢弃，不报错 |
+  | 老技能 → 旧 coze 端 | 完全不受影响 |
+
+- **⑤ 验证**（本地、未触网）：5 个改动文件 `py_compile` 全过；`build_querystr` 三用例
+  （不传 / 传版本号 / 传空串）断言通过；pydantic 2.12.4 双向兼容用例通过（新端收老
+  payload → `None`；老模型收新 payload → 不报错）。`_skill_version()` 实读 SKILL.md 得 `5.7.1`。
+- **⚠️ 部署提示**：coze 端需重新打包部署后 `querystr` 才会带版本号；未部署期间本地照常
+  运行，仅飞书日志无该字段（不影响任何计算结果）。
+
+## v5.7.1（2026-08-31）· 分配比图形按用户意图过滤（本地渲染层，coze 端不变）
+
+> 触发：用户反馈——**提示词未提及不等比例分配时，不应默认提供分配比例图形**；
+> 分配比四图只在用户明确输入组间不等比例时才提供。
+> 设计定调（用户纠正）：**coze 端 R 出图完全不改、仍返回全量图**，过滤放在**本地 HTML 渲染模板**层。
+
+- **① 过滤语义**：`alloc_suite`（4 张分配比图：所需总 N vs 比 / 固定 N 下效能 vs 比 /
+  等效能等高线 / 效能损失分层）由 coze 端**始终全量返回**，本地渲染层决定展示与否——
+  **仅当请求显式要求不等比例分配**时展示。判据：CLI `--ratio`（分配比 k = n2/n1）存在且 `!= 1`。
+  - 未提及分配比（无 `--ratio`）→ 本地隐藏；
+  - 明确 1:1 等例（`--ratio = 1`）→ 本地隐藏；
+  - 不等比例（如 `--ratio 2`、`0.5`）→ 展示。
+- **② 效应量字段绝不误触发**：`hazard_ratio` / `rate_ratio` / `win_ratio_theta` /
+  `sigma_ratio` / `gs_ratio` 以及方法名 `odds_ratio` / `risk_ratio` 均为**效应量或设计参数**，
+  不是分配比，已明确排除。过滤依据为图形 caption 含 `alloc` 字样（如 `ctss alloc ttest ind 1`），
+  与效应量字段无交集。
+- **③ 改动文件（仅本地，coze 端零改动）**：
+  - `scripts/samplesize_power.py`：新增 `_ratio_is_unequal` / `_is_alloc_figure` /
+    `_filter_alloc`；`render_figures` / `_render_single_result` 增加 `show_alloc` 形参；
+    `render_batch` 逐项按 spec 的 `ratio` 计算 `show_alloc`；单请求与自动曲线路径注入
+    `show_alloc=_ratio_is_unequal(args.ratio)`。
+  - `adapters/rendering.py`：`render_html_report` 增加 `show_alloc` 形参，
+    过滤 `figures[]` 中 caption 含 `alloc` 的图。
+- **④ 文档同步**：`references/default_figures.md`（合并去重段 / 图型表 / alloc_suite 章节）、
+  `SKILL.md`「Default Figures」段均改回"coze 全出 + 本地过滤"口径。
+- **验证**（真实 coze 部署端到端，`ttest_ind` power*=0.8；单元级 `_filter_alloc` /
+  `render_html_report` / `render_figures` 门控含 dict 与 Figure 两种类型全过，`py_compile` 两文件语法检查通过）：
+
+  | 用例 | HTML 报告图数 | `alloc` 出现 | 结论 |
+  |---|---|---|---|
+  | 无 `--ratio`（用户未提及） | 4 | 0 | 分配比四图已本地隐藏 ✅ |
+  | `--ratio 2`（不等比例） | 8 | `ctss alloc ttest ind 1..4` 全展示 | 分配比四图展示 ✅ |
+- **影响面**：`margin_tradeoff` 的 x 轴是**界值/边际比**（非组间分配比），不在本次范围内。
+  向后兼容：老客户端不传 `ratio` → 恒隐藏分配比图（即本次目标行为）。coze 端**无需重新部署**
+  （coze 侧代码未改动，仍全量返回）；仅本地 skill 代码更新即生效。
+
+## v5.7.0（2026-08-31）· 批量调用治理（batch 模式 + 请求级幂等缓存 + 编排收敛）
+
+> 触发：飞书后台 searchlog 实证，单此分析在 4 分 15 秒内打入 54 次 `samplesize` 调用，
+> 其中约一半是「单点 + 曲线」成对冗余、另有逐字节重复的整对重跑（ID 3376/3378、3382/3386）。
+> 本次从**服务端**与**编排侧**双管齐下，目标把同类分析的调用量削减 80%+。
+
+- **① 服务端批量模式（`batch` 数组）**：`adapters/coze/src/graphs/state.py` 的 `GraphInput`/
+  `GlobalState`/`SamplesizeNodeInput` 新增可选 `batch: List[dict]`；`samplesize_node` 检测到
+  非空 `batch` 时逐项经带缓存的 `_compute_one` 计算 + 出图层，聚合为完整 agg 后**整体外置 S3
+  一次**，主返回仅留轻量内联摘要 `{status, batch:true, count, ok, errors, tests[], modes[],
+  results:[{index,test,mode,status}], _coze_full, _coze_version}`（恒 < 4000 字符）。12~24 格
+  扫描从「N 次串行」压成「1 次批量」，本地客户端经 `_coze_full` 一次下载即得全部 item 完整结果。
+  🔴 **附带修复 coze 主返回截断**：早期实现把每项的完整外置结果内联进 `results[]`，12+ 项时
+  主返回 > 4000 会被平台截断破坏 JSON；改为「摘要内联 + 整体 S3 外置」后，主返回恒精简。
+  本地组装入口 `adapters/coze_client.py::build_batch([(test,args,ctx), ...])`。
+- **② 请求级幂等缓存**：`samplesize.py` 新增线程安全 TTL 缓存（`_cache_key`/`_cache_get`/
+  `_cache_put`，默认 600s，`CTSS_CACHE_TTL` 可调，容量 >2000 自动清 oldest-half）。对规范化
+  签名 `sha256(json({t, params(sorted), m, locale}))` 去重；命中跳过 R 子进程，复用「外置前」
+  out 并重签 S3 链接（图形始终可下载）。自动消除上层 Agent 对同一网格点的逐字节重跑。
+- **③ 批量飞书日志合并**：`feishu_save_node.py` 检测 `batch:true` 结果后写**一条**合并日志
+  （querystr 含 `count/tests/modes` 摘要，resultstr 含 `ok/errors`），54 行日志 → 约 4 行。
+- **④ 编排侧收敛（SKILL.md「批量调用治理」段 + coze_contract.md §2.1/§2.2）**：
+  - 曲线响应自带单点 → 需要曲线时**只发一次带 `curve_*_seq` 的调用**，严禁先单点再曲线（省 50%）；
+  - 网格/敏感性扫描走 `build_batch` 一次性提交，禁止逐格串行；
+  - 始终走 `build_params` 白名单，**只传本 test 生效字段**（信封已默认精简，勿回填全家族默认值）。
+- **⑤ 本地批量结果聚合渲染（`adapters/coze_client.py` + `scripts/samplesize_power.py`）**：
+  服务端 v5.7 `batch` 模式仅返回聚合 agg（含每项完整 `out` 信封，外置 S3 一次），本地需把
+  这份聚合体**解析 + 逐项渲染 + 合并汇总**，不再逐条回查。新增 `ComputeBackend.compute_batch`
+  抽象方法 + `BatchResult`/`BatchItem` 数据类（`scripts/compute_backend.py`）；客户端
+  `CozeBackend.call_batch(specs)` 经 `_coze_full` 一次下载完整 agg（失败降级内联摘要），
+  `CozeBackend.compute_batch(specs)` 把 `results[i]` 映射为 `BatchItem`（成功项经
+  `_envelope_to_result` 规整为 `Result`、失败项保留服务端原因）；出错信封（服务端 `status=error`）
+  直接抽真实错误原因而非笼统「外置不可用」。CLI 新增 `--batch-file <JSON数组>` 入口：
+  `_run_batch` 克隆命令行默认参数、按条目覆盖 `args`/`ctx`、`--dry-run`/`--show-code` 仅预览
+  批量请求信封；`render_batch` 先打印汇总行（`总数/成功/失败/tests/modes/状态`），再逐项复用
+  `_render_single_result`（文本 + SVG 落盘 + HTML 报告 + R 代码/数值），失败项打印错误原因。
+  单请求路径不受影响（`_render_single_result` 抽出共享、`idx=None` 不打印分隔）。
+- **验证**（本端离线 stub，桩化 `_post` 与 S3 `urlopen`，覆盖 4 条解析路径）：
+  - `[1]` `call_batch` 经 `_coze_full` 解析出完整 agg（含每项 `out`）；
+  - `[2]` `compute_batch` 多 spec → `BatchResult`，每项 `Result` 含 1 图 + 可复现 R 代码；
+  - `[3]` `compute_batch` partial（1 成 + 1 服务端错误信封）→ `status=partial`、失败项原因
+    抽得「`coze 计算失败: p1=1.5 超出合法范围 (0,1)`」；
+  - `[4]` S3 下载失败 → 逐项 `error`、服务端聚合 `count/ok/errors` 仍准确保留；
+  - CLI e2e（`CTSS_COZE_MOCK=1 --batch-file`，4 条目含 1 个 `solve_for_power` 反求 power）
+    → 汇总行正确、`mode=power` 自动识别、逐项渲染文本/SVG/HTML/R 代码；
+  - 单请求回归：`--test proportion_two`（mock）输出与重构前逐字段一致（自动曲线兜底保留）。
+  - CACHE：2 次逐字节相同的单请求 → R 引擎仅调用 1 次，内容一致（仅 S3 签名刷新）；
+  - BATCH：14 项网格（含 2 个重复）→ R 引擎调用 12 次、`ok=14`、主返回 1229 字符（<4000）、
+    整体 `_coze_full` 一次性外置、飞书仅 1 行合并日志；
+  - 非法项（非 dict / 缺 test）计入 `errors` 不崩 R；
+  - FEISHU：批量结果写入单行 `{batch:true,count:14,ok:14,tests:[...],modes:[...]}`；
+  - 向后兼容：老版胖 payload（含 `return_r_code`/`resolved_spec` 多余字段）经 `GraphInput` 校验
+    不报 422，`extra` 默认忽略，单请求返回结构逐字段不变。
+- **风险/注意**：`batch` 与历史单请求信封完全向后兼容（未传 `batch` 时行为不变）；缓存 TTL
+  默认 10 分钟，长尾重复规划仍会被去重，不影响结果正确性（重签 S3 链接保证图形可下载）。
+
+## v5.6.0 补丁（2026-08-30 凌晨）· 修复 panel C 等把握度等高线图「曲线冲出图框」
+
+- **缺陷（用户线上报告）**：`render_alloc_suite` 副图 panel C（`ttest_ind | C. equal-power (power=0.80) contour (n1,n2)`）的蓝色等高线冲出图框、右端截断。ttest_ind + n*=64 + power*=0.80 时实测：起点 (34, 587)、(37, 247)、(40, 165)、(43, 128)、红点 (64, 64)、末端 (192, 38) 中，n1≈34 与 n2≈587 远在画框之外。
+- **根因（两件事，缺一不闭环）**：
+  1. `xlim = ylim = range(n1g)` 写死为 n1 网格范围 `[19.2, 192]`，但等高线数据真实范围 `n1c ∈ [33.84, 192]`、`n2c ∈ [38.40, 587.29]`（双曲线在 n1→neff0 时 n2 发散至 500+），写死窗截断 n2 发散端 → 曲线"冲出"。
+  2. `svglite(pC, width=7, height=4.5)` 矩形设备 + `asp=1`：为保持数据高宽比=1，R 自动拉伸 xlim 至 ~[-200, 1000]，蓝色等高线被挤到画面左侧，即便 (1) 已修、视觉仍不协调。
+- **修复**（`adapters/coze/scripts/coze_figure_layer.R::render_alloc_suite` 第 505-519 行）：
+  - `xlim = ylim = range(c(n1c, n2c)) + ±5%` —— 改写为按等高线真实数据自适应 + 留白，全点含入。
+  - `svglite(pC, width=5, height=5)` —— panel C 独立改方形设备，保证 1:1 对角线成真 45°，"等例分配最优"的几何证明（切点=红点）成立。
+- **验证**：
+  - 数值（`diag_alloc_axis.R` + 同一逻辑的 `panelC.R` 打印）：旧窗 `[19.20, 192.00]` 截断 n2c=587.29 ❌；新窗 `[6.17, 614.97]` 全包含、红点 (64,64) 在内 ✅。
+  - 端到端：`render_alloc_suite` + `render_power_n` 共 5 张 SVG 落盘（`ctss_ttest_ind_default_1.svg` + `ctss_alloc_ttest_ind_1..4.svg`），panel C SVG 头部 `width='360pt' height='360pt'`（5×5 inch）方形确认；目视 `outputs/alloc_render/panelC_fixed.png`：双曲线完整、红色 (64,64) 落在 1:1 绿色虚线对角线上、几何切点清晰。
+  - 本地沙箱 R/svglite 存在非确定性偶发段错误（exit=139，与代码逻辑无关，仅 message 行存在即不崩），coze 端无此问题；修复正确性由数值+目视双证。
+- **影响面**：仅修改 `render_alloc_suite` panel C 内部（5 行 svglite + ~10 行注释 + 5 行 xlim/ylim）；其余三张副图（panel A/B/D）与主图渲染器均未触碰。
+
 ## v5.6.0 补丁（2026-08-30 深夜）· 三平台发布（GitHub / SkillHub / ClawHub）
 
 - **三平台同步发布 v5.6.0**：GitHub 推送 `main`（commit `81bf113`，`a235725..81bf113`）并设 upstream；SkillHub 发布 `skillId=98998`；ClawHub `latest=5.6.0`（账户 @medstatstar，经 "Version 5.6.0 already exists" 权威回执确认入库）。

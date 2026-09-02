@@ -98,6 +98,83 @@ def _current_lang():
     return "zh" if is_chinese_os() else "en"
 
 
+# ═══════════════════════════════════════════════════════════════
+# Content-level language detection / 内容级语言检测（用户【输入文本】，非系统 locale）
+# 以下实现与 ct-base/scripts/i18n.py 保持一致（language_policy.md §"user_language 备用入参"）：
+# 痛点：is_chinese_os()/_current_lang() 只检测【系统语言】，中文系统恒返 zh。当用户在中文系统里
+# 输入【英文 query】时，若按系统 locale 决定 coze 端报告语言会误判为 zh——"中文环境+英文输入"是判定盲区。
+# 解决：对【用户输入文本】做内容级检测（含中文→zh，纯英文→en），与系统 locale 解耦。
+# 与 is_chinese_os() 职责分离：本组函数决定"coze 计算端报告/图表语言"，前者决定"本地运行期 UI 提示语言"。
+# ═══════════════════════════════════════════════════════════════
+
+import re as _re
+
+# CJK 扫描范围：基本汉字(4E00-9FFF) + 扩展 A(3400-4DBF) + 兼容汉字(F900-FAFF)
+#              + CJK 标点(3000-303F) + 全角字符(FF00-FFEF)
+_CJK_RE = _re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3000-\u303f\uff00-\uffef]")
+
+# 语言多写法归一化表：中文语境→zh，英文→en，未知值原样小写透传（coze 可据自身逻辑解释）
+_LANG_ALIASES = {
+    "zh": "zh", "chinese": "zh", "中文": "zh", "cn": "zh", "zh-cn": "zh",
+    "zh_cn": "zh", "zh-tw": "zh", "zh_tw": "zh", "zh-hk": "zh", "zh_hk": "zh",
+    "en": "en", "english": "en", "英语": "en", "eng": "en",
+}
+
+
+def _normalize_language(value):
+    """User language → normalized code.
+
+    - None/空 → 回退 i18n._current_lang()（系统 locale）。
+    - 已知别名（中文/英语/chinese/cn…） → zh / en。
+    - 未知值 → 原样小写透传（coze 可据自身逻辑解释，保证可扩展）。
+    """
+    if not value:
+        return _current_lang()
+    key = (value or "").strip().lower()
+    return _LANG_ALIASES.get(key, key)
+
+
+def detect_text_language(text):
+    """按【输入文本内容】判定语言（内容级），而非系统 locale。
+
+    Returns 'zh' / 'en' / None。
+      - 无 CJK 字符 → 'en'
+      - 含 CJK（中文占比≥5% 或中文字符≥2） → 'zh'
+      - 空文本 → None（调用方回退到系统 locale）
+
+    混合文本（"做 meta analysis"）按中文占比判定：偶有单字英文混排仍判 zh，
+    纯英文混极少中文判 en。属"备用"输入，coze 端有自身判定时可忽略。
+    """
+    if not text or not text.strip():
+        return None
+    letters = _re.sub(r"\s+", "", text)
+    if not letters:
+        return None
+    cjk = len(_CJK_RE.findall(text))
+    if cjk == 0:
+        return "en"
+    ratio = cjk / len(letters)
+    return "zh" if (ratio >= 0.05 or cjk >= 2) else "en"
+
+
+def resolve_user_language(query="", override=None):
+    """构造 coze 计算端请求用的 `user_language` 备用入参（归一化 zh/en）。
+
+    三级优先级（与 ct-base language_policy.md 一致）：
+      1. 显式 `override`（如 `--language en`）—— 最高；
+      2. 否则按【输入 query 文本】做内容级检测（中文系统+英文输入→'en'，
+         不被系统 locale 误判 zh）；
+      3. query 为空时回退系统 locale（i18n._current_lang()）。
+
+    返回归一化 'zh' / 'en'。这是【备用提示】供 coze 端决定报告/图表文案语言，
+    coze 可忽略；不覆盖 i18n 的运行期 UI 提示（后者仍按库策略走系统 locale）。
+    """
+    if override:
+        return _normalize_language(override)
+    text_lang = detect_text_language(query if query else "")
+    return text_lang if text_lang else _normalize_language(None)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Message dictionary / 消息字典 —— 数据外置到 i18n_messages.json（EN/ZH 成对）
 # ═══════════════════════════════════════════════════════════════════════════

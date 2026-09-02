@@ -172,6 +172,32 @@ def _compute_query_origin() -> str:
     return "sha256:" + hashlib.sha256(socket.gethostname().encode("utf-8")).hexdigest()
 
 # ---------------------------------------------------------------------------
+# skill_version：技能版本号（2026-09-02 新增 · 服务端分版本归因）
+# ---------------------------------------------------------------------------
+# 由客户端（技能安装设备）随请求发出，coze 端透传写入飞书日志的 querystr，用于
+# 按技能版本归因调用量与失败率。**可选字段**：老版本技能不发送该字段时，coze 端
+# 按缺省处理（querystr 不含该键），两端均不报错（见 coze_contract.md §2）。
+_SKILL_VERSION_FALLBACK = "5.7.1"
+
+
+def _skill_version() -> str:
+    """技能版本号：优先读技能根 `SKILL.md` frontmatter 的 `version:`（单一事实来源），
+    读取失败（文件缺失 / 格式异常）时回退到模块常量 `_SKILL_VERSION_FALLBACK`。
+
+    每次调用读一次文件（<1ms，且出站已按 ≥1s 限流，开销可忽略）；换来的是升级技能后
+    无需同步改本文件——版本号永远与 SKILL.md 保持一致。
+    """
+    try:
+        skill_md = Path(__file__).resolve().parent.parent / "SKILL.md"
+        head = skill_md.read_text(encoding="utf-8")[:4000]
+        m = re.search(r"^version://s*([0-9][//w.//-]*)", head, re.M)
+        if m:
+            return m.group(1)
+    except Exception:  # pragma: no cover - 文件缺失/编码异常时静默回退
+        pass
+    return _SKILL_VERSION_FALLBACK
+
+# ---------------------------------------------------------------------------
 # 出站授权门控（ct-base 全库统一范式，对齐 ct-advisor scripts/refine_answer.py）
 # ---------------------------------------------------------------------------
 # 本会话内存已授权端点（随进程重置：同一次脚本运行内多次出站只确认一次）。
@@ -282,22 +308,16 @@ def _resolve_endpoint() -> str:
 
 
 def _current_locale() -> str:
-    """推导当前界面语言（zh / en），供 coze 端本地化 narrative 与授权提示。
+    """当前界面语言（zh / en），走 ct-base i18n._current_lang()（系统 locale 检测）。
 
-    优先级：
-      1. CTSS_LOCALE 环境变量（zh/en，显式强制切换——中文 Windows 上
-         is_chinese_os 恒为 True 无法靠 LANG 覆盖，此为 CLI 层强制手段）
-      2. i18n.is_chinese_os()（系统 locale 检测）
-    失败回退 en，避免阻塞主流程（i18n 不可导入多为测试环境缺 scripts 路径）。
+    语言解析的权威实现是 i18n.resolve_user_language(query, override)（三级优先级：
+    override > 输入文本 → 系统 locale），由调用方（samplesize_power.main）解析后写入
+    ctx["user_language"] 经本模块信封发出。本函数仅作信封兜底（ctx 未带 user_language
+    时回退系统语言），不重复实现检测逻辑。
     """
-    _v = os.environ.get("CTSS_LOCALE", "").strip().lower()
-    if _v in ("zh", "zh_cn", "zh-cn", "cn"):
-        return "zh"
-    if _v in ("en", "en_us", "en-us"):
-        return "en"
     try:
-        from i18n import is_chinese_os
-        return "zh" if is_chinese_os() else "en"
+        from i18n import _current_lang
+        return _current_lang()
     except Exception:
         return "en"
 
@@ -384,6 +404,10 @@ def build_params(test, args, ctx):
         "solve_for_power": ctx.get("solve_for_power", False),
         "alt": ctx.get("alt", "two.sided"),
         "d_val": ctx.get("d_val"),
+        # 用户语言（zh/en）备用：随 params 进入 coze 端，作为 locale 的冗余兜底。
+        # coze 端容器 LANG 多为英文，服务端自检测不到用户真实语言；
+        # 此字段让 R 引擎在 req$locale 缺失时仍有用户语言可用。
+        "user_language": ctx.get("user_language") or _current_locale(),
     })
     # 曲线参数映射（CLI 名 → coze 端 curve_* 协议，R 端 run_task.R 曲线分支消费）
     for cli_key, coze_key in (("n_seq", "curve_n_seq"),
@@ -397,6 +421,27 @@ def build_params(test, args, ctx):
         if val:
             params[coze_key] = val
     return params
+
+
+def build_batch(specs):
+    """组装批量请求信封（coze v5.7 batch 模式，对应服务端 samplesize 节点 batch 分支）。
+
+    specs: 列表，每项 = (test, args, ctx) 三元组（与单次 build_params 调用一致）。
+           网格/敏感性扫描请一次性传入全部格点，服务端批量计算 + 合并飞书日志。
+    返回可直接作为 /run 请求体的 dict：{"batch": [{"test","mode","params"}, ...]}。
+
+    用途：把「逐格 N 次串行调用」（实证：4 分 15 秒 54 次）压成「1 次批量」，
+    服务端经请求级幂等缓存再去重，飞书日志合并为单行。约 50%+ 调用量削减。
+    """
+    items = []
+    for spec in specs:
+        test = spec[0]
+        args = spec[1]
+        ctx = spec[2] if len(spec) > 2 else {}
+        params = build_params(test, args, ctx or {})
+        mode = "power" if (ctx or {}).get("solve_for_power") else "n"
+        items.append({"test": test, "mode": mode, "params": params})
+    return {"batch": items}
 
 
 def _fill_external_svgs(parsed, timeout=30):
@@ -528,6 +573,49 @@ def _fill_external_svgs_legacy(parsed, timeout=30):
     return parsed
 
 
+# ---------------------------------------------------------------------------
+# 公共 POST / 外层响应解析（2026-08-31 抽取：单请求 call() 与批量 call_batch() 复用）
+# ---------------------------------------------------------------------------
+def _post(payload_dict: dict):
+    """POST payload 到 coze 端点，返回解析后的外层响应 dict（出错抛 URLError）。
+
+    出站授权（ct-base §5）已在调用方 _check_outbound_authorization 门控后调用本函数；
+    本函数只负责序列化 + 发请求 + 解析 outer，不含授权/语言/脱敏（由调用方在 payload 内完成）。
+    频控 _acquire_rate_limit 仍在此处统一施加（相邻两次 coze POST 间隔 ≥1s）。
+    """
+    endpoint = _resolve_endpoint()
+    token = _resolve_token()
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = "Bearer %s" % token
+    body = json.dumps(payload_dict, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
+    _acquire_rate_limit()
+    with _urlopen_with_proxy_fallback(req) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _parse_outer(outer):
+    """从 coze 外层响应取出**完整**内层信封（优先经 _coze_full 下载 S3 完整数据）。
+
+    单请求：返回完整 out（含 figures/repro）；批量：返回完整 agg_full（含每项 out）。
+    S3 不可达时降级到旧契约（manifest / figures[].url）或内联删减版，绝不抛错中断分析。
+    """
+    if not isinstance(outer, dict):
+        return {"status": "error", "notes": "coze 返回非对象响应"}
+    result_str = outer.get("result")
+    if isinstance(result_str, str) and result_str.strip().startswith("{"):
+        try:
+            parsed = json.loads(result_str)
+        except ValueError:
+            return outer
+        full = _fetch_full_json(parsed, timeout=30)
+        if full is not None:
+            return full
+        return _fill_external_svgs(parsed)
+    return _fill_external_svgs(outer)
+
+
 def _fetch_full_json(parsed, timeout=30):
     """新契约（2026-08-29）：coze 把 R 引擎生成的完整信封整体写入单个 S3 文件，
     内联挂 `_coze_full = {storage:"s3", url}`。本地经 url 下载完整 JSON 作为分析源
@@ -642,7 +730,8 @@ def _urlopen_with_proxy_fallback(req, connect_timeout=15, read_timeout=None):
             raise urllib.error.URLError(reason=e)
 
 
-def call(test, params, mode, return_r_code, locale=None, resolved_spec=None):
+def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
+         user_language=None):
     """调用 coze 服务，返回 R 引擎信封 dict（重构 v5 协议）。
 
     模式（优先级从高到低）：
@@ -668,49 +757,94 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None):
         if token:
             headers["Authorization"] = "Bearer %s" % token
         # 发送前脱敏（剥离 PII）；脱敏副本用于发送，原 params 不受影响
-        payload = json.dumps({
+        # 语言：user_language 为用户机器语言（备用），优先级 user_language > locale > 自动检测；
+        # 两者都发给 coze 端，locale 为主、user_language 为冗余兜底（coze 端容器 LANG 多为英文）。
+        lang = user_language or locale or _current_locale()
+        payload = {
             "test": test, "params": sanitize(params), "mode": mode,
             "return_r_code": return_r_code,
-            "locale": locale or _current_locale(),
+            "locale": lang,
+            "user_language": lang,
             "query_origin": _compute_query_origin(),
+            "skill_version": _skill_version(),
             "resolved_spec": resolved_spec or {
                 "test": test, "mode": mode, "params": sanitize(params)
             },
-        }, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(
-            endpoint, data=payload, headers=headers, method="POST")
-        # coze 调用并发限流（ct-base §20.10）：相邻两次 coze POST 间隔 ≥1 秒，
-        # 防触发 429 频控；间隔秒数由 COZE_META_MIN_INTERVAL 覆写。
-        _acquire_rate_limit()
+        }
         try:
-            # 超时：取消【读取】限制（Monte-Carlo / 大规模模拟可能远超 180s），
-            # 仅保留 15s 连接握手保护，避免端点不可达时 agent 永久阻塞。
-            # 远端 main.py TIMEOUT_SECONDS=900 为硬上限，read 永不越过该边界。
-            with _urlopen_with_proxy_fallback(req) as resp:
-                outer = json.loads(resp.read().decode("utf-8"))
+            outer = _post(payload)
         except urllib.error.URLError as e:
             # 只打异常类型 + 端点（绝不回显 token / payload）
             raise RuntimeError("coze 调用失败（%s）: %s" % (endpoint, e))
-        # v5：解析外层 result（R 引擎信封 JSON 字符串）；兼容旧直接信封
-        result_str = outer.get("result") if isinstance(outer, dict) else None
-        if isinstance(result_str, str) and result_str.strip().startswith("{"):
-            try:
-                parsed = json.loads(result_str)
-            except ValueError:
-                return outer
-            # 新契约（2026-08-29）：完整 JSON 存 S3，内联仅轻量删减版。
-            # 本地优先经 _coze_full 下载完整数据做分析（含 figures/repro，零删减）；
-            # 失败 / 无链接则降级到旧契约（manifest / figures[].url）或直接使用内联删减版。
-            full = _fetch_full_json(parsed, timeout=30)
-            if full is not None:
-                return full
-            return _fill_external_svgs(parsed)
-        if isinstance(outer, dict):
-            return _fill_external_svgs(outer)
-        return {"status": "error", "notes": "coze 返回空/非对象响应"}
+        return _parse_outer(outer)
     raise RuntimeError(
         "coze 端点未配置：请设置 CTSS_COZE_ENDPOINT（真实），"
         "或 CTSS_COZE_MOCK=1（本地演示）。")
+
+
+def call_batch(specs, return_r_code=True, user_language=None):
+    """v5.7 批量计算：specs = [(test, args, ctx), ...]（与 build_batch 入参一致）。
+
+    返回服务端聚合的**完整**结果 dict（agg_full，含每项 out 完整信封）；
+    AUTH-BLOCK（未授权）返回 None；mock 模式返回本地聚合信封（不联网）。
+
+    与 call() 的差异：
+      - 请求体顶层为 {"batch": [...]} 而非 {test, params, mode, ...}；
+      - 服务端把 N 格扫描压成 1 次计算，并返回聚合 agg（含每项的完整 out）；
+      - 本地经 agg 的 _coze_full 一次下载即得全部 item 结果，无需逐条解析。
+    """
+    if os.environ.get("CTSS_COZE_MOCK") in ("1", "true", "yes"):
+        return _mock_batch(specs, return_r_code=return_r_code)
+    endpoint = _resolve_endpoint()
+    if endpoint:
+        if not _check_outbound_authorization(endpoint):
+            return None  # AUTH-BLOCK：不发送，调用方提示用户
+        envelope = build_batch(specs)
+        lang = user_language or _current_locale()
+        envelope["return_r_code"] = return_r_code
+        envelope["locale"] = lang
+        envelope["user_language"] = lang
+        envelope["query_origin"] = _compute_query_origin()
+        envelope["skill_version"] = _skill_version()
+        # batch 内 params 同样脱敏（剥离 PII）
+        envelope["batch"] = sanitize(envelope["batch"])
+        try:
+            outer = _post(envelope)
+        except urllib.error.URLError as e:
+            raise RuntimeError("coze 批量调用失败（%s）: %s" % (endpoint, e))
+        return _parse_outer(outer)
+    raise RuntimeError(
+        "coze 端点未配置：请设置 CTSS_COZE_ENDPOINT（真实），"
+        "或 CTSS_COZE_MOCK=1（本地演示）。")
+
+
+def _mock_batch(specs, return_r_code=True):
+    """本地 mock：把多个 _mock_envelope 聚合成 agg_full 形状（演示批量管线，不联网）。"""
+    full_results = []
+    ok = 0
+    err = 0
+    for idx, spec in enumerate(specs):
+        test = spec[0]
+        args = spec[1]
+        ctx = spec[2] if len(spec) > 2 else {}
+        params = build_params(test, args, ctx or {})
+        mode = "power" if (ctx or {}).get("solve_for_power") else "n"
+        out = _mock_envelope(test, params, mode, return_r_code)
+        st = out.get("status")
+        if st in ("ok", "warn"):
+            ok += 1
+        else:
+            err += 1
+        full_results.append({"index": idx, "test": test, "mode": mode,
+                             "status": st, "out": out})
+    return {
+        "status": "ok" if err == 0 else ("partial" if ok else "error"),
+        "batch": True,
+        "count": len(specs),
+        "ok": ok,
+        "errors": err,
+        "results": full_results,
+    }
 
 
 class CozeBackend(ComputeBackend):
@@ -729,8 +863,10 @@ class CozeBackend(ComputeBackend):
             "test": test,
             "mode": mode,
             "return_r_code": ctx.get("return_r_code", False),
-            "locale": ctx.get("locale") or _current_locale(),
+            "locale": ctx.get("user_language") or _current_locale(),
+            "user_language": ctx.get("user_language") or _current_locale(),
             "query_origin": _compute_query_origin(),
+            "skill_version": _skill_version(),
             "params": sanitize(params),
             "resolved_spec": {"test": test, "mode": mode, "params": sanitize(params)},
         }, ensure_ascii=False, indent=2)
@@ -741,7 +877,8 @@ class CozeBackend(ComputeBackend):
         # P3：resolved_spec 契约增强——本次完整语义快照，远端可选消费（补参/校验）。
         resolved_spec = {"test": test, "mode": mode, "params": sanitize(params)}
         env = call(test, params, mode, ctx.get("return_r_code", False),
-                   locale=ctx.get("locale") or _current_locale(),
+                   locale=ctx.get("user_language") or _current_locale(),
+                   user_language=ctx.get("user_language") or _current_locale(),
                    resolved_spec=resolved_spec)
         # AUTH-BLOCK：未授权不发送，提示用户（授权不阻断流程）
         if env is None:
@@ -749,54 +886,144 @@ class CozeBackend(ComputeBackend):
                 "出站未授权：本次未发送到云端计算。"
                 "若同意发送，请确认后将端点加入 config/config.json 的 "
                 "auto_approve_endpoints（或重跑本命令）。")
-        # v5 信封：status/stats/narrative/warnings/notes/repro
-        if not isinstance(env, dict):
-            raise RuntimeError("coze 返回非对象响应")
-        # ── 契约漂移检测 + 结构自适应兼容（ct-base §20.9 单入口 _assess_contract）──
-        # 仅结构/数据内容不一致触发提醒：结构别名自愈兼容，无需比对版本号。
-        # 用户可见提示统一只在渲染层 HTML 横幅（_needs_upgrade/_contract_drift 驱动），
-        # 不写 stderr、不污染 narrative/notes（零噪音原则）。
-        env, drift_notes, needs_upgrade = _assess_contract(env)
-        # 自适应兼容：缺字段补默认，保证下游不 KeyError
-        env.setdefault("stats", {})
-        env.setdefault("narrative", "")
-        env.setdefault("figures", [])
-        env.setdefault("warnings", [])
-        env.setdefault("notes", "")
-        env.setdefault("repro", {})
-        # 机器可读标记写回信封（rendering 横幅消费；非用户提示）
-        env["_needs_upgrade"] = needs_upgrade
-        if drift_notes:
-            env["_contract_drift"] = drift_notes
-        # 契约 §5：coze 出错可返回 {"error": {...}}；原样呈现 message
-        err = env.get("error")
-        if err:
-            msg = err.get("message") or err.get("code") or "coze 端返回未知错误"
-            raise RuntimeError("coze 计算失败: %s" % msg)
-        status = env.get("status")
-        if status in ("error", "unknown_task"):
-            raise RuntimeError("coze 计算失败: %s" % (env.get("notes") or status))
-        stats = env.get("stats") or {}
-        repro = env.get("repro") or {}
-        # 截断告警（coze 返回体超 4000 字符、已丢部分 stats 子块；narrative 优先外置故鲜触发）
-        truncated = env.get("_coze_truncated")
-        text = env.get("narrative", "") or ""
-        meta = dict(stats)
-        if truncated:
-            sys.stderr.write(
-                "\n[ct-samplesize] 注意：coze 返回体超 4000 字符，"
-                "已截断部分 stats 子块：%s\n" % truncated)
-            meta["_coze_truncated"] = truncated
-        # 契约漂移标记：透出到 meta（rendering 经 res.meta 读取，写回报告横幅）
-        meta["_needs_upgrade"] = needs_upgrade
-        if drift_notes:
-            meta["_contract_drift"] = drift_notes
-        return Result(
-            text=text,
-            figures=[Figure(f.get("format", "svg"), f.get("content", ""),
-                            f.get("caption", "")) for f in env.get("figures", [])],
-            r_code=repro.get("r") if ctx.get("return_r_code") else None,
-            r_result=stats,
-            meta=meta,
-            backend=self.name,
-        )
+        return _envelope_to_result(env, test, ctx)
+
+    def compute_batch(self, specs):
+        """v5.7 批量计算：specs = [(test, args, ctx), ...]（与 build_batch 入参一致）。
+
+        返回 BatchResult（items 与 specs 一一对应）。AUTH-BLOCK（call_batch 返回 None）
+        抛错提示用户；S3 外置下载失败时聚合摘要仍取自服务端（count/ok/errors/tests/modes），
+        缺失 out 的逐项标记为 error（外置数据不可用），不中断整体。"""
+        from compute_backend import BatchResult, BatchItem  # 延迟导入，避免循环
+        # 取 specs 中首个带 user_language 的作为批量整体语言（coze 端冗余兜底）
+        user_language = None
+        for spec in specs:
+            ctx = spec[2] if len(spec) > 2 else {}
+            ul = (ctx or {}).get("user_language")
+            if ul:
+                user_language = ul
+                break
+        agg = call_batch(specs, return_r_code=True, user_language=user_language)
+        if agg is None:
+            raise RuntimeError(
+                "出站未授权：批量请求未发送到云端计算。"
+                "若同意发送，请确认后将端点加入 config/config.json 的 "
+                "auto_approve_endpoints（或重跑本命令）。")
+        if not isinstance(agg, dict):
+            raise RuntimeError("coze 批量返回非对象响应")
+        results = agg.get("results") if isinstance(agg.get("results"), list) else []
+        items = []
+        tests = []
+        modes = []
+        for i, spec in enumerate(specs):
+            test = spec[0]
+            ctx = spec[2] if len(spec) > 2 else {}
+            mode = "power" if (ctx or {}).get("solve_for_power") else "n"
+            if test not in tests:
+                tests.append(test)
+            if mode not in modes:
+                modes.append(mode)
+            r = results[i] if i < len(results) else None
+            if not isinstance(r, dict):
+                items.append(BatchItem(index=i, test=test, mode=mode,
+                                       status="error", error="批量响应缺失该项结果"))
+                continue
+            st = r.get("status")
+            out = r.get("out") if isinstance(r.get("out"), dict) else None
+            if st in ("ok", "warn") and out is not None:
+                try:
+                    res = _envelope_to_result(out, test, ctx or {})
+                    items.append(BatchItem(index=i, test=test, mode=mode,
+                                           status=st, result=res))
+                except Exception as _e:  # noqa: BLE001 - 单条规整失败不影响其余项
+                    items.append(BatchItem(index=i, test=test, mode=mode,
+                                           status="error",
+                                           error="结果规整失败: %s" % _e))
+            elif out is not None:
+                # 服务端判定失败但完整 out 信封已返回 → 从信封抽真实错误原因
+                # （_envelope_to_result 对 error 信封会抛 RuntimeError，message 即原因）。
+                try:
+                    _envelope_to_result(out, test, ctx or {})
+                except Exception as _e:  # noqa: BLE001
+                    items.append(BatchItem(index=i, test=test, mode=mode,
+                                           status="error", error=str(_e)))
+                else:
+                    items.append(BatchItem(index=i, test=test, mode=mode,
+                                           status="error",
+                                           error="服务端返回状态=%s（无错误明细）" % st))
+            else:
+                # 仅 inline 摘要可用 / out 缺失（S3 外置下载失败或降级）→ 本地无法产出
+                # Result，按渲染失败计为 error；服务端判定 st 与原因写进 error 文本便于溯源。
+                srv_err = (r.get("error") if isinstance(r, dict) else None)
+                reason = srv_err or "外置完整数据不可用（S3 下载失败/降级）"
+                if st and st not in ("ok", "warn"):
+                    reason = "%s；服务端判定=%s" % (reason, st)
+                items.append(BatchItem(index=i, test=test, mode=mode,
+                                       status="error", error=reason))
+        # 聚合摘要优先取自服务端（S3 失败时仍准确），本地计算仅兜底
+        count = agg.get("count", len(items))
+        ok = agg.get("ok", sum(1 for it in items if it.status in ("ok", "warn")))
+        errors = agg.get("errors", len(items) - ok)
+        status = agg.get("status") or ("ok" if errors == 0
+                                       else ("partial" if ok else "error"))
+        return BatchResult(status=status, count=count, ok=ok, errors=errors,
+                           tests=tests, modes=modes, items=items)
+
+
+def _envelope_to_result(env, test, ctx):
+    """把 coze 返回的信封 dict 规整为跨后端统一的 Result（单请求 / 批量逐项共用）。
+
+    含契约漂移检测 + 结构自适应兼容（ct-base §20.9）、错误/状态判定、字段缺省、
+    Figure 列表与 meta 标记组装。异常（非 dict / coze error）直接上抛供调用方处理。
+    """
+    if not isinstance(env, dict):
+        raise RuntimeError("coze 返回非对象响应")
+    # ── 契约漂移检测 + 结构自适应兼容（ct-base §20.9 单入口 _assess_contract）──
+    # 仅结构/数据内容不一致触发提醒：结构别名自愈兼容，无需比对版本号。
+    # 用户可见提示统一只在渲染层 HTML 横幅（_needs_upgrade/_contract_drift 驱动），
+    # 不写 stderr、不污染 narrative/notes（零噪音原则）。
+    env, drift_notes, needs_upgrade = _assess_contract(env)
+    # 自适应兼容：缺字段补默认，保证下游不 KeyError
+    env.setdefault("stats", {})
+    env.setdefault("narrative", "")
+    env.setdefault("figures", [])
+    env.setdefault("warnings", [])
+    env.setdefault("notes", "")
+    env.setdefault("repro", {})
+    # 机器可读标记写回信封（rendering 横幅消费；非用户提示）
+    env["_needs_upgrade"] = needs_upgrade
+    if drift_notes:
+        env["_contract_drift"] = drift_notes
+    # 契约 §5：coze 出错可返回 {"error": {...}}；原样呈现 message
+    err = env.get("error")
+    if err:
+        msg = err.get("message") or err.get("code") or "coze 端返回未知错误"
+        raise RuntimeError("coze 计算失败: %s" % msg)
+    status = env.get("status")
+    if status in ("error", "unknown_task"):
+        raise RuntimeError("coze 计算失败: %s" % (env.get("notes") or status))
+    stats = env.get("stats") or {}
+    repro = env.get("repro") or {}
+    # 截断告警（coze 返回体超 4000 字符、已丢部分 stats 子块；narrative 优先外置故鲜触发）
+    truncated = env.get("_coze_truncated")
+    text = env.get("narrative", "") or ""
+    meta = dict(stats)
+    if truncated:
+        sys.stderr.write(
+            "\n[ct-samplesize] 注意：coze 返回体超 4000 字符，"
+            "已截断部分 stats 子块：%s\n" % truncated)
+        meta["_coze_truncated"] = truncated
+    # 契约漂移标记：透出到 meta（rendering 经 res.meta 读取，写回报告横幅）
+    meta["_needs_upgrade"] = needs_upgrade
+    if drift_notes:
+        meta["_contract_drift"] = drift_notes
+    return Result(
+        text=text,
+        figures=[Figure(f.get("format", "svg"), f.get("content", ""),
+                        f.get("caption", "")) for f in env.get("figures", [])],
+        r_code=repro.get("r") if ctx.get("return_r_code") else None,
+        r_result=stats,
+        meta=meta,
+        backend="coze",
+    )
+

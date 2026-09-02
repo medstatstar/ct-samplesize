@@ -34,7 +34,7 @@ Test types (49 total):
         (OF/Pocock/WT/HSD-gamma/Kim-DeMets) + non-binding futility bounds
 """
 import argparse, sys, os, io, tempfile, re, json, time
-from i18n import t
+from i18n import t, resolve_user_language
 from compute_backend import select_backend, Result, Figure
 
 # P1-C: local Monte-Carlo verification of an analytic sample-size solution
@@ -148,7 +148,35 @@ def _resolve_figure_mode(explicit=None) -> str:
     return mode if mode in ("svg_inline", "png_file") else "svg_inline"
 
 
-def render_figures(figures, test: str, figure_mode=None):
+def _ratio_is_unequal(ratio):
+    """用户是否显式要求组间不等比例分配（n2/n1 != 1）。
+
+    判定口径：--ratio 缺失（None）或显式 =1.0 均视为等例，本地 HTML 渲染层
+    据此隐藏 coze 默认返回的「分配比四图」；仅当 ratio 有效且 != 1 才展示。
+    注意：hazard_ratio / rate_ratio / win_ratio_theta 等是**效应量**，绝不在此判定。
+    """
+    if ratio is None:
+        return False
+    try:
+        return abs(float(ratio) - 1.0) > 1e-9
+    except (TypeError, ValueError):
+        return False
+
+
+def _is_alloc_figure(fig):
+    """识别 coze 返回的分配比四图：caption 含 'alloc' 字样（如 'ctss alloc ttest ind 1'）。"""
+    cap = fig.get("caption") if isinstance(fig, dict) else getattr(fig, "caption", "")
+    return "alloc" in (cap or "").lower()
+
+
+def _filter_alloc(figs, show_alloc):
+    """本地渲染层过滤：show_alloc=False 时剔除分配比图（coze 端仍返回全量）。"""
+    if show_alloc:
+        return figs
+    return [f for f in figs if not _is_alloc_figure(f)]
+
+
+def render_figures(figures, test: str, figure_mode=None, show_alloc=True):
     """把后端回传的图形写入磁盘，并打印标记供宿主渲染。
 
     标记格式（宿主 agent 据此调用可视化 / 文件展示能力）：
@@ -166,6 +194,10 @@ def render_figures(figures, test: str, figure_mode=None):
         - render_svg_kb：所有 SVG 字节合计（KB），界面渲染无法精确计时，用此作代理
         - 任一超阈值（>30s / >200KB）生成 __RENDER_HINT__，建议切换 png_file
     """
+    if not figures:
+        return
+    # 本地渲染层：未显式要求不等比例分配时，剔除 coze 默认返回的「分配比四图」
+    figures = _filter_alloc(figures, show_alloc)
     if not figures:
         return
     outdir = _outputs_dir()
@@ -446,6 +478,9 @@ def build_parser():
                    help="自然语言需求（零 LLM 本地确定性解析：自动识别 --test 并提取参数）。"
                         "例：'非劣效生存试验，NI界值1.25，期望HR=1.0，入组12月随访12月'。"
                         "本地仅做快速预路由；置信度低或参数不全时仍会交由 coze LLM 补全（不静默错参）。")
+    p.add_argument("--language", dest="language", choices=["zh", "en"], default=None,
+                   help="显式覆盖 coze 计算端报告/图表语言（备用提示）。不传时按 --nl 文本内容自动判定"
+                        "（中文系统+英文输入→en，不被系统 locale 误判），再回退系统语言。等价于环境变量 CTSS_LOCALE。")
     p.add_argument("--yes", "-y", action="store_true",
                    help="显式确认执行 R 代码（默认 dry-run 安全预览，仅展示代码、不执行）")
     p.add_argument("--dry-run", action="store_true",
@@ -458,6 +493,11 @@ def build_parser():
     p.add_argument("--nobs", type=int, default=None, help="给定样本量求效能 (与 --power 互斥)")
     p.add_argument("--show-assumptions", action="store_true", default=False,
                    help="打印本次计算的假设清单（显式输入 / 静默默认值 / 合理区间 / 解读风险）后退出，不做求解")
+    p.add_argument("--batch-file", default=None,
+                   help="批量计算：JSON 文件路径（数组）。每个元素 "
+                        '{"test": 终点类型, "args": {覆盖字段}, "ctx": {覆盖字段}}；'
+                        "逐项继承命令行默认参数并覆盖指定字段。对应 coze v5.7 batch 模式，"
+                        "一次请求完成网格/敏感性扫描，本地逐项渲染并合并输出。")
     # ── t-test / ANOVA ──
     p.add_argument("--effect", type=float)
     p.add_argument("--k_groups", type=int, default=2)
@@ -756,6 +796,151 @@ def build_parser():
     return p
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 单条 / 批量结果渲染（v5.7：抽为共享函数，单请求与批量路径复用）
+# ─────────────────────────────────────────────────────────────────────────────
+def _render_single_result(res, test, figure_mode=None, out_dir=None, idx=None,
+                          show_alloc=True):
+    """渲染单条 Result（文本 + 图形 + HTML 报告 + 曲线兜底 + R 代码），与历史单请求渲染一致。
+
+    idx 非空时先打印分隔标题（批量路径逐项使用）；单请求路径 idx=None 不打印分隔。
+    coze 后端无需 --yes 确认（gated=False），故 R 代码 / R 数值始终展示（与历史行为一致）。
+    show_alloc=False 时本地 HTML 渲染层隐藏「分配比四图」（coze 端仍返回全量，仅此处过滤）。
+    """
+    if idx is not None:
+        print("\n" + "-" * 60)
+        print("▌ %d) test=%s" % (idx, test))
+        print("-" * 60)
+    if res.text:
+        print(res.text)
+
+    # ── 图形产物（coze 返回 SVG/HTML；本地 R 直接写 PNG）──
+    render_figures(res.figures, test, figure_mode=figure_mode, show_alloc=show_alloc)
+    # v5.3.2：聚合 HTML 报告（stats + 内联 SVG + R 复现脚本，单文件浏览器直接打开）
+    try:
+        from rendering import render_html_report  # type: ignore  # adapters/rendering.py
+
+        _report_env = {
+            "status": "ok",
+            "stats": res.r_result or res.meta,
+            "narrative": res.text,
+            "figures": [
+                {"format": f.format, "content": f.content, "caption": f.caption}
+                for f in _filter_alloc(res.figures, show_alloc)
+            ],
+            "repro": {"r": res.r_code} if res.r_code else None,
+            "warnings": [],
+            # 契约漂移标记（ct-base §20.9）：透传自 compute 的 meta，供渲染横幅消费
+            "_needs_upgrade": bool((res.meta or {}).get("_needs_upgrade", False)),
+            "_contract_drift": (res.meta or {}).get("_contract_drift", []) or [],
+        }
+        _rp = render_html_report(_report_env, out_dir=out_dir or _outputs_dir(),
+                                 test=test, backend=res.backend or "coze",
+                                 show_alloc=show_alloc)
+        if _rp:
+            print('__FIGURE__ html %s caption="ct-samplesize 结果报告"' % _rp)
+    except Exception as _e:  # noqa: BLE001 - HTML 报告生成失败不阻断主流程
+        print("# HTML 报告生成跳过: %s" % _e)
+    # coze 端无图（svglite/cairo 缺失）但返回曲线数值 → 本地生成 SVG 兜底（ct-base §19）。
+    # 仅在 coze 未返回任何图形时才兜底——否则同一曲线会被处理两遍（coze SVG + 本地
+    # fallback 两份输出），且持久化文件可能被无参考线的 fallback 版覆盖（2026-08-20 修复）。
+    if not res.figures:
+        render_curve_fallback(res.meta, test,
+                              target_power=0.8, ref_n=None)
+    # coze 返回未填充 meta 时（无 __CTSS_RESULT__ 标记）res.meta 可为 None，防御性取空字典
+    _png = (res.meta or {}).get("png_path")
+    if _png:
+        print(t("info.png_saved", path=_png))
+
+    # ── R 源码 / R 数值（默认回传并展示，对齐 meta-analysis；2026-08-29 修订）──
+    # 旧逻辑仅在 --show-code / CTSS_RETURN_R_CODE 时展示；现默认展示（coze 始终回传 repro.r）。
+    if res.r_code:
+        print("=" * 60)
+        print(t("header.r_code"))
+        print("=" * 60)
+        print(res.r_code)
+    if res.r_result:
+        print("-" * 60)
+        print(json.dumps(res.r_result, ensure_ascii=False, indent=2))
+    print("=" * 60)
+
+
+def render_batch(br, specs, figure_mode=None):
+    """渲染批量聚合结果（coze v5.7 batch）：先打印汇总，再逐项渲染（复用 _render_single_result）。"""
+    print("=" * 60)
+    print("批量计算结果 / Batch Results")
+    print("=" * 60)
+    print("总数 %d · 成功 %d · 失败 %d · tests=%s · modes=%s · 状态=%s"
+          % (br.count, br.ok, br.errors, br.tests, br.modes, br.status))
+    print("=" * 60)
+    for it, spec in zip(br.items, specs):
+        if it.result is not None:
+            # 逐项判定是否显式要求不等比例分配（spec[1] 为该条目的 args Namespace）
+            show_alloc = _ratio_is_unequal(getattr(spec[1], "ratio", None))
+            _render_single_result(it.result, it.test, figure_mode=figure_mode,
+                                  idx=it.index, show_alloc=show_alloc)
+        else:
+            print("\n" + "-" * 60)
+            print("▌ %d) test=%s [失败]" % (it.index, it.test))
+            print("-" * 60)
+            print("# 错误: %s" % (it.error or it.status))
+            print("=" * 60)
+
+
+def _run_batch(backend, args, base_ctx):
+    """批量路径入口：读取 --batch-file，构造 specs，调用后端 compute_batch，渲染聚合结果。
+
+    batch-file 格式：JSON 数组，元素 {"test": 终点类型, "args": {覆盖字段},
+    "ctx": {覆盖字段}}。逐项克隆命令行 args 为完整 Namespace 并覆盖指定字段（继承默认值），
+    故只需在文件里写差异字段。dry-run / --show-code 时仅打印批量请求信封预览。
+    """
+    from adapters.coze_client import build_batch  # 延迟导入，避免循环
+
+    try:
+        with open(args.batch_file, "r", encoding="utf-8") as fh:
+            entries = json.load(fh)
+    except Exception as _e:  # noqa: BLE001
+        print("# [batch] 读取批量文件失败: %s" % _e)
+        sys.exit(1)
+    if not isinstance(entries, list):
+        print("# [batch] 批量文件根必须是 JSON 数组")
+        sys.exit(1)
+
+    specs = []
+    for entry in entries:
+        if not isinstance(entry, dict) or not entry.get("test"):
+            print("# [batch] 跳过非法条目（缺 test）: %r" % entry)
+            continue
+        a = argparse.Namespace(**vars(args))        # 克隆命令行默认参数
+        a.test = entry["test"]
+        for k, v in (entry.get("args") or {}).items():
+            setattr(a, k, v)
+        ctx_i = dict(base_ctx)
+        ctx_i.update(entry.get("ctx") or {})
+        specs.append((entry["test"], a, ctx_i))
+
+    if not specs:
+        print("# [batch] 无有效条目，退出")
+        sys.exit(1)
+
+    # dry-run / --show-code：仅预览批量请求信封（不发送）
+    if args.dry_run or args.show_code:
+        env = build_batch(specs)
+        print("=" * 60)
+        print("批量请求信封预览（coze v5.7 batch）")
+        print("=" * 60)
+        print(json.dumps(env, ensure_ascii=False, indent=2, default=str))
+        print("=" * 60)
+        return
+
+    try:
+        br = backend.compute_batch(specs)
+    except RuntimeError as exc:
+        print(str(exc))
+        sys.exit(1)
+    render_batch(br, specs, figure_mode=args.figure_mode)
+
+
 def main():
     p = build_parser()
     args = p.parse_args()
@@ -870,7 +1055,7 @@ def main():
     else:
         d_val = args.effect if args.effect is not None else 0.5
 
-    if not args.test:
+    if not args.test and not args.batch_file:
         if args.nl:
             p.error(t("error.test_required")
                     + "（自然语言路由未能识别终点类型：请用 --test 显式指定，或换种表述后重试）")
@@ -908,6 +1093,14 @@ def main():
         # 旧逻辑仅在 --show-code / CTSS_RETURN_R_CODE 时开启，导致 coze 默认根本不被要求
         # 返回 R 代码、HTML 报告与对话都拿不到（即用户报的"默认不回传 R 代码"）。
         "return_r_code": True,
+        # coze 计算端语言备用入参（ct-base language_policy.md §"user_language 备用入参"）：
+        # 由 i18n.resolve_user_language 按三级优先级统一解析——① 显式 override
+        # (--language / CTSS_LOCALE) ② 否则按 --nl 输入文本内容级检测 ③ 回退系统 locale。
+        # 仅作为"调用方提示"注入请求，coze 端可忽略；不影响本地 UI 提示语言（仍走系统 locale）。
+        "user_language": resolve_user_language(
+            query=args.nl,
+            override=args.language or os.environ.get("CTSS_LOCALE") or os.environ.get("CTSS_LANG"),
+        ),
     }
 
     try:
@@ -915,6 +1108,11 @@ def main():
     except RuntimeError as exc:
         print(str(exc))
         sys.exit(1)
+
+    # ── 批量模式（coze v5.7 batch）：一次请求完成网格/敏感性扫描，本地逐项渲染 ──
+    if args.batch_file:
+        _run_batch(backend, args, ctx)
+        return
 
     # ── 待执行载荷预览（local-r → R 源码；coze → 请求信封；python → 无）──
     gated = backend.requires_confirmation          # 本地 R 需 --yes；coze / Python 不需要
@@ -944,42 +1142,8 @@ def main():
         print(str(exc))
         sys.exit(1)
 
-    if res.text:
-        print(res.text)
-
-    # ── 图形产物（coze 返回 SVG/HTML；本地 R 直接写 PNG）──
-    render_figures(res.figures, args.test, figure_mode=args.figure_mode)
-    # v5.3.2：聚合 HTML 报告（stats + 内联 SVG + R 复现脚本，单文件浏览器直接打开）
-    try:
-        from rendering import render_html_report  # type: ignore  # adapters/rendering.py
-
-        _report_env = {
-            "status": "ok",
-            "stats": res.r_result or res.meta,
-            "narrative": res.text,
-            "figures": [
-                {"format": f.format, "content": f.content, "caption": f.caption}
-                for f in res.figures
-            ],
-            "repro": {"r": res.r_code} if res.r_code else None,
-            "warnings": [],
-            # 契约漂移标记（ct-base §20.9）：透传自 compute 的 meta，供渲染横幅消费
-            "_needs_upgrade": bool(res.meta.get("_needs_upgrade", False)),
-            "_contract_drift": res.meta.get("_contract_drift", []) or [],
-        }
-        _rp = render_html_report(_report_env, out_dir=_outputs_dir(),
-                                 test=args.test, backend=res.backend or "coze")
-        if _rp:
-            print('__FIGURE__ html %s caption="ct-samplesize 结果报告"' % _rp)
-    except Exception as _e:  # noqa: BLE001 - HTML 报告生成失败不阻断主流程
-        print("# HTML 报告生成跳过: %s" % _e)
-    # coze 端无图（svglite/cairo 缺失）但返回曲线数值 → 本地生成 SVG 兜底（ct-base §19）。
-    # 仅在 coze 未返回任何图形时才兜底——否则同一曲线会被处理两遍（coze SVG + 本地
-    # fallback 两份输出），且持久化文件可能被无参考线的 fallback 版覆盖（2026-08-20 修复）。
-    if not res.figures:
-        render_curve_fallback(res.meta, args.test,
-                              target_power=getattr(args, "power", None) or 0.8,
-                              ref_n=getattr(args, "nobs", None))
+    _render_single_result(res, args.test, figure_mode=args.figure_mode,
+                          show_alloc=_ratio_is_unequal(args.ratio))
 
     # ── 自动附带曲线（v5.3.2 起每种检验的默认出图由契约 default_curve 分别配置）──
     # 规则: forward（求 n）→ 自动补「样本量随把握度」曲线；reverse（求 power）→
@@ -1009,7 +1173,8 @@ def main():
                 _what = "样本量随把握度（power 0.60~0.95）"
             res2 = backend.compute(args.test, args2, ctx2)
             if res2 and getattr(res2, "figures", None):
-                render_figures(res2.figures, args.test, figure_mode=args.figure_mode)
+                render_figures(res2.figures, args.test, figure_mode=args.figure_mode,
+                               show_alloc=_ratio_is_unequal(args.ratio))
             else:
                 # coze 无图 → 本地兜底（★ 参考线目标 = 用户 --power 或默认 0.8）
                 render_curve_fallback(getattr(res2, "meta", None), args.test,
@@ -1023,26 +1188,9 @@ def main():
     # ── 默认图形层（v5.6 起全部上 coze）────────────────────────────────────
     # 架构：coze 端 R（coze_figure_layer.R）为主出图；若其失败，coze 内部回退到
     #   figure_kit.py（随包上传到 coze 的 Python 兜底，位于 adapters/coze/scripts/）。
-    #   本地是「瘦客户端」：只承接 coze 回传的 `figures` 数组，交由上方 render_figures
+    #   本地是「瘦客户端」：只承接 coze 回传的 `figures` 数组，交由 _render_single_result
     #   统一落盘 / 内联 / 聚合进 HTML 报告，本地绝不再渲染（详见 SKILL.md v5.6 说明）。
     #   （历史上此处有一段本地透出循环，与 render_figures 重复，已在 v5.6 删除。）
-
-    # coze 返回未填充 meta 时（无 __CTSS_RESULT__ 标记）res.meta 可为 None，防御性取空字典
-    _png = (res.meta or {}).get("png_path")
-    if _png:
-        print(t("info.png_saved", path=_png))
-
-    # ── R 源码 / R 数值（默认回传并展示，对齐 meta-analysis；2026-08-29 修订）──
-    # 旧逻辑仅在 --show-code / CTSS_RETURN_R_CODE 时展示；现默认展示（coze 始终回传 repro.r）。
-    if res.r_code and not gated:
-        print("=" * 60)
-        print(t("header.r_code"))
-        print("=" * 60)
-        print(res.r_code)
-    if res.r_result and not gated:
-        print("-" * 60)
-        print(json.dumps(res.r_result, ensure_ascii=False, indent=2))
-    print("=" * 60)
 
     # ── P1-C: 本地模拟验证闭环（独立 Monte-Carlo，默认关闭）──
     if args.verify:

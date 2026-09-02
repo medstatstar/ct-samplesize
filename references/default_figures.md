@@ -14,7 +14,9 @@
 
 > **Deployment boundary:** the R + figure_kit layer lives in `adapters/coze/scripts/` (the canonical coze-side mirror, which must always be kept at the latest version); the **coze platform deployment step is manual (user-side)**. Full deploy + fallback-chain guide → `adapters/coze/DEPLOY.md`.
 
-**Figure merge & dedup (2026-08-30):** coze-internal `samplesize.py::_run_figure_layer` appends default figures after engine figures. When an engine figure caption already contains "curve/曲线" (the default primary is redundant with the engine power-N curve), the default primary (`*_default_1.svg`) is **filtered out**; the `alloc_suite` secondary set is always kept. Result: engine-fig methods get engine + alloc only; engine-less methods get the full default set.
+**Figure merge & dedup (2026-08-30):** coze-internal `samplesize.py::_run_figure_layer` appends default figures after engine figures. When an engine figure caption already contains "curve/曲线" (the default primary is redundant with the engine power-N curve), the default primary (`*_default_1.svg`) is **filtered out**. Result: engine-fig methods get engine figures only; engine-less methods get the default primary.
+
+**Allocation-ratio suite — local render filter (v5.7.1):** coze emits the `alloc_suite` four charts **unconditionally** for the 13 two-group methods — the coze side is unchanged and always returns the full figure set. The **local HTML render layer** (`adapters/rendering.py::render_html_report` + `scripts/samplesize_power.py::render_figures` / `_filter_alloc`) then **hides these four charts unless the user explicitly asks for an unequal allocation**: i.e. the CLI `--ratio` (allocation ratio k = n2/n1) is present and `!= 1`. If the request says nothing about allocation (no `--ratio`) or explicitly asks for 1:1 (`--ratio = 1`), the four allocation charts are suppressed in the rendered report/figures (coze still returned them). Effect-size fields whose names contain `ratio` (`hazard_ratio`, `rate_ratio`, `win_ratio_theta`, `sigma_ratio`, `gs_ratio`, and the method ids `odds_ratio` / `risk_ratio`) are **not** allocation ratios and never affect this filter.
 
 ## How the R layer stays honest
 
@@ -44,11 +46,13 @@ Mapped per method in `adapters/coze/scripts/coze_figure_layer.R::METHOD_FIGURES`
 | `icc_sens` | ICC → Power | 2 (cluster, MMRM) | design-effect exposure to ICC mis-specification |
 | `gs_boundary` | information fraction → z boundary | 10 (all group-sequential / adaptive) | OBF vs Pocock spending, Lan-DeMets closed form |
 | `assurance_n` | N → Assurance | 2 (bayesian, assurance) | probability-of-success planning |
-| `alloc_suite` *(secondary)* | allocation ratio k = n2/n1 | **13 two-group methods** | what unequal allocation costs — 4 charts + lookup table |
+| `alloc_suite` *(secondary, full by coze / filtered locally)* | allocation ratio k = n2/n1 | **13 two-group methods**, always returned by coze; **shown locally only when `--ratio != 1`** | what unequal allocation costs — 4 charts + lookup table |
 
 ## Allocation-ratio suite (`alloc_suite`)
 
-The v5.5 addition for unequal group sizes, rendered by `scripts/alloc_curve.py`:
+The v5.5 addition for unequal group sizes, rendered by `scripts/alloc_curve.py`.
+
+> **Local render filter (v5.7.1):** coze always returns this suite for the 13 two-group methods (coze-side code is untouched). The local render layer hides it **unless the user requests an unequal allocation** — `--ratio` present and `!= 1`. Silence about allocation, or an explicit 1:1 (`--ratio = 1`), means the charts are returned by coze but **hidden in the local HTML report and figure output**. The filter key is the figure caption containing `alloc` (e.g. `ctss alloc ttest ind 1`); effect-size `ratio` fields never trigger it.
 
 - **A** required total N vs ratio (U-shape, minimum at 1:1)
 - **B** power vs ratio at fixed N (inverted-U)

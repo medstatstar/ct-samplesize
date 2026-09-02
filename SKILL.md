@@ -3,7 +3,7 @@ slug: ct-samplesize
 displayName: Clinical Trial Sample Size & Power / 临床试验样本量与检验效能专家
 name: ct-samplesize
 cn_name: 临床试验样本量与检验效能专家
-version: 5.6.0
+version: 5.7.1
 invocable: true
 required_commands: [python]
 summary: 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
@@ -25,9 +25,9 @@ metadata: { openclaw: { emoji: "📊" }, authors: ["medstatstar", "phoe-zip"], l
 permissions:
   scope: "user-space-only"
   network: "required"
-  network_note: "v5 requires the remote coze compute endpoint (CTSS_COZE_ENDPOINT, or CTSS_COZE_MOCK=1 for a local demo) — the published skill has no local compute fallback. Only trial-design parameters leave the machine (no patient data); every request also carries a hostname hash `query_origin` (sha256, for server attribution/rate-limit) and the OS-language-derived `locale`. Outbound authorization gate: the public endpoint is pre-whitelisted in config/config.json auto_approve_endpoints (never prompts, but the assistant states what is sent on first use); user-custom endpoints trigger a one-time AUTH-BLOCK user confirmation before any data leaves the machine. Payloads are sanitized (PII stripped) before sending."
+  network_note: "v5 requires the remote coze compute endpoint (CTSS_COZE_ENDPOINT, or CTSS_COZE_MOCK=1 for a local demo) — the published skill has no local compute fallback. Only trial-design parameters leave the machine (no patient data); every request also carries a hostname hash `query_origin` (sha256, for server attribution/rate-limit) and the OS-language-derived `locale`, and the skill version `skill_version` (read from the local SKILL.md, for per-version attribution of cloud usage). Outbound authorization gate: the public endpoint is pre-whitelisted in config/config.json auto_approve_endpoints (never prompts, but the assistant states what is sent on first use); user-custom endpoints trigger a one-time AUTH-BLOCK user confirmation before any data leaves the machine. Payloads are sanitized (PII stripped) before sending."
   filesystem: "writes figures to CTSS_OUTPUT_DIR (default ./outputs) and optional curve PNGs; otherwise read-only"
-  data: "no patient/external data leaves the boundary — only trial-design parameters plus the hostname hash (query_origin) and locale metadata are sent to the coze service"
+  data: "no patient/external data leaves the boundary — only trial-design parameters plus the hostname hash (query_origin), the skill version (skill_version) and locale metadata are sent to the coze service"
 
 ---
 
@@ -81,6 +81,57 @@ Before answering, triage the request into the four-level difficulty **Simple / M
 
 > Red line: ct-samplesize's coze is a **stateless remote compute**; continuity MUST be solved locally — the remote cannot help unless you actively send history. `merge_spec.py` is the local **deterministic merger** (code-fixed, LLM-executed), not a fragile classifier — upholds family red line 4.
 
+## 批量调用治理（v5.7，必读）
+
+> 飞书后台实证：单次分析被拆成 **逐格串行** 调用（4 分 15 秒 54 次），其中约一半是
+> **「单点 + 曲线」成对冗余**、另有 **逐字节重复的整对重跑**。v5.7 服务端已支持
+> `batch` 批量模式 + 请求级幂等缓存（自动去重），但**编排侧必须配合收敛**，否则
+> 冗余调用会照旧发生。以下三条为强制约束：
+
+1. **曲线响应自带单点，禁止「先单点再曲线」**：带 `curve_*_seq` 的响应其 x/y 序列
+   已含所求单点（如 `curve_power_seq` 给出 n 序列与对应 power）。**需要曲线时只发一次
+   带 `curve_*_seq` 的调用，不要先发一次单点 n 再发一次曲线**——这一条即可砍掉约 50% 调用。
+2. **网格/敏感性扫描走 batch，一次性提交**：需要遍历 p1×p2×power 或 nobs×d 网格时，
+   用 `adapters/coze_client.py` 的 `build_batch([(test,args,ctx), ...])` 组装
+   `{"batch":[{test,mode,params}, ...]}`，**一次** POST 到 `/run`。服务端逐项计算并合并
+   飞书日志为单行。绝不要逐格串行打接口。
+3. **只传本 test 生效的字段（精简信封）**：始终走 `build_params`（白名单取自
+   `tests/coze_cases/_contract_index.json` 的 required 字段），**不要**把全家族默认参数
+   （varcorr/sigma/nsim/design/…）一锅炖进 params——既放大飞书日志、也让真实请求与
+   测试样本难以区分。`build_params` 已默认只发 required + alpha + 模式关键参数 + 曲线参数。
+
+> 缓存语义：服务端对规范化后的 `(test, params, mode, locale)` 签名做 **10 分钟 TTL 缓存**
+> （`CTSS_CACHE_TTL` 可调）。上层 Agent 对同一网格点的重复规划/重新渲染会被自动去重，
+> 命中缓存直接复用 R 结果（仅重新签名 S3 链接，图形始终可下载）。
+
+### 本地批量调用（CLI `--batch-file`）
+
+把整张网格/敏感性扫描写进一个 JSON 数组文件，一次提交、本地逐项渲染并合并汇总——对应
+上面的「强制约束 2」。条目只写**差异字段**，其余继承命令行默认值；`ctx.solve_for_power=true`
+表示该项反求 power（自动 `mode=power`）。
+
+```json
+[
+  {"test": "proportion_two", "args": {"p1": 0.3, "p2": 0.5, "power": 0.8, "alpha": 0.05}},
+  {"test": "mean_two",       "args": {"mean1": 10, "mean2": 12, "sd": 3, "power": 0.8, "alpha": 0.05}},
+  {"test": "proportion_two", "args": {"p1": 0.2, "p2": 0.35, "power": 0.85, "alpha": 0.05},
+   "ctx": {"solve_for_power": true}}
+]
+```
+```bash
+# 真实端点（走 coze v5.7 batch，服务端一次算完）
+python samplesize_power.py --batch-file grid.json
+# 仅预览批量请求信封（不发送）
+python samplesize_power.py --batch-file grid.json --dry-run
+# 本地演示（不联网，返回 mock 聚合）
+CTSS_COZE_MOCK=1 python samplesize_power.py --batch-file grid.json
+```
+
+输出：先打印汇总行 `总数 N · 成功 K · 失败 M · tests=[...] · modes=[...] · 状态=...`，
+再逐项渲染（文本 + SVG 落盘 + HTML 报告 + R 代码/数值）；失败项打印服务端错误原因。
+解析路径桩化测试见 `tests/`（`call_batch` 经 `_coze_full` 还原、`compute_batch` 多 spec /
+partial / S3 失败四种路径全覆盖）。
+
 ## Quick Menu — two-level routing (level-1 only here; level-2 in `references/menu.md`)
 
 > Authoritative layered menu: [`references/menu.md`](references/menu.md) · CLI examples & bidirectional solve: [`references/cli_examples.md`](references/cli_examples.md) · Operation SOP: [`references/operation_sop.md`](references/operation_sop.md).
@@ -114,7 +165,7 @@ Before answering, triage the request into the four-level difficulty **Simple / M
 
 - **No local R / shell is ever executed.** The published skill never runs R or a shell on your machine. The default engine is the remote **coze** compute service: only trial-design parameters (never patient data) are sent, and results come back as numbers + optional figures — inherently safe (stateless compute, no local code execution).
 - **SAFE PREVIEW is the default for inspection.** `--dry-run` prints the exact request envelope (test, params, mode) that *would* be sent to coze, without sending anything. `--show-code` reveals the coze request JSON (the R source coze used is included in every result by default). The legacy `--yes` gate applies only to the optional local-R dev backend (offline dev only).
-- **First-use outbound disclosure (audit follow-up):** even though the public coze endpoint is pre-whitelisted (never prompts), the assistant MUST state on first outbound use in a session — in one line: "This will send your trial-design parameters plus a hostname hash (query_origin) and locale to the cloud service https://ct-samplesize.coze.site/run for computation — proceed?" (localized zh version in `references/security_model.md`). Custom endpoints still trigger the one-time AUTH-BLOCK confirmation. **Output for reference only; validate before regulatory submissions.**
+- **First-use outbound disclosure (audit follow-up):** even though the public coze endpoint is pre-whitelisted (never prompts), the assistant MUST state on first outbound use in a session — in one line: "This will send your trial-design parameters plus a hostname hash (query_origin), your skill version (skill_version) and locale to the cloud service https://ct-samplesize.coze.site/run for computation — proceed?" (localized zh version in `references/security_model.md`). Custom endpoints still trigger the one-time AUTH-BLOCK confirmation. **Output for reference only; validate before regulatory submissions.**
 
 ### Security model (transparent disclosure)
 
@@ -162,7 +213,9 @@ Curves and any coze-returned `figures[].svg` follow the **uniform SVG spec share
 
 ## Default Figures (v5.6)
 
-**Every** method produces at least one figure; all generation runs **on the coze side** (coze R `coze_figure_layer.R` primary → coze-internal `figure_kit.py` fallback), and the local CLI is a thin client that only consumes coze-returned `figures[]`. Engine figures come first, defaults are appended; when the engine already returned a power-N curve, the default primary is deduped out (alloc suite always kept). 8 default kinds (`power_n` / `power_events` / `power_n_multi` / `margin_tradeoff` / `icc_sens` / `gs_boundary` / `assurance_n` / secondary `alloc_suite`); curves are pinned exactly through the R anchor via the family-level noncentrality law (z/t/F/X), each with an effect ±20 % sensitivity band. Zero new R packages (`svglite` already tier1); coze platform deployment is manual (user-side), the local `adapters/coze/` mirror stays latest.
+**Every** method produces at least one figure; all generation runs **on the coze side** (coze R `coze_figure_layer.R` primary → coze-internal `figure_kit.py` fallback), and the local CLI is a thin client that only consumes coze-returned `figures[]`. Engine figures come first, defaults are appended; when the engine already returned a power-N curve, the default primary is deduped out. 8 default kinds (`power_n` / `power_events` / `power_n_multi` / `margin_tradeoff` / `icc_sens` / `gs_boundary` / `assurance_n` / secondary `alloc_suite`); curves are pinned exactly through the R anchor via the family-level noncentrality law (z/t/F/X), each with an effect ±20 % sensitivity band. Zero new R packages (`svglite` already tier1); coze platform deployment is manual (user-side), the local `adapters/coze/` mirror stays latest.
+
+> **分配比图形本地过滤（Local render filter，v5.7.1）**：coze 端对 13 个两组方法**始终全量返回** `alloc_suite`（4 张分配比图），coze 侧代码未改动。**本地 HTML 渲染层**（`adapters/rendering.py::render_html_report` 与 `scripts/samplesize_power.py::render_figures` / `_filter_alloc`）据此过滤：仅当请求**显式要求不等比例分配**（`--ratio` 存在且 `!= 1`）时才在本地报告/图形中展示这 4 张图；用户未提及分配比（无 `--ratio`）或明确 1:1 等例（`--ratio = 1`）时，本地报告中隐藏分配比图（coze 仍已返回全量）。过滤依据为图形 caption 含 `alloc` 字样；`hazard_ratio` / `rate_ratio` / `win_ratio_theta` / `sigma_ratio` / `gs_ratio` 及方法名 `odds_ratio` / `risk_ratio` 均为**效应量或设计参数**，不触发该过滤。
 
 > Full spec — layer table, figure-kind table, alloc suite math (Schoenfeld identity, Neyman optimal k*), accuracy, env knobs → [`references/default_figures.md`](references/default_figures.md).
 

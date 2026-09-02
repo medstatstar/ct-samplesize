@@ -757,7 +757,7 @@ function copyR(btn){{
 
 
 def render_html_report(out: dict, out_dir: str = ".", test: str = "ctss",
-                       backend: str = "coze") -> str | None:
+                       backend: str = "coze", show_alloc: bool = True) -> str | None:
     """把 coze 结果信封固化成单文件 HTML 报告（浏览器直接打开）。
 
     out 结构（CozeBackend.compute 已回填后的信封）：
@@ -771,6 +771,11 @@ def render_html_report(out: dict, out_dir: str = ".", test: str = "ctss",
     """
     stats = out.get("stats")
     figs = out.get("figures") or []
+    # 本地渲染层：未显式要求不等比例分配时，隐藏 coze 默认返回的「分配比四图」
+    # （caption 含 'alloc' 字样，如 'ctss alloc ttest ind 1'）。coze 端仍返回全量图，
+    # 仅在此处按用户意图过滤——符合"瘦客户端只消费、不回炉重绘"的架构。
+    if not show_alloc:
+        figs = [f for f in figs if "alloc" not in (f.get("caption") or "").lower()]
     inline = [f for f in figs if isinstance(f, dict) and f.get("content")]
     repro = out.get("repro")
     narrative = out.get("narrative") or ""
