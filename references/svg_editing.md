@@ -1,6 +1,6 @@
 # SVG Editing Tools
 
-> **Unified spec**: ct-base §19.11 (same origin as `meta-analysis`). The `figures[].svg` produced by this skill is written to `CTSS_OUTPUT_DIR` (default `./outputs`) by `adapters/rendering.py` (ct-base §19 reference implementation); you can further edit it here or convert it to journal formats.
+> **Unified spec**: the ct- figure-rendering spec (§19.11 (same origin as `meta-analysis`). The `figures[].svg` produced by this skill is written to `CTSS_OUTPUT_DIR` (default `./outputs`) by `adapters/rendering.py` (figure-rendering reference implementation); you can further edit it here or convert it to journal formats.
 
 | Tool | Use case | How to get |
 |------|----------|------------|

@@ -2,7 +2,7 @@
 
 > This file is the detailed companion to the "Language policy" section in SKILL.md.
 > Why it applies: this skill is a statistical-analysis skill published on ClawHub,
-> so its **documentation follows the English-only rule defined in ct-base §13.2**.
+> so its **documentation follows the English-only rule **.
 > Runtime output language still follows the OS language setting (see below).
 
 ## Three core rules
@@ -37,5 +37,5 @@ If the OS language is set to Chinese, output Chinese; otherwise output English.
 
 - `README.md`: English only (keep the top EN/CN switch menu).
 - `README_zh-CN.md`: Chinese only.
-- `SKILL.md`, `AGENTS.md`, `report_template.md`, `cli_examples.md` etc.: **English-only** (per ct-base §13.2). Do not keep bilingual titles or bilingual menus in the documentation itself.
+- `SKILL.md`, `AGENTS.md`, `report_template.md`, `cli_examples.md` etc.: **English-only**. Do not keep bilingual titles or bilingual menus in the documentation itself.
 - When editing docs, the documentation must be English-only; existing Chinese documentation fragments should be removed, not preserved.

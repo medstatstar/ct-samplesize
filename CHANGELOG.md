@@ -1,5 +1,327 @@
 # Changelog / 版本历史
 
+## v5.7.26 补丁（2026-09-04）· 工作台 NL 兜底与发布安全收敛
+
+- **背景**：用户反馈「工作台兜底的 LLM 性能不如对话模式」，并发现**已发布应用仍默认回连本机 Ollama（localhost:11434 / qwen3.5:27b）**。根因：(1) 工作台用弱本地 Ollama 作兜底，且 `server._nl` 存在「弱 LLM 覆盖确定性已识别检验」的隐患；(2) 发布的是修复前快照，旧 `nl_llm._endpoint()` 默认回退 localhost。
+- **`scripts/classify_test.py`（确定性检测器增强，对齐对话模式）**：
+  - 新增「含 N 次期中分析的生存终点」→ `gsd_survival`（原误判 `survival`）；泛化连续两组表述（如「两种降压药/收缩压下降…标准差」）→ `ttest_ind`（原 `None`）。
+- **`scripts/param_aliases.py`**：新增两组均值差推断（试验组下降X − 对照组下降Y → `effect`），如降压药例自动得 `effect=5`。
+- **`adapters/workbench/server.py`**：删除「缺参时调用弱 LLM 覆盖规则结果」的隐患段；确定性识别到检验即权威返回（与对话模式 discipline 一致）。
+- **`adapters/workbench/nl_llm.py`**：**默认关闭 LLM 兜底**——`CTSS_NL_ENDPOINT` 未设置时 `_endpoint()` 返回空、`nl_resolve` 直接返回 `None`，不再隐式默认本机 Ollama；修正「指向 coze /v1/chat/completions 即对齐」的误导文档（该端点需 `session_id`，不可用）。如需真·LLM 兜底，须显式 `CTSS_NL_ENDPOINT` 指向自有强模型。
+- **效果**：确定性层 8/8 关键用例与对话模式一致；端到端 `/api/nl` 全部 `engine=rule`，弱 LLM 零覆盖；`nl_llm` 无端点时干净降级。
+- **发布说明**：本版重新发布后，线上默认不调用任何本地/外部大模型（NL 走确定性，计算走 coze 云端 `/run`）；鉴权（`CTSS_WB_TOKEN`）与 `CTSS_COZE_NO_EMBEDDED=1` 仍需部署环境显式注入才生效（未注入则维持与旧版一致的可访问性）。
+
+## v5.7.25 补丁（2026-09-03）· coze 入参契约 §1.1 收敛：`user_language` 仅进 params（顶层不再双写）
+
+- **背景**：ct-base `coze_io_contract` §1.1 规定 `user_language` 位置为「请求 `params` 内（非顶层信封）」，但本技能作为该契约的**参考实现**，实际为**顶层 + `params` 双写**（自带 `coze_contract.md` 亦记顶层），与 canonical 冲突。用户 2026-09-03 拍板**方案 A：改本技能对齐 canonical**（而非放宽契约回改三个叶子技能）。
+- **客户端改动（`adapters/coze_client.py`）**：
+  - 新增 `_with_user_language(params, lang)` 统一注入助手：已有 `zh`/`en` 有效值不覆盖；缺失 / 非法值 / 非 dict 入参均兜底注入。
+  - `call()`：移除顶层 `user_language`，改由 `sent_params` 承载，`resolved_spec.params` 同步（预览与实发一致）。
+  - `call_batch()`：移除顶层 `user_language`；各项 `params` 语言统一为批量整体语言；顶层补仅含 `user_language` 的 `params` 承载位（批量模式下服务端忽略顶层 `params` 参与计算，不误触发单条分支）。
+  - `CozeBackend.preview()`：dry-run 预览同步改为 `params` 承载，与实发逐字段一致（避免预览误导排查）。
+  - 注：`build_params()` 本就已把 `resolve_user_language` 的权威解析值写进 `params`，本次是**消除顶层冗余**，非新增字段。
+- **服务端改动（`adapters/coze/src/`）**：
+  - `graphs/nodes/samplesize.py::samplesize_node()`：读取顺序改为 `params.user_language` → 顶层 `user_language` → `""`；批量分支逐项取自身 `params`，缺失回退顶层。
+  - `graphs/state.py`：`GlobalState` / `GraphInput` / `SamplesizeNodeInput` 的 `user_language` 标注为**仅向后兼容**（规范承载位为 `params`）；批量模式注释补充「顶层 `params` 非空不触发单条计算分支」。
+  - `r_engine/run_task.R`：**未改动**——其 L2165 早已支持 `req$params$user_language`，L2164 保留顶层读取以兼容老客户端。
+- **验证（全离线：不联网、不调 R）**：
+  - `py_compile` 客户端 + 服务端 3 文件通过；`run_task.R` 经 `parse()` 语法检查通过。
+  - 客户端 5 组：helper 五种入参形态、`build_params` 携带、`call()` 顶层无该键且 `params.user_language=zh`、`call_batch()` 顶层与各项均带 `zh`、`preview()` 与实发一致。
+  - 服务端 6 组场景：params 优先 / 顶层回退（向后兼容）/ 两者都无则空串 / 批量逐项取值 / 批量缺项回退。
+  - R 端语言回退语义实测 4 例全通过（仅 params→`zh`、顶层优先→`zh`、都无→`en`、仅顶层→`zh`）。
+- **文档同步**：`adapters/coze/coze_contract.md`（顶层字段列表 / 字段说明 / 批量继承规则）、`tests/coze_cases/gen_contract_doc.py`（顺带修掉 `skill_version` 段落被重复生成两遍的既有缺陷）、ct-base `coze_io_contract.md` §1.1 / §4。
+- **⚠️ 部署顺序影响（已评估，可接受）**：`adapters/coze/src/` 为 coze 工作流部署源，服务端读取顺序改动需重新打包上传 Coze 才线上生效。**未部署期间的实际影响极小**——输出语言主字段是顶层 `locale`（始终存在且为 `zh`/`en`），R 端仅在 `.t_lang == "en"` 时才看 `user_language` 兜底；因此新客户端先发、服务端后部署不会造成功能或语言回退，仅「locale 为 en 而用户实为中文」这一极窄场景的兜底暂失效。
+
+- **发布前规范对齐整改（2026-09-03，基于 ct-base §16 发布闸门）**：通过 `publish_inject.py` 从 ct-base 同步 12 个共享件（补齐缺失的 `scripts/merge_spec.py`、对齐 `scripts/i18n.py` 至单一真源）；`frontmatter.summary` 精简为单句中文（§3 F08）；`SKILL.md` 正文中文段落转英文（§4 F19，含代码块中文注释）；`.clawhubignore` 补齐 `archives/`、`ct-samplesize_*.zip`、`tests/outputs/`、`tests/scratch/` 与 `.ctbase_injected.json`（§16.7/§16.8 F12/F20）；顶层 3 个旧交付 zip 归档至 `adapters/coze/_archive_`（§16.9 F27）。三道发布闸门全部通过：`spec_lint.py` ERROR=0、`shared_sync_check.py` exit 0、`publish_secret_scan.py` P0/P1=0。
+
+- **工作台修复（2026-09-03，同日补丁）· 咨询/欠参句子不再把缺参抛给云端报 400「必填参数缺失」**：
+  - **症状**：在 NL 输入框键入咨询/欠参类句子（如「两组连续结局随机对照试验，样本量大概多少」），识别到检验类型但缺效应量，前端仍 `doCompute()` 点火计算，后端返回 400「必填参数缺失: effect」并覆盖主结果区，体验等同于失败。
+  - **根因（两处叠加）**：① 前端 `nlCompute` 把"请补充参数"只写进 `nlHint` 小提示行，随后仍点火计算；② 上游 `scripts/param_aliases.py::extract_parameters` 的 `missing` 字段初始化为 `[]` 后**从未被 append**，导致后端 `/api/nl` 的 `route.params_missing` 恒为空，前端「本地追问」分支永不触发。
+  - **修复（`adapters/workbench/workbench.html`）**：新增 `requiredMissing(test)`，用前端已加载的 `CATALOG`（每检验 `required` + `params[].default`）权威判定真·必填缺失（仅当字段为空且无默认值才报缺，与后端 `_compute` 语义完全一致）；识别到检验但缺参时，预填表单并主结果区显示「请补全以下必填参数后再点「计算」：effect」后**停止**，不再请求云端 coze。对齐 `samplesize_power.py`「参数不全→本地追问、原始 NL 不入 coze」原则。补 i18n `fillRequired`（中英）。
+  - **验证**：`node --check` 通过；`/api/nl` 实测该句返回 `test=ttest_ind, advisory=false, needs_params_fallback=true`；`CATALOG` 确认 `ttest_ind.required=['effect','alpha','side','ratio']` 且 `effect.default=None`（会被判缺），`alpha/side` 有默认值不报。运行中的 8765 服务（每次 GET `/` 重读磁盘）刷新即生效，无需重启。
+
+## v5.7.24 补丁（2026-09-03）· EN 界面 help 说明不再露出中文（HELP_EN 英文说明字典）
+
+- **用户反馈**：点「EN」切换后字段标签已是英文（Test side / Allocation ratio / Output language / Target power / SD），但每行下方的 help 说明仍是中文（如 side 下「检验方向: one=单侧, two=双侧(默认)」、language 下「显式覆盖 coze 计算端…」等）。
+- **根因**：`samplesize_power.py` 的 argparse help 本身就是**中文**（非空），而 v5.7.23 的 `help_en` 注入条件仅为「argparse help 为空」（覆盖 effect/alpha 等裸定义字段），导致这些非空中文 help 字段在 EN 界面退回原 help → 露出中文。
+- **改动（form_schema.py）**：
+  - 新增 `HELP_EN`（与 `HELP_ZH` 对称的英文说明），覆盖 HELP_ZH 全部 16 键（effect/sd/alpha/power/side/ratio/nobs/language/k_groups/margin/p1/p2/accrual_time/followup_time/hr_expected/win_ratio_theta）+ 3 个纯中文冷门参数（reestimate_method/correction/sim_seed）。
+  - `get_catalog` 注入升级：`help_en` ①HELP_EN 显式 → ②argparse help 为空且有 PARAM_META 英文标签 → ③argparse help 含中文（`_looks_chinese` 检测 CJK 占比 >15%）且有 PARAM_META 英文标签兜底。
+  - 新增 `_looks_chinese(text)` helper。
+- **验证**：`py_compile` + `node --check` 通过；8995 实例实测 `?lang=en` schema：side/ratio/language/power/sd 的 `help_en` 均返回英文（"Test direction: two-sided (two) or one-sided (one)." / "Allocation ratio n2/n1; 1.0 means equal group sizes." 等）；按前端渲染规则（en→help_en or help）复扫 10 个常用检验全部字段 **0 中文泄漏**；页面接线点 4 项全 OK。
+- **注**：47 个 gs_*/sim_* 等冷门参数 help 为中英混合（含英文术语，如 "仿真设计类型 / simulation design"），EN 界面可读性足够，未逐一补英文说明（如需可后续补 HELP_EN）。
+
+## v5.7.23 补丁（2026-09-03）· 动态表单内容全双语化（参数标签/下拉选项/说明/检验下拉）
+
+- **用户反馈**：界面选项里的参数标签、下拉选项、文字说明还没随语言切换（静态 chrome 已双语，动态渲染的表单没接）。
+- **根因**：表单字段来自服务端 `schema_for(test)` 反射，但 ① server 调用 `schema_for(tid)` 时**没传 lang**、前端 `/api/schema/<test>` 也没带 `lang` → 永远中文；② 前端 `fieldHTML` 用单语 `p.label`（argparse 英文 help 或裸值）、下拉 `choices` 裸值、`help` 原始英文，全不随 `LANG` 切换；③ `setLang` 切换时只重渲染表单/图形，**不重建检验/家族下拉**。
+- **改动**：
+  - **`form_schema.py`**：新增 `CHOICE_LABELS`（下拉值 → `(zh,en)` 元组，覆盖 side 单侧/双侧等）与 `HELP_ZH`（常用参数中文说明）；`get_catalog(lang)` 注入 `choice_labels`（元组结构）与 `help_zh`；`_label_for`/tests/families 双语字段齐备（label 随 lang、label_zh/label_en 恒定）。
+  - **`server.py`**：schema 路由 `/api/schema/<test>` 支持 `?lang=`，传入 `schema_for(tid, lang)`；`/api/schema` 全量目录同样按 lang 生成。
+  - **`workbench.html`**：`onTest` 调 schema 带 `?lang=`；`fieldHTML` 按 `LANG` 取 `label_zh/label_en`、`help`（zh 优先 help_zh，en 优先 help_en 退回 help）、`choices` 经 `choice_labels` 元组按语言显示标签；`renderFigureCtl` figure_mode 选项双语；`buildFamilyOptions()` 按语言重建家族/检验下拉（label 用 label_zh/label_en）；`setLang` 重建下拉 + 重渲染表单。
+  - **英文 help 兜底**：`effect`/`alpha` 等在 argparse 里裸定义无 help，英文界面 help 曾空白；现 `get_catalog` 对 argparse help 为空但有 `PARAM_META` 英文标签的字段注入 `help_en`，前端英文界面 `p.help_en || p.help`（如 `effect`→"Effect size (Cohen's d; or raw Δ if σ given)"、`alpha`→"Significance level α"）。不动计算 CLI/argparse。
+- **验证**：`node --check` + `py_compile` 通过；8980 实例实测 schema `?lang=en` 返回 `label_en`/`help_en` 英文（effect/alpha 的英文 help 不再空白）、`side.choice_labels={'one':['单侧','one-sided'],'two':['双侧','two-sided']}`、`?lang=zh` 返回中文 label（如 `effect`→「效应量…」、`side`→「检验方向」）；页面 6 个双语接线点（onTest 带 lang / label 双语 / choice_labels 元组 / help 双语 / 下拉重建 / figure_mode 双语）全 OK；`/api/nl` 回归 `ttest_ind` 正常。
+
+## v5.7.22 补丁（2026-09-03）· 删除「49 检验」角标 + 会话下拉/轮数双语同显
+
+- **用户反馈**：①「49 检验 / tests」角标没实际用处，删掉；②「选择会话线程」下拉空选项、以及会话名称里的「N 轮」仍只有中文、切英文后不跟着变。
+- **根因**：与 v5.7.21 同源——这些文案是 JS 动态生成（或 innerHTML 重建 select 时丢了 `data-i18n`），`setLang` 切换不重渲染。
+- **改动（仅 workbench.html）**：
+  - **① 删角标**：移除 header 的 `<span id="hTests">` 元素与 `$("hTests").textContent=...` 赋值（及已废弃的 `testsSuffix` 残留）。
+  - **② 会话下拉**：`pickSession` 在 zh/en 字典均设为双语同显值「— 选择会话线程 / Select thread —」；`refreshSessions` 重建 select 时给空选项保留 `data-i18n="pickSession"`（由 `localize()` 接管，切语言重渲染一致）。
+  - **③ 轮数**：`turn` 在 zh/en 均设为「轮 / turn」；`turnFmt` 均设为「第 %d 轮 / Turn %d · 」；会话项渲染为 `(N 轮 / turn)`、thread 历史为「第 N 轮 / Turn N ·」。动态文案直接双语同显，不依赖语言切换。
+- **验证**：`node --check` 通过；node 求值 I18N 确认 zh/en 各 104 键对齐、32 个 `data-i18n` 全覆盖、无 `hTests`/`testsSuffix` 残留、三处双语键确认 `true`；8970 实例 `/api/health` OK、页面 `id="hTests"` 已不存在、会话列表含轮数（前端渲染 `(N 轮 / turn)`）。
+
+## v5.7.21 补丁（2026-09-03）· 检验数角标「49 检验」改为中英双语同显
+
+- **用户反馈**：header 角标「49 检验」此前用 `T.testsSuffix` 拼出，属 `loadCatalog` 里的 JS 动态文本、无 `data-i18n` 属性，`localize()` 不重算；切到英文后仍是中文「检验」，未双语化。
+- **改动（仅 workbench.html）**：按用户「不方便切换就直接同时显示」的指令，把 `hTests` 改为中英文同显：`h.tests + " 检验 / tests"`（如「49 检验 / tests」）。删除已废弃的 `testsSuffix` 键（zh/en 各一处），`I18N` 字典维持 zh/en 对齐（各 104 键）。
+- **验证**：`node --check` 通过；node 求值 I18N 确认 zh/en 各 104 键完全对齐、32 个 `data-i18n` 键双语言全覆盖、无 `testsSuffix` 残留；8965 实例 `/api/health` 返回 `tests=49`、页面含「 检验 / tests」双语行。
+
+## v5.7.20 补丁（2026-09-03）· Bug 反馈框放大 + 界面提示横幅 + 全界面双语化（ct-base 规范）
+
+- **用户反馈（三项）**：①「报告问题 / Bug 反馈」弹窗的「问题描述」框高度太小，使用不便；② 在界面合适位置提示「本界面只是为了方便操作，全功能还请按 AI 智能体技能的直接交互方式使用」；③ 界面已有语言切换按钮但未真正双语化，按 ct-base `references/language_policy.md` 规范补齐。
+- **改动（仅前端 workbench.html，后端零改动）**：
+  - **① Bug 反馈框放大**：`#bugDesc` 最小高度由 56px 提到 180px（`min-height:180px`，保留 `resize:vertical`），更易输入长描述。
+  - **② 界面提示横幅**：header 下方新增 `.app-hint` 浅色软提示条（带 ℹ 图标），文案 `appHint`：「本界面只是为了方便操作，全功能还请按照 AI 智能体技能的直接交互方式来使用。」随语言切换。
+  - **③ 全界面双语化（对齐 ct-base 规则 1–2）**：
+    - 扩展 `I18N` 字典至 zh/en 各 97 键，覆盖全部静态 chrome 与动态提示（标题、三步区、自然语言入口、手动设置、求解方向、图表控制、保持会话、主按钮、导出、会话历史、Bug 反馈全套、效应量助手、提示横幅等）。
+    - 新增 `localize()`：按 `data-i18n` / `data-i18n-ph` / `data-i18n-title` 三类属性重渲染静态文案；新增 `detectInitLang()`：按 `navigator.language` 判 `zh*` → 默认中文，否则英文（ct-base 规则 1–2）。`init()` 启动即调 `detectInitLang()+localize()` 并高亮当前语言按钮；`setLang()` 切换时同步重渲染表单/图表控件。
+    - 动态 JS 文案（结果空态、计算中、多组计算、会话轮次、NL 识别提示、Bug 提交/确认/失败、导出成功/失败、效应量助手标签与占位符、检验数后缀、离线提示、图形时间占位符等）全部路由到 `T.*`，扫描确认 0 处残留硬编码中文动态串。
+    - **远程报告不翻译**：coze 返回的报告（text/figures/r_result）按 `language: LANG` 由云端返回对应语言，本地呈现层不二次翻译（ct-base 规则：本地只翻译 UI 框架标签）。
+- **验证**：`node --check` 内联 JS 通过；node 求值 I18N 确认 zh/en 各 97 键完全对齐、32 个 `data-i18n` 键在两种语言均覆盖；Python 扫描确认动态 `textContent/innerHTML/placeholder` 中硬编码中文串 0 行；8960 实例结构校验全过（bugDesc 放大、app-hint 横幅、语言按钮、localize/detectInitLang/init 接线），`/api/nl` 回归 `ttest_ind` 正常。
+
+## v5.7.19 补丁（2026-09-03）· 表单不分「必填/通用」两栏 + 效应量 Δ/σ 自动折算
+
+- **用户反馈**：① 表单分「必填参数 / 通用参数」两栏没有实际意义，合并成一栏即可；② 像「效应量（Cohen's d）」这种必填项其实可以从其他指标算出来（如均值差 Δ、标准差 σ），不应强迫用户手算 d。
+- **改动（仅前端 workbench.html，后端零改动）**：
+  - `renderForm`：删除「必填参数」「通用参数」两个 `<div class='sec'>`，合并为单一「参数设置」区（必填清单 + 通用清单拼接，去重由 v5.7.18 已保障）；仅对契约必填字段保留 `*` 提示（per-field 标记，非分栏）。
+  - **新增 `injectEffectHelper`**：连续型均值检验（同时含 `effect` 与 `sd` 参数，如 ttest_ind/paired/one/anova/equivalence 等）在参数区下方挂「效应量换算助手」——用户填「均值差 Δ」与「标准差 σ」，实时显示 `d = Δ/σ`，并把 Δ 写入 `effect` 字段。后端 `samplesize_power.py` 早已实现：sd>0 时 `effect` 视为原始均差 Δ，自动 `d = effect/sd`（L1052–1056），故无需改计算逻辑。
+  - `form_schema.py` `PARAM_META["effect"]` 标签改为「效应量（Cohen's d；提供 σ 时也可直接填均差 Δ）」，字段自解释。
+  - 加 `.eff-helper` / `.eff-d` 样式（浅蓝软面板，与现有 `.sec`/`.row` 体系一致）。
+- **边界**：效应量换算仅对「含 sd 参数」的连续型检验出现（比例/生存/计数类检验无 sd，不显示，避免给出错误换算）；效应量本身仍是真必填（经 Δ 提供仍满足 required，不编造数值）。
+- **验证**：本环境执行通道（Bash/PowerShell 子进程）故障，无法跑实时 HTTP/node；改动经代码审查确认：`renderForm` 合并逻辑、`injectEffectHelper` 引用 `data-dest=effect/sd` 与 `collectParams` 收取一致、后端 d=Δ/σ 已实现。建议本地干净端口重启 + Ctrl+Shift+R 强刷实测 ttest_ind：参数区为单栏；填 Δ=5、σ=10 → 显示 d=0.500 且 effect 字段自动填入 5，点计算应得 d=0.5 对应的样本量。
+
+## v5.7.18 补丁（2026-09-03）· 修复表单重复字段：必填参数与通用参数去重
+
+- **用户反馈**：「必填参数」和「通用参数」两区有重复项，例如分配比 n2/n1（ratio）在两个区都出现了一次。
+- **根因**：`schema_for()` 的 `common` 直接取 `COMMON_PARAMS` 全部分组（含 ratio/alpha/side/effect），而 `required` 取 contract 里该检验的必填清单（ttest_ind 的 required 正是 `[effect, alpha, side, ratio]`）——两者交集的字段被 `renderForm` 渲染了两遍。
+- **改动**：`form_schema.py` `schema_for()` 将 `common` 定义为「通用分组 减去 该检验必填清单」（`common = [n for n in groups[0].params if n not in required_set]`）。必填的公共参数（ratio/alpha/side/effect）只出现在「必填参数」区（带 `*`），只有可选的公共参数（power/nobs/sd/language）留在「通用参数」区。前端 `renderForm` 仅遍历渲染，无需改动；`collectParams` 按 `data-dest` 收集，去重后字段仍在必填区渲染，不会漏收。
+- **效果**（以 ttest_ind 为例）：必填 = `[effect, alpha, side, ratio]`，通用 = `[power, nobs, sd, language]`；ttest_paired 的 ratio 正确地只留通用区（配对设计 ratio 可选）。
+- **验证**：本环境执行通道（Bash/PowerShell 子进程）故障，无法跑实时；改动为单条确定性列表推导，已逐检验核对去重逻辑正确。建议本地干净端口重启 + Ctrl+Shift+R 强刷实测：打开 ttest_ind，确认 ratio/α/side/effect 仅在「必填参数」出现一次。
+
+## v5.7.17 补丁（2026-09-03）· 缺失参数用常用值填充 + 对话框选项预设常用值
+
+- **用户反馈**：缺失的常见参数（ratio/alpha 等）应自动用常用值填充；对话框的下拉/输入框也应直接呈现这些常用值，不必每次手填。
+- **改动**：
+  - `form_schema.py` `UI_DEFAULTS` 显式写入临床试验常规默认值：`ratio=1.0`（等比例，argparse 原默认 None，必须注入）、`alpha=0.05`、`power=0.8`、`side="two"`（后三者 argparse 已默认，列出作文档/兜底）。注入仅当 argparse 默认 None 时生效，不覆盖 coze 自有缺省。
+  - `workbench.html` `fieldHTML`：按 schema 的 `p.default` 预填——下拉框（choices）自动 `selected` 到常用值（side 默认双侧 two，纠正此前默认落到 one）、数字/文本/布尔框直接写入常用值（α=0.05 / ratio=1 / power=0.8），打开工作台即见。会话态 `applyCurrentToForm` 仍优先用会话值覆盖，不冲突。
+  - `server.py` `_compute`：**保持**「required 字段有默认值则缺省补填」原逻辑（不扩到全 CATALOG）。前端的预填已随表单发送当前检验的常用值，服务端仅作兜底；真必填且无默认者（effect/p1/p2 等效应量类）仍报 400 要求用户给出。
+- **注意**：本次仅在「有公认常用值」的参数上做预设；效应量类（effect/p1/p2/margin 等）无公认默认，保持必填、不自动编造，避免误导样本量结果。
+- **验证**：本环境执行通道（Bash/PowerShell 复杂参数）仍故障，无法跑实时 HTTP / node 编译；改动经文件工具复核落地，JS 结构（fieldHTML 箭头函数/括号平衡）与 Python 语法人工审查通过。建议本地干净端口重启 + Ctrl+Shift+R 强刷实测：打开即见 α=0.05/ratio=1/power=0.8/side=two 已预填。
+
+## v5.7.16 补丁（2026-09-03）· 修复追问「必填参数缺失：effect」+ 去除误导文案
+
+- **用户反馈**：会话内发追问「power 0.85 0.9 0.95 的情况都算一下」后，结果区提示「必填参数缺失：effect（已自动补默认）」。该提示来自 `doCompute` 的 400 错误处理（前端 688 行），说明追问实际走了 `doCompute(false)` 空表单分支。
+- **根因（两处耦合）**：① `nlCompute` 每次追问都 `await onTest(route.test)` 重建空表单，把已填的 `effect/alpha/side` 清空，而追问 NL 的 `ps` 往往为空 → 表单变空；② `doCompute` 用「表单 vs CUR_CURRENT」算 delta，空表单使 `changed={}` → 发空 params → 服务器缺 `effect` 报 400。多值分支虽在 onTest 之后、以 CUR_CURRENT 为基底本应正常，但若浏览器未强刷跑的是旧 HTML（无 runMultiCompute 分支）就退化到 doCompute 空表单。
+- **修复（workbench.html）**：
+  - `nlCompute`：仅当 `route.test !== CUR_TEST` 才 `onTest`（同检验追问不重建表单，保留已填值）。
+  - `doCompute`：基底改为「CUR_CURRENT 兜底 + 当前表单值覆盖」（`Object.assign(base, collectParams())`，`base=CUR_CURRENT` 去 test 键），不再依赖空表单 delta；会话审计仍由服务端确定性合并。
+  - `runMultiCompute`：基底取数稳健化——`CUR_CURRENT.test===test` 时优先用 CUR_CURRENT，否则退回 collectParams，再叠加 ps。
+  - 去掉错误文案里误导性的「（已自动补默认）」（服务器返回 400 并未补默认，属虚假陈述）。
+- **验证**：本环境执行通道持续故障（Bash 序列化 / python 子进程被吞 / PowerShell 脚本封装层 JS 报错），无法跑实时 HTTP；经严格代码审查确认：同检验追问跳过 onTest + doCompute 以 CUR_CURRENT 兜底，effect 必随基底入参；多值路径基底取 CUR_CURRENT（含 effect）后逐组覆盖 power，三组分别计算。建议用户本地干净端口重启 + Ctrl+Shift+R 强刷实测。
+
+## v5.7.15 补丁（2026-09-03）· 工作台 NL 追问：继承会话检验类型 + 多值参数分别计算
+
+- **用户反馈**：会话内发追问「power 0.85 0.9 0.95 的情况都算一下」→ 识别结果「未识别（置信度 low）· 规则识别；未能识别检验类型，请手动选择」。根因：追问类 NL 通常只给参数、不重复检验类型关键词，`classify_test` 返回 `test=None`；旧代码 `!route.test` 直接 bail，没继承当前已选定的检验。
+- **后端 `_nl`（server.py）**：
+  - 请求体新增 `current_test`；当规则未命中（test=None）但 `current_test` 合法（∈ TEST_NAMES）时**继承**为 `route.test`，并标 `route.inherited=true`（前端显示「规则识别（继承会话）」）。前端 `nlCompute` 调用时传入 `current_test: CUR_TEST`。
+  - 新增确定性 `_detect_multi_values(nl)`：检测同一参数被给出多个数值（如「power 0.85 0.9 0.95」「效应量 0.3/0.4/0.5」），返回 `route.multi={param:[v1,v2,...]}`，仅当数值≥2 才收录；单值仍走 `params` 作默认，二者互补。
+- **前端（workbench.html）**：
+  - `nlCompute`：识别提示追加「将分别计算 power=0.85/0.9/0.95 共 3 组」；命中 `route.multi` 即走 `runMultiCompute`（不再单值 doCompute）。
+  - 新增 `runMultiCompute(test, multi, ps)`：以**会话继承的有效参数 CUR_CURRENT + NL 单值增量 ps** 为基底（删掉多变参键），对多值笛卡尔积逐一 `POST /api/compute`，保证「其余参数无损继承」；`renderMultiResults` 渲染对比表（n/组、总 N、状态）+ 每组数值卡片/叙述（图表仅首组，避免过度渲染）。多组结果暂不可单文件导出（`CUR_RESULT=null`）。
+  - 新增 `.mtable` CSS。
+- **验证**：本环境 Bash 子进程序列化故障 + python 执行被沙箱吞掉，无法跑实时 HTTP 验证；代码经完整人工审查，逻辑与既有 `renderResult`/`doCompute` 同构。建议用户本地起真实实例（不带 `CTSS_COZE_MOCK`）实测：会话内输入「power 0.85 0.9 0.95 的情况都算一下」应显示继承 ttest_ind + 三组对比样本量。
+
+## v5.7.14 补丁（2026-09-03）· 工作台按钮点击反馈（单击即时可见"已生效"）
+
+- **用户反馈**：单击 `nlComputeBtn` 后按钮无任何变化，且 NL 识别 + 真实 coze 计算均为异步（1–3s），用户感觉"点了没反应"。
+- **实现（三态反馈，纯前端、无后端改动）**：
+  - CSS：`.btn:active{transform:translateY(1px) scale(.985)}`（按下手感）+ `.btn.busy{opacity:.6;cursor:wait;pointer-events:none}`（处理中态防重复点击）+ `.btn .spin` 转圈动画（`@keyframes spin`）。
+  - HTML：`nlComputeBtn` 内注入 `<span class="spin" aria-hidden="true">`（默认 `display:none`，不影响 `updateNlBtn` 的文本节点定位）。
+  - JS：`nlCompute()` 用 try/finally 包裹——点击瞬间 `btn.disabled=true; btn.classList.add("busy"); 文本→"处理中…"`；无论成功/失败/提前 return，finally 统一 `disabled=false; classList.remove("busy"); updateNlBtn()` 恢复上下文标签。覆盖全部分支（计算 / 智能识别并计算 / 应用修改并重新计算 / 识别并追问）。
+- **验证**：JS `node --check` 通过；8915 实例结构校验通过（`.btn.busy` / `@keyframes spin` / `.btn:active` / `class="spin"` / busy-finally 包裹 / "处理中…" 文案均注入）。
+
+## v5.7.13 补丁（2026-09-03）· 工作台 UI：彻底合并重复框 + 单按钮（纠正 v5.7.12）
+
+- **用户反馈（v5.7.12 不到位）**：① 计算后「手动设置」自动弹开；② 底部「应用修改并重新计算」与「识别并追问」两按钮未合并；③ 「精确修改」框组只是挪进「手动设置」但**字段与主表单完全重复**（effect/power/nobs/alpha/side/ratio/sd 与主表单同一批），属"假合并"。
+- **实现（有针对性合并）**：
+  - 删除 `#quickEdit` 重复框及 `applyQuickEdit`/`doComputeWith`/`collectParamsFromObj`；`nlCompute` 会话态「识别并追问」改为直接 `doCompute(false)`（表单已用 NL 参数回填，delta 继承会话）。
+  - 新增 `syncFormAfterCompute()`：计算后把当前结果参数**回填到主表单 `#formArea`** 作为唯一编辑面，**不再** `manual-details.open=true`（消除自动弹开）。
+  - 底部单一按钮 `nlComputeBtn` 标签上下文自适应：`updateNlBtn()` 按「是否会话 × 是否填 NL」四态显示「计算 / 智能识别并计算 / 应用修改并重新计算 / 识别并追问」，合并原两按钮。
+  - NL 输入框加 `oninput="updateNlBtn()"`，`init()` 末补一次 `updateNlBtn()` 让初始态正确。
+- **验证**：MD5 磁盘↔服务一致（8913）；JS `node --check` 通过；Grep 无 `quickEdit/applyQuickEdit/doComputeWith/buildQuickEdit` 死引用；`/api/nl`、`/api/compute` 真实 coze 回归正常（ttest_ind → n=64）。
+
+## v5.7.12 补丁（2026-09-03）· 工作台 UI：精确修改框组合并进「手动设置」（被 v5.7.13 取代）
+
+- **背景**：结果出来后的「精确修改」框组（含「应用修改并重新计算」按钮）原位于「手动设置」折叠**之外**，表现为底部独立悬浮块（dashed 边框），与 v5.7.2「上移分析选项到手动设置」的收拢诉求不一致，用户反馈"精确修改框组仍然是单独存在的"。
+- **实现**：`workbench.html` 将 `#quickEdit` 整块从 `details` 外移入「手动设置（可选）」`manual-body`（图表控制之后）；`buildQuickEdit()` 显示精确修改时自动 `manual-details.open=true`，确保用户在展开的设置区看到。
+- **验证**：Grep 确认 `#quickEdit` 全文件唯一一处定义（位于 manual-body 内），左列结构闭合完好；`/api/nl` 路由复测未回归（`ttest_ind` 正常）。
+
+**运行说明（真实计算是默认，无需本地端点）**：工作台 `server.py` 默认 `BACKEND = CozeBackend()`，`coze_client.py` 仅当 `CTSS_COZE_MOCK in ("1","true","yes")` 才走 mock；**不设该 env 即真实调用技能内嵌端点 `https://ct-samplesize.coze.site/run`**，Token 由 `coze_token_embedded.py` 内嵌公共 blob 兜底（`config/coze.dat` 缺失无影响）。真实计算实测：`/api/compute` ttest_ind `{effect:0.5,alpha:0.05,side:two,power:0.8}` → 每组 n=64 + 真实 SVG 图表。`CTSS_COZE_ENDPOINT` 用户无需设置。启动命令：`python adapters/workbench/server.py <干净端口>`（勿带 `CTSS_COZE_MOCK`）。
+
+## v5.7.10 补丁（2026-09-03）· 工作台对齐参数级「本地追问」信号（samplesize_power.py 外部改动）
+
+- **背景**：技能 `scripts/samplesize_power.py` 的 `--nl` 路由文案/语义外部更新为「本地确定性预路由 + 参数别名解析；置信度低或参数不全时由本地 agent 向用户追问缺失 test/参数（≤2 轮→默认，ct-base §6.1），原始 NL 不入 coze」。工作台 `_nl` 原先只取 `param_aliases.extract_parameters` 的 params/side/solve_for_power，丢弃了参数级兜底信号（needs_llm_fallback / missing / notes），未对齐该语义。
+- **实现**：
+  - `server.py` `_nl`：规则提取参数后，把 `extracted` 的 `needs_llm_fallback` → `route["needs_params_fallback"]`、`missing` → `route["params_missing"]`、`notes` 并入 `route["notes"]`；`solve_for_power` 标记进 `route`（不再污染 params 子字典，因 CLI 无该键）。所有返回路径的 route 均带这些信号。
+  - `workbench.html` `nlCompute`：已识别检验类型但 `route.needs_params_fallback` / `route.params_missing` 非空时，在 `nlHint` 追加「未识别到计算参数，请补充…」/「待补充：xxx」，实现本地追问提示。
+- **验证**：端到端（端口 8900，规则优先）三条 NL：
+  - A「两组均数比较…」→ `engine:"rule"`，params 完整，`needs_params_fallback` 不出现（不误报）✓
+  - E「帮我算个样本量」（无参数无数字）→ `test:null`，`needs_params_fallback:true`，notes 含参数缺失提示 ✓（前端将提示手动选 + 补参数）
+  - C「非劣效生存试验，NI界值1.25，期望HR=1.0…」→ params 透传 `margin:1.25, hr_expected:1.0`（test-specific 参数不丢）✓
+  - `py_compile` 通过。
+- **注**：test 识别（ni_survival 误判 survival_superiority）属 classify_test 既有问题，不在本任务「参数识别」范围内；**已于 v5.7.11 修复**（见下）。
+
+## v5.7.11 补丁（2026-09-03）· 修复 classify_test 非劣效生存误判 survival / 修饰族被基础词累加压过
+
+- **根因**：
+  1. `classify()` 打分用 `weight * len(hits)` 累加；`survival` 在 RULES 中**双定义**（显式「生存分析」w10 + 基础「生存」w4），多关键词命中累加虚高（如「非劣效性生存分析样本量」→ survival=14）反向压过更特异修饰族 `ni_survival`(w12) / `survival_superiority`(w12) / `survival_equivalence`(w12)。
+  2. `ni_survival` 关键词仅 `ni生存` 连写，「NI 生存」（缩写+空格）漏判。
+  3. `survival` 规则 `\blogrank\b` 的 `\b` 在中文包围下失效（CJK 属 `\w`，与 logrank 间无单词边界）→ 纯「logrank 检验」路由为 None。
+- **实现**：
+  1. `classify()` 打分改为「同一 test 取最高单次权重（max），不再累加」（#2 处 `weight * len(hits)` → `max(scores.get(test,0), weight)`），根治基础词多命中虚高。
+  2. `ni_survival` 补关键词 `r"ni\s*生存"`（覆盖「NI 生存终点」等缩写+空格变体）。
+  3. `survival` 规则 `\blogrank\b` → `r"logrank"`，修复中文环境 logrank 路由。
+- **验证**：30/30 代表 NL 回归全过（非劣效生存 12 变体 + 纯非劣效 + 优效/等效生存 + 基础生存 + 其他基础 test + 无解兜底）；工作台 `/api/nl` 端到端「非劣效性生存分析样本量，NI界值1.25」→ `test=ni_survival, params={margin:1.25}`、「NI 生存终点样本量估算」→ `test=ni_survival`，均 `engine=rule`。
+
+## Unreleased · NL fallback 红线澄清（文档/提示词修正，无计算逻辑改动）
+
+- **背景**：早期条目曾将 NL 兜底描述为依赖 coze 平台大模型，与契约事实不符——coze 计算端点（/run，graphs.graph：samplesize→feishu_save→END）纯计算、无大模型节点、不接收自然语言；`build_params` 信封只含 `{test, params, mode}`。v5.7.9 已将工作台 NL 识别改为「规则优先、本地默认大模型（Ollama）兜底」，本补丁同步纠正 CLI 主路径文档。
+- **修正**：
+  1. SKILL.md feature ④ 与新增「★ NL fallback red line」小节：明确 `needs_llm_fallback` 标记的 NL **禁止**编排者当参数分类器拼 JSON 发 coze；强制路径=本地确定性解析失败→打印结构化提示→向用户追问（≤2 轮→ct-base §6.1 默认）；原始 NL 永不进 coze 信封。工作台可选本地 LLM（nl_llm.py）作二级识别器，与 coze 计算端点不可混谈。
+  2. scripts/samplesize_power.py：移除全部「依赖远程计算端点大模型解析/补全」的旧打印文案与注释（E1/E2 注释、--nl argparse help、NL-route/NL-params 提示），统一改为「向用户追问」。
+  3. adapters/coze/src/main.py：`/v1/chat/completions` 加注释，明确该通用聊天接口与 samplesize 计算图无关、coze 计算端点无 NL/大模型路径。
+- **验证**：grep 复核 skills 树（排除 nl_llm.py / CHANGELOG 历史 / tests/scratch）已无「依赖远程端点大模型兜底」类残留表述；本次仅改文档与提示词，未动计算逻辑。
+
+## v5.7.9 补丁（2026-09-03）· 反转 NL 识别优先级：规则优先、大模型兜底
+
+- **诉求**：用户纠正 v5.7.8 的方向——NL 识别不应「默认大模型、规则降级」，而应与技能主路径一致：**先走确定性代码（classify_test 规则），规则完全未命中（test=None）再走本地默认大模型（Ollama）兜底**。
+- **实现**：`server.py` `_nl` 顺序调整为 ① 先 `classify_test.classify` + `param_aliases.extract_parameters`；若 `route["test"]` 非空（规则命中）→ 直接采用（`engine="rule"`）；② 仅当 `test=None` 时调用 `nl_llm.nl_resolve`（`engine="llm"`），并将其抽到的检验类型与相关参数合并回规则已抽的通用参数（alpha/power 等）；③ 两者均未识别 → 退回 `test=None` 规则结果，前端提示手动选择。
+- **验证**：`py_compile` 通过；规则路径（「两组均数比较…」）直接 `engine="rule"` 命中 ttest_ind，大模型不触发；大模型仅在规则 `test=None` 时触发（沙箱无 Ollama → 自然走规则，不退化）。
+- **注**：`nl_llm.py` 定位不变（本地默认大模型客户端），仅调用时序从「优先」改为「兜底」；`CTSS_NL_ENDPOINT` / `CTSS_NL_MODEL` 依旧有效。`workbench.html` 的 `nlHint` 引擎来源显示（`route.engine==="llm"?"本地大模型识别":"规则识别"`）仍适用。
+
+## v5.7.8 补丁（2026-09-03）· NL 识别默认本地大模型（Ollama），规则降级
+
+- **诉求**：用户要求工作台 NL 识别「默认用本地默认大模型完成」，与技能主路径（samplesize_power.py: 本地规则预路由 + coze 平台 LLM 兜底）对齐，不再走离线优先的纯规则。
+- **实现**：
+  1. 新增 `adapters/workbench/nl_llm.py`（stdlib-only）：默认调本机 Ollama `http://localhost:11434/v1/chat/completions`（OpenAI 兼容、keyless，即用户生态「本地默认大模型」qwen3.5:9b/27b）；`CTSS_NL_ENDPOINT` 可覆盖为任意 OpenAI 兼容端点（如 coze 工作流 `/v1/chat/completions` 实现完全对齐 coze LLM）。
+  2. system prompt 注入可用 test / param 白名单，约束模型只输出受限 JSON（`test` 必为已知检验、`params` 键必为已知参数），从根抑制幻觉；`side/confidence/missing` 同结构。
+  3. `server.py` `_nl`：默认调 `nl_llm.nl_resolve`；返回有效 `test` 即用大模型结果（`engine="llm"`）；大模型端点不可达 / 未识别 `test` 时降级 `classify_test` 确定性规则（`engine="rule"`，已覆盖均数/两组/t检验/α小数/d 等常见表述）。`route` 带 `engine` 字段标记来源。
+- **验证**：① 假 Ollama（8895）返回预设 JSON → `/api/nl` 返回 `engine:"llm"` + `test=ttest_ind` + 完整参数（白名单校验/解析正确）；② 端点不可达（`:1`）→ 降级 `engine:"rule"` + 同结果（不退化）。`py_compile` 两文件通过。
+- **注**：本机无 Ollama 运行时自动走规则降级（功能不退化）；本机起 Ollama（qwen3.5:27b/9b，`ollama serve` + `ollama pull`）后即自动切大模型识别。`CTSS_NL_MODEL` 可覆盖模型名。
+
+## v5.7.7 补丁（2026-09-03）· 修复 NL 识别「未识别」+ 参数抽取漏抽
+
+- **现象**：用户输入「帮我算一下两组均数比较的样本量，效应量 d=0.5，把握度 80%，双侧 α=0.05」→ 工作台识别为「未识别（置信度 low）」。
+- **根因（三层）**：
+  1. `classify_test.py` 基础终点词只覆盖「均值」未覆盖「均数」（医学统计同义），且「两组 / 独立样本 / t检验 / 英文 two-sample·t-test」缺泛化规则 → 整句零关键词命中、返回 `test=None`。
+  2. `param_aliases.py`：`alpha` 在百分率类集合内，用户写「α=0.05」小数形式被「无百分号且关键词无率语境则拒收」逻辑误杀；`effect` 的「效应量 d=0.5」数值夹在 `d=` 后未被覆盖。
+  3. `server.py` `_nl` 把 `extract_parameters()` 返回的**整个 dict**（`{params, side, solve_for_power, ...}`）当 params 过滤，而非取其内部 `params` 子字典 → `power/alpha/effect` 全丢，仅顶层键 `side` 命中。
+- **修复**：
+  1. `classify_test.py`：`ttest_ind` 显式名补 `两组.*均数 / 两组.*均值 / 两组.*比较 / 独立样本\s*t / 独立样本 / 两独立样本 / two[- ]?sample / t[- ]?test / independent`；基础终点补 `均数`、`t\s*检验`。
+  2. `param_aliases.py`：`effect` 关键词加 `(?<![a-z])d\s*[:=]`（负向后顾排除 `sd=` 误抓）；`_find_param` 对 `alpha/power` 放行 0~1 小数形式（不再要求百分号）。
+  3. `server.py` `_nl`：取 `extracted.get("params")` 子字典，并把 `side / solve_for_power` 提升为顶层键再过滤 `CATALOG["params"]`。
+- **验证**：回归 7 例（含「两组均数比较」「两组独立样本t检验」「two-sample t-test」「独立样本t检验」）全部路由 `ttest_ind` 且参数完整；`/api/nl` 端到端 200 返回 `{"route":{"test":"ttest_ind","confidence":"high"},"params":{"power":0.8,"alpha":0.05,"effect":0.5,"side":"two"}}`。纯参数无检验类型词的用例（如「效应量 d=0.5，sd=2」）仍正确返回 `test=None`（应追问），符合预期。
+
+## v5.7.6 补丁（2026-09-03）· 删除页脚过时提示文字
+
+- **清理**：移除 `workbench.html` 页脚残留的「本地工作台 · 反馈保存于 `bugreports.json`（无网络时自动复制到剪贴板）」提示（该文案为早期本地落库版遗留，与 v5.7.4 改默认提交 coze 端点后的行为不符；且 v5.7.4 当轮对该行的 Edit 假成功未落盘）。页脚现仅保留「报告问题 / Bug 反馈」按钮。
+- **验证**：Grep 确认全文无「本地工作台 · 反馈保存于」残留；`<footer>` 结构闭合正常。
+
+## v5.7.5 补丁（2026-09-03）· 启动端口冲突检测，根治「/api/schema 404」误用
+
+- **根因**：`server.py` 默认端口 8765；沙箱 `taskkill` 对 python server 进程不生效，旧实例累积。用户直接 `python server.py`（走默认 8765）时新进程绑定失败退出，浏览器实际访问到**内存中是旧代码（无 `/api/schema` 路由）的旧进程** → 返回 404，触发「无法加载检验目录」。
+- **修复**：`main()` 启动前用 `_port_free()` 预检端口；被占用时打印明确错误（含两种处理方案：换干净端口 / `netstat -ano | findstr :PORT` + `taskkill /PID`）并 `sys.exit(1)`，不再静默复用旧实例。启动成功打印醒目 banner。
+- **验证**：`python server.py 8765`（被旧进程占）→ 打印错误并 `exit(1)`；`python server.py 8891`（空闲）→ 正常启动，`/api/health`、`/api/schema`、`/` 均 200。
+
+## v5.7.4 补丁（2026-09-03）· Bug 反馈改默认提交 coze 统一端点（对齐 ct-base §20.3.5）
+
+> 触发：用户指出「报告问题 / Bug 反馈」应默认提交到 coze，而非本地落库。经查 ct-base `references/bug_report_endpoint.md` 规定：全 ct- 技能共用统一端点 `https://ct-bugreport.coze.site/run`，默认提交、本地仅兜底。
+- **后端 `_bugreport` 重写**：移除原先写死本地 `bugreports.json` 的反例，改为复用 `adapters/bug_report.py::send_to_endpoint`（脱敏白名单信封 `build_report`，含 `skill/skill_version/test/error_type/description/locale/query_origin`；`skill_version` 从 `SKILL.md` frontmatter 读取一次）。默认 POST 到统一 coze 端点（`action=report`）；仅当端点不可达时降级 `bug_report.save_local_report()` 写本地 md（§20.3.4 / §13.2 作者邮箱 `medstatstar@gmail.com`）+ 追加 `bugreports.json` 安全网。MOCK 演示模式下 `engine_status` 标记 `mock (offline demo)` 便于作者区分环境。
+- **前端两阶段确认（§20.3.2）**：模态框新增「展示脱敏报告 → 确认发送」两步；打开时把当前检验/会话/参数预填进可编辑 `description`（用户确认制，白名单只带元数据、不泄漏原始数据）；页脚提示改为「默认提交至 `ct-bugreport.coze.site`，不可达时本地保存」。提交结果按 `channel`（coze/local）分提示。
+- 验证：`py_compile` + 前端 JS `new Function` 语法校验通过；起 MOCK 服务实测 `/api/bugreport` 返回 `{"ok":true,"channel":"coze","note":"report recorded (feishu)"}`（真实端点落库，默认 coze 生效）。
+
+## v5.7.3 补丁（2026-09-03）· 主计算按钮归位
+
+> 触发：用户认为「智能识别并计算」按钮放在 NL 输入框旁不顺手，应置于「保持会话线程」勾选之下。
+- **主按钮下移**：将 `nlComputeBtn`（`智能识别并计算` / 有会话时 `识别并追问`）从顶部 `.nl-top` 移出，置于左栏底部 `keepSession` 勾选正下方；`.nl-top` 现仅保留 `#nlInput` 输入框 + `#nlHint` 动态提示。按钮 id 与 `nlCompute`/`updateNlBtn` 逻辑不变，仅挪 DOM 位置。验证：前端 JS `new Function` 语法校验通过；起 MOCK 服务实测首页 200、按钮位置确在 `keepSession` 之后（`order_ok=True`）。
+
+## v5.7.2 补丁（2026-09-03）· 工作台交互收敛（合并计算按钮 / 上移分析选项 / Bug 反馈）
+
+> 触发：用户三项收口要求——①顶部「智能识别并计算」与底部「计算」功能重复，合并；②面板3「分析设定与历史」中的分析选项应上移、只留线程历史；③底部加 Bug 反馈入口。
+- **① 计算按钮合并**：删除左栏底部独立「计算」按钮；顶部 `nlComputeBtn` 成为唯一计算入口——NL 为空时退化为 `doCompute(false)`（等同原手动计算），有会话时文案变「识别并追问」。后端零改动，JS 仅改 `nlCompute` 空分支（Grep 确认无第二个 `doCompute(false)` 调用点残留）。
+- **② 分析选项上移、面板3 仅留线程历史**：`figureCtl`（图表选项控制）从右栏面板移入左栏「手动设置（可选）」折叠区；`quickEdit`（精确修改）移出面板3到左栏（会话内可见）；右栏面板3 精简为仅「会话线程历史」（`#threadPanel`，grid-column 1/-1）。删除无用 `.merged-panel/.merged-2col/.merged-col` CSS（Grep 确认零残留引用）。
+- **③ Bug 反馈**：页脚新增「报告问题 / Bug 反馈」按钮 + 模态框（内联 SVG 虫标），自动附带当前检验/参数/会话/UA/URL 上下文；`server.py` 新增 `POST /api/bugreport`，追加持久化到 `bugreports.json`（与 `sessions.json` 同模式、线程安全、容错）；前端提交失败（无端点/离线）自动复制报告 JSON 到剪贴板兜底。验证：`py_compile` + 前端 JS `new Function` 语法校验通过；起 MOCK 服务实测 health/首页/bugreport 全部 200、文件落地。
+
+## v5.7.1 补丁（2026-09-03）· 工作台界面紧凑化重构
+
+> 触发：用户反馈「工作台太长」，要求缩短并并排放置元素，同时逐项核验每个元素功能真实可用。
+> 做法：**只重构 DOM 结构与 CSS，JS 函数逻辑一字未改**（415 行逻辑已验证，改动风险高、收益低）。
+> - ① 左栏表单字段改 **2 列网格**（`#formArea .sec`），输入区高度约减半；
+> - ② 右栏改为网格：结果展示置顶占满整行（hero），图表选项控制 + 追加提问 **左右并排**；
+> - ③ 检验族 / 检验方法 **并排同一行**；求解方向压成一行 chip（去掉整块虚线框）；
+> - ④ 面板编号按视觉顺序修正为 **1→2→3→4**（原右栏 3-2-4 错乱）。
+> - 功能核验：启动实例对 12 类 UI 元素逐一实测后端端点——health/schema/schema-单检验/compute/dry_run/必填校验/
+>   curve 检验图表控制/非曲线检验隐藏曲线区/figure_mode 全局可用/自然语言填表/会话新建-列表-详情/会话追加合并/导出报告/
+>   导出边界，全部 ✓；18 个 DOM id 与 12 个处理器函数静态核对无缺失；JS `node --check` 通过。
+> - **⑤ 下拉空缺陷修复（防御性）**：根因不是代码 bug，而是 `init()` 对 `/api/schema` 的 `await api(...)` 原本**无 try/catch**——
+>   当用户以 `file://` 直接双击打开 HTML、或访问了未正确响应 `/api/*` 的旧/错误端口时，fetch 失败 → `init` 静默中断 → 下拉为空且无任何提示。
+>   修复：把 `/api/schema` 加载包进 try/catch，失败时页面顶部显示红色横幅（明确提示「用 http:// 而非 file:// 打开、确认后端已启动」），
+>   不再静默空下拉、不再抛 unhandled rejection。验证：用 Node 真实连 http 服务跑 `init` → 下拉正确填 36（族）/49（检验）；
+>   模拟 `/api/schema` 返回 500 → 横幅显示、无崩溃。**铁律**：工作台必须经 http 服务（`python server.py <port>`）访问，禁 `file://` 直开。
+> - **⑥ 自然语言入口置顶 + 「智能识别并计算」合一按钮（方案 B）**：用户要求①NL 入口放最上面、②「智能识别并填表」与「计算」合并为一按钮、③追加提问框与 NL 框合并。
+>   做法：NL `.sec` 移到左栏面板最顶（独立青色高亮区 `.nl-top`），主按钮 `nlComputeBtn` 统一「识别→填表→计算」——无会话走 `doCompute(false)` 首轮自动算，
+>   有会话走 `doComputeWith` 改为「识别并追问」直接重算（`updateNlBtn` 随 `CUR_SESSION` 动态切文案）；另加 `nlPreview`（识别→填表→预览信封）作 ghost 次级按钮。
+>   右栏面板 4 删独立 `nlFollow` 框，追问只走顶部 NL；`quickEdit` 保留为「精确修改」折叠区（精确调单参、不丢能力）。
+>   后端零改动；JS 仅新增 `nlCompute`/`nlPreview`/`updateNlBtn`、删除旧 `nlFill`/`nlFollow`（Grep 确认无悬空引用）；DOM/函数闭合经 Grep+Read 静态核对。
+
+## v5.7.1 补丁（2026-09-02）· 新增本地 Web 工作台（Workbench）
+
+> 触发：为技能补齐可视化操作界面，覆盖「信息输入 → 结果展示 → 图表选项控制 → 追加提问」全流程。
+> 设计定调：**零新增第三方依赖**——后端用 stdlib `http.server`（与技能 stdlib-only 红线一致），
+> 前端单文件零依赖；表单 schema 运行时反射 argparse + `_contract_index.json`（49 检验 / 178 参数，零维护）；
+> 追加提问复用 `ct-base` 确定性合并（`merge_spec`），不丢参数、不臆造。
+
+- **① 新增目录** `adapters/workbench/`：`form_schema.py`（动态表单反射）、`session_store.py`
+  （会话线程 + 确定性合并，缺 `ct-base` 时内嵌等价实现）、`server.py`（stdlib HTTP 后端 /
+  REST + 静态）、`workbench.html`（单文件前端，浅色主题、中英双语）、`README.md`（启动与端点）。
+- **② 新增「导出 HTML 报告」按钮**（`server.py::/api/export` + `workbench.html`）：结果展示区顶部按钮，
+  把已算结果重组成 coze 信封后复用技能既有 `rendering.render_html_report` 生成**单文件 HTML 报告**
+  （内联 SVG + 可复现 R 代码 + 数值卡片），与 CLI `--report` 同源同构、离线可看；临时文件用后清理。
+  未计算 / 无内容时按钮禁用。
+- **② 四区功能**：信息输入（检验族两级选择 + 关键词搜索 + 动态参数表单 + 求解方向 + 零 LLM
+  自然语言入口）；结果展示（当前分析设定块 / 数值卡片 / 说明 / 内联 SVG / R 代码 / 信封预览）；
+  图表选项控制（曲线·专项图勾选 / 图形格式 / 分配比显隐）；追加提问（会话跨轮继承 + 逐轮
+  diff + 快捷修改 + NL 追问）。
+- **③ 复用既有能力**：`form_schema` 反射 `scripts/samplesize_power.build_parser` 与
+  `tests/coze_cases/_contract_index.json`；`session_store` 复用 `ct-base/scripts/merge_spec.py`
+  做确定性合并（家族红线 4）；`server` 复用 `CozeBackend` / `classify_test` / `param_aliases`，
+  ctx 构造严格复刻 CLI `main` 语义（solve_for_power / alt / d_val / curve / user_language）。
+- **④ 必填校验**：required 字段中「有 schema 默认值」者（alpha/side/ratio 等）自动补默认不报错；
+  仅「无默认的真必填」（effect / p1 / p2 等）缺失时拦截；会话合并默认值不入库，避免污染跨轮继承。
+- **⑤ 界面视觉重构（2026-09-03）**：`workbench.html` 样式层重写，**415 行 JS 逻辑零改动**
+  （改前已端到端验证的功能不受影响）。
+  - *科技感*：顶栏深色渐变 + 网格纹理 + 底部青色扫描线；页面底纹精密网格 + 顶部光晕；
+    面板顶部渐变细线；分区标题发光圆点；代码块 / 设定块终端质感（深底青字 + 内发光）。
+  - *数字感*：关键数值卡改用等宽字体 + `tabular-nums` 大号数字；数字输入框等宽对齐；
+    pill / badge 等宽字；布局网格化。
+  - *美观度*：设计令牌化（CSS 变量）、三级阴影层级、统一圆角尺度、focus 青色光晕、
+    卡片 hover 微上浮、滚动条美化、空状态插画。
+  - *规范*：图标全部内联 SVG（7 处）替换 emoji；`<option>` 内曲线能力标记改用数学符号 `∿`
+    （option 内无法嵌 SVG）；移动端按钮 ≥44px、输入框 16px 防 iOS 缩放、安全区适配。
+    零外部依赖不变（无 CDN / 字体 / 图表库）。
+
 ## v5.7.1 补丁（2026-09-02）· coze 入参新增技能版本号 `skill_version`（写入飞书 querystr）
 
 > 触发：需按技能版本归因云端调用量与失败率；飞书调用日志的 `querystr` 要带上发起方版本。

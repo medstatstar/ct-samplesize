@@ -4,9 +4,11 @@
 i18n.py -- bilingual (EN/ZH) localization for the ct- skill library (shared base layer)
 
 Provides:
-  - is_chinese_os(): detect if the OS locale is Chinese
+  - is_chinese_os(): detect if the OS locale is Chinese (system-level; drives local UI prompts)
   - t(key, **kwargs): translate a message key to the current locale
   - set_lang(locale): manually override the locale (for testing)
+  - detect_text_language(text): content-level detection (zh/en/None) by INPUT TEXT, NOT OS locale
+  - resolve_user_language(query, override): build the coze `user_language` backup param (3-tier priority)
 
 Rules (per ~/.workbuddy/MEMORY.md "双语语言策略"):
   - Default: English
@@ -98,14 +100,16 @@ def _current_lang():
     return "zh" if is_chinese_os() else "en"
 
 
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
 # Content-level language detection / 内容级语言检测（用户【输入文本】，非系统 locale）
-# 以下实现与 ct-base/scripts/i18n.py 保持一致（language_policy.md §"user_language 备用入参"）：
-# 痛点：is_chinese_os()/_current_lang() 只检测【系统语言】，中文系统恒返 zh。当用户在中文系统里
-# 输入【英文 query】时，若按系统 locale 决定 coze 端报告语言会误判为 zh——"中文环境+英文输入"是判定盲区。
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# 痛点：is_chinese_os() / _current_lang() 只检测【系统语言】，中文系统恒返 zh。
+# 当用户在中文系统里输入【英文 query】（如 "BCG vaccine meta analysis"）时，若按系统
+# locale 决定 coze 端报告语言，会误判为 zh —— 这是"中文环境 + 英文输入"的判定盲区。
 # 解决：对【用户输入文本】做内容级检测（含中文→zh，纯英文→en），与系统 locale 解耦。
-# 与 is_chinese_os() 职责分离：本组函数决定"coze 计算端报告/图表语言"，前者决定"本地运行期 UI 提示语言"。
-# ═══════════════════════════════════════════════════════════════
+# 与 is_chinese_os() 职责分离：本组函数决定"coze 计算端报告/图表语言"，前者决定"本地
+# 运行期 UI 提示语言"（仍遵循 language_policy.md 的"默认英文、中文环境自动切中文"）。
 
 import re as _re
 
@@ -160,7 +164,7 @@ def detect_text_language(text):
 def resolve_user_language(query="", override=None):
     """构造 coze 计算端请求用的 `user_language` 备用入参（归一化 zh/en）。
 
-    三级优先级（与 ct-base language_policy.md 一致）：
+    三级优先级：
       1. 显式 `override`（如 `--language en`）—— 最高；
       2. 否则按【输入 query 文本】做内容级检测（中文系统+英文输入→'en'，
          不被系统 locale 误判 zh）；

@@ -1,6 +1,6 @@
 # Security Model — ct-samplesize
 
-> Detail companion to `SKILL.md` §Safety (transparent disclosure). English-only per ct-base §4.
+> Detail companion to `SKILL.md` §Safety (transparent disclosure). English-only.
 
 ## Key guarantees (top 3)
 
@@ -16,9 +16,9 @@
 | **R runs server-side on coze** | All R engine logic (`run_task.R` dispatcher + `ss_*` functions + `adaptive_sim.R`) lives in `adapters/coze/src/r_engine/` (synced to coze; the published package excludes `adapters/coze/`). By default the skill shows the **coze request envelope** (dry-run) / R source on demand (`--show-code` or `CTSS_RETURN_R_CODE`). The legacy local-R dev backend (`adapters/coze/ct_r_lib/local_r_backend.py`) is retained for dev/contribution only — not routed by the v5 `select_backend`, not part of the published skill. |
 | **Output handling** | coze returns a narrative + optional figures (SVG/HTML/PNG). Figures are written to `CTSS_OUTPUT_DIR` (default `./outputs`) and surfaced via `__FIGURE__ <format> <path>` markers; no local path leakage. |
 | **Network access** | The default engine **requires** the coze endpoint (`CTSS_COZE_ENDPOINT`) or `CTSS_COZE_MOCK=1` for demo. The only network touchpoint is the coze POST. R-package install is dev-only (inside `adapters/coze/ct_r_lib/`). The permission manifest declares `network: "optional"`. |
-| **Outbound authorization gate** | Every real outbound request passes `_check_outbound_authorization` (ct-base §5): the public endpoint `https://ct-samplesize.coze.site/run` is author-pre-whitelisted in `config/config.json` `auto_approve_endpoints` (never prompts); any user-custom endpoint triggers a one-time `AUTH-BLOCK` user confirmation before sending (data does **not** leave the machine until confirmed). Payloads are `sanitize()`d (IDs / phones / emails stripped) before POST; errors never echo token/payload. `CTSS_COZE_MOCK=1` is local-only, no gate needed. |
+| **Outbound authorization gate** | Every real outbound request passes `_check_outbound_authorization` (the ct- outbound authorization gate): the public endpoint `https://ct-samplesize.coze.site/run` is author-pre-whitelisted in `config/config.json` `auto_approve_endpoints` (never prompts); any user-custom endpoint triggers a one-time `AUTH-BLOCK` user confirmation before sending (data does **not** leave the machine until confirmed). Payloads are `sanitize()`d (IDs / phones / emails stripped) before POST; errors never echo token/payload. `CTSS_COZE_MOCK=1` is local-only, no gate needed. |
 | **Filesystem** | Writes figures to `CTSS_OUTPUT_DIR` and optional curve PNGs; never reads/writes user data files. |
 
-## User-Uploaded Documents confidentiality (ct-base §6.7.3)
+## User-Uploaded Documents confidentiality
 
 The skill does **not** judge data confidentiality — the document is converted as-is; **only the extracted design parameters** (test, effect, α, power, n …) are ever sent to coze; the raw document md is used **locally for parameter extraction only** and never forwarded. If the user requires data-not-leaving, guide them to keep computation fully local (extract params and compute manually, or use the legacy dev backend `adapters/coze/ct_r_lib/local_r_backend.py`) — never send document content to coze.

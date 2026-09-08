@@ -46,7 +46,7 @@ except Exception:  # pragma: no cover — verify.py always ships alongside
     _verify_run = None
     _verify_fmt = None
 
-# ── E1/E2: 本地确定性 NL 路由 + 参数别名解析（零 LLM，仅作 coze LLM 之前的快速预路由）──
+# ── E1/E2: 本地确定性 NL 路由 + 参数别名解析（零 LLM；解析失败时由本地 agent 向用户追问，原始 NL 不入 coze）──
 # 同目录 import（脚本可直接运行，也兼容从其他 cwd 经 subprocess 调用）
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPT_DIR not in sys.path:
@@ -477,7 +477,7 @@ def build_parser():
     p.add_argument("--nl", default=None,
                    help="自然语言需求（零 LLM 本地确定性解析：自动识别 --test 并提取参数）。"
                         "例：'非劣效生存试验，NI界值1.25，期望HR=1.0，入组12月随访12月'。"
-                        "本地仅做快速预路由；置信度低或参数不全时仍会交由 coze LLM 补全（不静默错参）。")
+                        "本地仅做快速预路由；置信度低或参数不全时打印结构化提示，由本地 agent 向用户追问缺失 test/参数（≤2 轮→默认，ct-base §6.1），原始 NL 不入 coze。")
     p.add_argument("--language", dest="language", choices=["zh", "en"], default=None,
                    help="显式覆盖 coze 计算端报告/图表语言（备用提示）。不传时按 --nl 文本内容自动判定"
                         "（中文系统+英文输入→en，不被系统 locale 误判），再回退系统语言。等价于环境变量 CTSS_LOCALE。")
@@ -971,10 +971,10 @@ def main():
 
     # ═══ E1/E2: 自然语言确定性预路由（零 LLM，仅本地快速预解析）═══
     # 若提供 --nl，先用确定性规则识别 test + 提取参数，结果 write-thru 到 args 作为强信号；
-    # 置信度低 / 参数不全时打印结构化提示（不静默错参、不阻断），剩余交由 coze LLM 补全。
+    # 置信度低 / 参数不全时打印结构化提示（不静默错参、不阻断），由本地 agent 向用户追问缺失项；原始 NL 永不进入 coze 信封。
     if args.nl:
         if not _NL_AVAILABLE:
-            print("# [NL-route] 本地 NL 解析模块不可用，跳过 --nl 预路由，交由 coze LLM 解析")
+            print("# [NL-route] 本地 NL 解析模块不可用，跳过 --nl 预路由；请向用户追问 test/参数，原始 NL 不入 coze")
         else:
             _nl = args.nl
             _cls = _nl_classify(_nl)
@@ -983,11 +983,11 @@ def main():
                 print("# [NL-route] test=%s (confidence=%s, matched=%s)"
                       % (args.test, _cls["confidence"], ",".join(_cls.get("matched", [])) or "-"))
                 if _cls.get("needs_llm_fallback"):
-                    print("# [NL-route] 终点类型置信度低，建议 coze LLM 兜底确认")
+                    print("# [NL-route] 终点类型置信度低，建议向用户追问终点类型（≤2 轮→默认，ct-base §6.1）")
                 for _m in _cls.get("missing", []):
                     print("# [NL-route] 缺关键信息: %s" % _m)
             else:
-                print("# [NL-route] 未能从自然语言识别 test，交由 coze LLM 解析")
+                print("# [NL-route] 未能从自然语言识别 test，请向用户追问终点类型；原始 NL 不入 coze")
             # 参数提取：仅把 NL 中明确给出的参数 write-thru 到 args（不推断、不补默认）
             _pe = _nl_extract(_nl, test=args.test)
             for _k, _v in _pe.get("params", {}).items():
@@ -995,7 +995,7 @@ def main():
                     setattr(args, _k, _v)
             if _pe.get("needs_llm_fallback"):
                 _note = "; ".join(_pe.get("notes", [])) or "参数识别不全"
-                print("# [NL-params] 部分参数需 coze LLM 兜底: " + _note)
+                print("# [NL-params] 部分参数需向用户追问补全: " + _note)
 
     # SECURITY: dry-run is the SAFE DEFAULT. Execution requires an explicit
     # opt-in (--yes / -y) so generated R code is never run silently.

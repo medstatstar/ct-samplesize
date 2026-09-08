@@ -36,11 +36,16 @@ import re
 # 关键词同时匹配中英文（IGNORECASE 对中文无副作用，对英文生效）。
 RULES = [
     # ── 显式 test 名（最高权重，几乎一锤定音）──
-    ("ttest_ind", [r"ttest_ind", r"两样本\s*t", r"独立\s*t", r"平行组.*均值", r"两样本t检验"], 10),
+    ("ttest_ind", [r"ttest_ind", r"两样本\s*t", r"独立\s*t", r"独立样本\s*t", r"独立样本", r"两独立样本", r"平行组.*均值", r"两样本t检验", r"两组.*均数", r"两组.*均值", r"两组.*比较", r"两独立", r"独立两组", r"two[- ]?sample", r"t[- ]?test", r"independent"], 10),
+    # 基础连续终点（低权重兜底，对齐对话模式对泛化表述的推断：
+    # 「两种降压药/收缩压下降…标准差」「血糖/胆固醇」等连续结局 → 两样本 t 检验）
+    ("ttest_ind", [r"收缩压", r"舒张压", r"血糖", r"胆固醇",
+                   r"两组.*(下降|降低|提高|升高|差异|差值|变化).*(标准差|sd)",
+                   r"均数差", r"均值差"], 8),
     ("ttest_paired", [r"ttest_paired", r"配对\s*t", r"配对检验", r"2×2\s*交叉", r"交叉设计", r"paired"], 10),
     ("ttest_one", [r"ttest_one", r"单组\s*t", r"单样本\s*t", r"已知标准", r"one.sample", r"已知均值"], 10),
     ("anova", [r"anova", r"方差分析", r"多组", r"三组以上", r"三组比较", r"k组"], 10),
-    ("proportion_two", [r"proportion_two", r"两比例", r"两率", r"两组率", r"率差", r"两样本率"], 10),
+    ("proportion_two", [r"proportion_two", r"两比例", r"两率", r"两组率", r"率差", r"两样本率", r"卡方", r"卡方检验", r"χ2", r"chi[- ]?square", r"chi[- ]?squared"], 12),
     ("proportion_one", [r"proportion_one", r"单组率", r"单组比例", r"一组率"], 10),
     ("proportion_paired", [r"proportion_paired", r"配对率", r"mcnemar", r"前后率"], 10),
     ("odds_ratio", [r"odds_ratio", r"比值比", r"\bor\b", r"优势比"], 10),
@@ -49,8 +54,8 @@ RULES = [
     ("superiority_margin", [r"superiority_margin", r"优效.*界", r"优效性.*margin"], 10),
     ("equivalence", [r"equivalence", r"等效性", r"等效检验.*均值"], 10),
     ("be_tost", [r"be_tost", r"生物等效", r"bioequivalence", r"tost", r"交叉.*be"], 10),
-    ("survival", [r"\blogrank\b", r"生存分析", r"生存终点", r"风险比.*样本", r"survival"], 10),
-    ("ni_survival", [r"非劣效.*生存", r"ni_survival", r"生存.*非劣", r"ni生存"], 12),
+    ("survival", [r"logrank", r"生存分析", r"生存终点", r"风险比.*样本", r"survival"], 10),
+    ("ni_survival", [r"非劣效.*生存", r"ni_survival", r"生存.*非劣", r"ni\s*生存", r"ni生存"], 12),
     ("survival_equivalence", [r"等效.*生存", r"survival_equivalence", r"生存等效"], 12),
     ("survival_superiority", [r"优效.*生存", r"survival_superiority", r"生存优效"], 12),
     ("survival_exact", [r"survival_exact", r"精确.*生存", r"生存.*精确"], 10),
@@ -76,8 +81,11 @@ RULES = [
     ("mixed_model", [r"mixed_model", r"混合模型", r"重复测量", r"纵向", r"mixed model", r"重复测量.*纵向"], 10),
     ("group_sequential", [r"group_sequential", r"成组序贯", r"期中分析", r"group sequential", r"interim"], 10),
     ("gsd_proportion", [r"成组序贯.*比例", r"gsd_proportion", r"组序贯.*率"], 12),
-    ("gsd_survival", [r"成组序贯.*logrank", r"gsd_survival", r"组序贯.*生存"], 12),
-    ("gsd_hazard", [r"成组序贯.*hr", r"gsd_hazard", r"组序贯.*风险比"], 12),
+    ("gsd_survival", [r"成组序贯.*logrank", r"gsd_survival", r"组序贯.*生存",
+                      r"期中分析.*生存", r"生存.*期中分析", r"interim.*surviv",
+                      r"含.*期中.*生存"], 12),
+    ("gsd_hazard", [r"成组序贯.*hr", r"gsd_hazard", r"组序贯.*风险比",
+                    r"期中分析.*hr", r"hr.*期中分析", r"interim.*hazard"], 12),
     ("gsd_poisson", [r"成组序贯.*poisson", r"gsd_poisson", r"组序贯.*发生率"], 12),
     ("gsd_survival_sim", [r"成组序贯.*模拟", r"gsd_survival_sim", r"组序贯.*蒙特卡洛"], 12),
     ("gsd_hazard_sim", [r"成组序贯.*hr.*模拟", r"gsd_hazard_sim"], 12),
@@ -87,7 +95,7 @@ RULES = [
     ("assurance", [r"assurance", r"贝叶斯保证", r"assurance"], 10),
 
     # ── 基础终点类型（低权重，作为兜底归并）──
-    ("ttest_ind", [r"均值", r"连续变量", r"血压", r"hb[a1]?c", r"评分", r"连续结局"], 4),
+    ("ttest_ind", [r"均值", r"均数", r"t\s*检验", r"连续变量", r"血压", r"hb[a1]?c", r"评分", r"连续结局"], 4),
     ("proportion_two", [r"率", r"比例", r"响应率", r"有效率"], 4),
     ("survival", [r"生存", r"事件", r"时间.*事件", r"无进展", r"总生存", r"pfs", r"os\b"], 4),
     ("poisson", [r"计数", r"发生率", r"率.*时间"], 4),
@@ -141,10 +149,13 @@ def classify(nl, test_hint=None):
         }
 
     # 2) 关键词加权打分（同 test 同义关键词重叠仅计一次）
+    #    同一 test 的得分取「最高单次权重」(max)，而非 weight*命中数 累加——
+    #    避免基础终点词（如 survival 在 RULES 中双定义：显式「生存分析」w10 + 基础「生存」w4）
+    #    多次命中累加虚高，反向压过更特异的修饰族（ni_survival w12 等）。
     for test, keywords, weight in RULES:
         hits = _score_test(keywords, nl)
         if hits:
-            scores[test] = scores.get(test, 0) + weight * len(hits)
+            scores[test] = max(scores.get(test, 0), weight)
             matched_by_test.setdefault(test, []).extend(hits)
 
     if not scores:

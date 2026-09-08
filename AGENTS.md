@@ -1,4 +1,4 @@
-# AGENTS.md — ct-samplesize v5.0.3
+# AGENTS.md — ct-samplesize v5.7.26
 
 ## Overview
 
@@ -62,7 +62,7 @@ Every analysis includes:
 - **Follow OS language setting**: Output language (Chinese or English) follows the OS language setting — Chinese on a Chinese-OS, English otherwise.
 - **Prompt can force-switch**: The user may override the OS-based default anytime via an explicit language request (e.g. "switch to English").
 - **Detection method**: Linux/macOS read `LANG`/`LC_ALL`/`LANGUAGE`; Windows use `Get-Culture`/`Get-WinSystemLocale` or `os` env to check if the language code starts with `zh`; if the `<response_language>` tag specifies a language, follow it.
-- **Docs are English-only (ct-base §4)**: The skill documentation (SKILL.md, AGENTS.md, references, etc.) is English-only. Runtime output for common modules may still be English + Chinese per OS setting; complex/rare modules are English-only.
+- **Docs are English-only**: The skill documentation (SKILL.md, AGENTS.md, references, etc.) is English-only. Runtime output for common modules may still be English + Chinese per OS setting; complex/rare modules are English-only.
 - **Complex/rare modules may be English-only**: e.g. `group_sequential`, `adaptive`, `mixed_model`, `bayesian`, `win_ratio`, `mams`, `vaccine_efficacy` etc.
 - **This policy does not affect code output**: R/Python code is always English, shown per `--show-code`.
 
@@ -79,9 +79,9 @@ Every analysis includes:
 - Rule of thumb for future extensions: any test classifiable along multiple axes (e.g. sequential/adaptive × means/proportion/survival/rate) must be listed under every relevant top-level entry — do NOT hang it on a single node.
 - **Menu structure is now formalized in `references/menu.md`** (primary tree by endpoint + design-family cross-index) and surfaced in SKILL.md `## Quick Menu`. When guiding a user to pick a test, read `references/menu.md` to stay consistent with the canonical classification.
 
-### 8. Triage (ct-base §6.2) — Four-Way Interaction
+### 8. Triage — Four-Way Interaction
 
-Before any user interaction, triage first (ct-base §6.2) into **Simple / Middle / Complex / Vague**, then decide whether / how to show a menu.
+Before any user interaction, triage first into **Simple / Middle / Complex / Vague**, then decide whether / how to show a menu.
 
 |Class|Trigger|Action|
 |:---|:---|:---|

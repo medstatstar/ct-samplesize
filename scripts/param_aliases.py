@@ -47,7 +47,7 @@ _RATE_PARAMS = {"p1", "p2", "auc0", "auc1", "cv", "ve_control", "ve_treatment",
 _PARAM_PATTERNS = [
     ("power", [r"把握度", r"检验效能", r"检验功效", r"power"], False),
     ("alpha", [r"显著性水平", r"一类错误", r"ⅰ类错误", r"α", r"alpha"], False),
-    ("effect", [r"效应量", r"效应大小", r"标准均差", r"cohen\s*d", r"effect\s*size", r"均差", r"均值差"], False),
+    ("effect", [r"效应量", r"效应大小", r"标准均差", r"cohen\s*d", r"effect\s*size", r"均差", r"均值差", r"(?<![a-z])d\s*[:=]"], False),
     ("sd", [r"标准差", r"sd\b", r"标准偏差"], False),
     ("margin", [r"非劣效界值", r"等效界值", r"界值", r"margin"], False),
     ("hazard_ratio", [r"风险比", r"hazard\s*ratio", r"\bhr\b"], False),
@@ -97,8 +97,11 @@ def _find_param(name, keywords, is_rate, nl):
         if _is_rate:
             if pct:
                 val = val / 100.0
+            elif name in ("alpha", "power"):
+                # alpha / power 本就是 0~1 小数（如 α=0.05 / 把握度 0.8），直接接受小数，无需百分号/率语境
+                pass
             elif not any(ch in kw for ch in _RATE_CTX):
-                # 无百分号且关键词无率/比例语境 → 拒收，避免误抓效应量等无关数值
+                # 其余百分率类（率/AUC/变异系数…）无百分号且关键词无率语境 → 拒收，避免误抓效应量等无关数值
                 continue
         return val, m.group(0)
     return None
@@ -151,6 +154,32 @@ def _detect_side(nl):
     return None
 
 
+# ── 两组均值差（效应量 d 的推断）────────────────────────────────────────────
+# 「试验组收缩压下降 15mmHg，对照组下降 10mmHg」→ effect = |15 - 10| = 5。
+# 仅当 NL 同时显式给出「试验组/治疗组」与「对照组」两组的变化数值才推断，
+# 避免把单组描述误当效应量；与对话模式 Agent 的 Δ 推断对齐。
+_MEAN_DIFF_A = re.compile(
+    r"(?:试验组|治疗组|干预组|新药组|处理组)"
+    r".{0,16}?(?:下降|降低|提高|升高|变化|差异|差值|改善)\s*(\d+(?:\.\d+)?)",
+    re.IGNORECASE)
+_MEAN_DIFF_B = re.compile(
+    r"(?:对照组|标准组|安慰剂组|参照组)"
+    r".{0,16}?(?:下降|降低|提高|升高|变化|差异|差值|改善)\s*(\d+(?:\.\d+)?)",
+    re.IGNORECASE)
+
+
+def _detect_mean_diff(nl):
+    """试验组变化 X、对照组变化 Y（均带单位数值）→ effect = |X - Y|；否则 None。"""
+    a = _MEAN_DIFF_A.search(nl)
+    b = _MEAN_DIFF_B.search(nl)
+    if not a or not b:
+        return None
+    try:
+        return abs(float(a.group(1)) - float(b.group(1)))
+    except ValueError:
+        return None
+
+
 # ── 主接口 ────────────────────────────────────────────────────────────────
 def extract_parameters(nl, test=None):
     """从自然语言提取参数，返回结构化 dict（见模块 docstring）。
@@ -174,6 +203,13 @@ def extract_parameters(nl, test=None):
     if side:
         params["side"] = side
         hints += 1
+
+    # 两组均值差 → 效应量（仅当 NL 未显式给 effect 时推断，避免覆盖明确值）
+    if "effect" not in params:
+        mean_diff = _detect_mean_diff(nl)
+        if mean_diff is not None:
+            params["effect"] = mean_diff
+            hints += 1
 
     solve_for_power = _detect_solve_for_power(nl, params)
     if solve_for_power:

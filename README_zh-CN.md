@@ -1,4 +1,4 @@
-# 临床试验样本量与检验效能专家（ct-samplesize）
+# 临床试验样本量专家（ct-samplesize）
 
 - **English guide** → [README.md](https://github.com/medstatstar/ct-samplesize/blob/main/README.md) · **中文指南** → [README_zh-CN.md](https://github.com/medstatstar/ct-samplesize/blob/main/README_zh-CN.md)
 
@@ -211,7 +211,7 @@ A：是。默认跟随操作系统的语言设定给出中文或英文结果；�
 A：可以使用相同的设计框架，但是对原始数据均进行替换（如用模拟的占位数据跑通流程），要求技能输出完整 R 代码，然后自行在本地使用真实数据运行这段代码即可——技能本身只发送设计参数，从不接触你的原始数据。
 
 **Q: 发现结果有误怎么办？怎么上报？**
-A: 本技能遵循 ct-base §20.3 错误报告流程。若您怀疑结果有误（或引擎报错），直接说 **"上报问题" / "report a bug" / "提交错误报告"**。技能在检测到疑似缺陷时（如引擎报错、重试仍失败）也会**主动询问**是否上报——**每会话最多 1 次**，您可随时拒绝。无论哪种方式，助手都会：
+A: 本技能遵循内置的错误报告流程。若您怀疑结果有误（或引擎报错），直接说 **"上报问题" / "report a bug" / "提交错误报告"**。技能在检测到疑似缺陷时（如引擎报错、重试仍失败）也会**主动询问**是否上报——**每会话最多 1 次**，您可随时拒绝。无论哪种方式，助手都会：
 1. **生成一份脱敏报告**（11 键白名单：skill / skill_version / test / error_type / error_code / engine_status / description / locale / query_origin / session_hash / attempts——**不含您的原始输入值或个人数据**，仅 `description` 字段由您把关披露，如所用算法/函数、错误消息原文）；
 2. **展示报告全文供您检视**——可补充问题描述或更正任何内容后再确认；
 3. **经您明确确认后发送**——本会话有 coze 调用则发往统一端点 `https://ct-bugreport.coze.site/run`；纯本地则保存脱敏报告 + 提示邮件联系作者（数据不出域）；
@@ -237,7 +237,7 @@ CLI 命令示例、双向求解、曲线模式、核心公式、系统要求、�
 
 ---
 
-**Version**: v5.1.0 | **License**: MIT | **Authors**: medstatstar, phoe-zip
+**Version**: v5.7.26 | **License**: MIT | **Authors**: medstatstar, phoe-zip
 
 如有功能改进建议、Bug 报告或其他反馈，请直接联系作者：medstatstar@gmail.com（张文彤 / Wintone Zhang）。
 
@@ -245,7 +245,7 @@ CLI 命令示例、双向求解、曲线模式、核心公式、系统要求、�
 
 ## 保密声明
 
-> CT 全系列技能由 20+ 个技能构成，按「输入是否涉密」分为 **A、B 两档**（network / egress / publish 为独立正交属性，详见 ct-base §11），完整覆盖新药临床试验（Clinical Trial）全流程的各方面需求。
+> CT 全系列技能由 20+ 个技能构成，按「输入是否涉密」分为 **A、B 两档**（network / egress / publish 为独立正交属性），完整覆盖新药临床试验（Clinical Trial）全流程的各方面需求。
 >
 > - **A 档（输入非涉密）**：输入为普通数据，可完全本地运行（`network=off`）或对外公开检索（`network=public-retrieval`，如 ct-registry / ct-advisor 等）；不涉及任何保密信息。A 档技能均在 GitHub 公开发布。
 > - **B 档（输入涉密）**：输入含药企需严格保密的临床试验数据 / 方案 / CRF（如 ct-analysis、ct-sdtm、ct-protocol、ct-eligibility 等）；B 档**既能本地处理**（`egress=none`，数据不出域）**也能对外公开检索**（`network=public-retrieval`，如 ct-protocol 调 ct-registry / ct-literature 抓取公开试验设计与文献作参考——仅公开查询词出域）；或需审批出站（`egress=approval-req`，如 ct-eligibility）。但**均不对外公开发布**；涉密输入绝不随包 / 出站；若有定制 / 本地部署需求，欢迎与作者联系。

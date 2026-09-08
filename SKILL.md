@@ -1,12 +1,12 @@
 ---
 slug: ct-samplesize
-displayName: Clinical Trial Sample Size & Power / 临床试验样本量与检验效能专家
+displayName: Clinical Trial Sample Size / 临床试验样本量专家
 name: ct-samplesize
-cn_name: 临床试验样本量与检验效能专家
-version: 5.7.1
+cn_name: 临床试验样本量专家
+version: 5.7.26
 invocable: true
 required_commands: [python]
-summary: 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
+summary: 临床试验样本量与检验效能计算工具，云端 R 计算覆盖 49 种检验并提供出版级 SVG 图形。
 license: MIT
 description: "Sample size and power calculation tool for clinical trial practitioners. No local R install needed — a cloud R compute service covers all 49 test types and returns publication-grade SVG figures. Natural-language driven; full reproducible R code is returned by default; default output in Chinese or English per OS language setting (prompt can force-switch). / 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。"
 triggers:
@@ -31,7 +31,7 @@ permissions:
 
 ---
 
-# Clinical Trial Sample Size & Power
+# Clinical Trial Sample Size
 
 ## Language
 
@@ -51,12 +51,14 @@ This skill provides clinical trial researchers with an easy-to-use, comprehensiv
 | **① Sample size ⇄ Power (bidirectional)** | Solve n given target power, AND solve achievable power given fixed n. `--power` (forward) and `--nobs` (reverse) are mutually exclusive; covers all 49 types. | Sample size fixed, evaluate if power meets target |
 | **② Power curve** | Given a sample-size sequence, batch-compute and plot the **Power curve** (x=sample size, y=power), with a target-power reference line. | Sample-size sensitivity analysis, protocol reporting |
 | **③ Sample-size curve** | Given a power-target sequence, batch-compute and plot the **sample-size curve** (x=target power, y=required n). | Resource planning, feasibility assessment |
-| **④ Deterministic NL pre-route (zero-LLM)** | `--nl "<natural language>"` runs a local zero-LLM deterministic detector that identifies `--test` and extracts params (power 80%→0.8, rate 70%→0.7, "enroll 30"→reverse-solve power, etc.), emitting a strong signal for the coze request; when confidence is low / params incomplete it prints a structured prompt and **never silently mis-params**, handing the rest to the coze LLM. Logic in `scripts/classify_test.py` + `scripts/param_aliases.py`; per-test contract baselines in `tests/coze_cases/` (`tests/coze_cases_regression.py` offline regression), 49-test enumeration in `adapters/coze/coze_contract.md`. | User phrases it colloquially, e.g. "non-inferiority survival trial, NI margin 1.25…" |
+| **④ Deterministic NL pre-route (zero-LLM)** | `--nl "<natural language>"` runs a local zero-LLM deterministic detector that identifies `--test` and extracts params (power 80%→0.8, rate 70%→0.7, "enroll 30"→reverse-solve power, etc.), emitting a strong signal for the coze request; when confidence is low / params incomplete it prints a structured prompt and **never silently mis-params** — the local agent then asks the user for the missing test/params (≤2 rounds, then defaults); **raw NL text is never sent to coze** (the workbench is **deterministic-first** — `classify_test` + `param_aliases`, identical to conversation mode; an optional LLM fallback in `adapters/workbench/nl_llm.py` is enabled only via `CTSS_NL_ENDPOINT` pointing to a strong model and may only propose a test when rules fail — never override a rule-identified test; the coze compute endpoint has no NL/LLM path). Logic in `scripts/classify_test.py` + `scripts/param_aliases.py`; per-test contract baselines in `tests/coze_cases/` (`tests/coze_cases_regression.py` offline regression), 49-test enumeration in `adapters/coze/coze_contract.md`. | User phrases it colloquially, e.g. "non-inferiority survival trial, NI margin 1.25…" |
 
 - ②③ curve mode: list `"20,40,200"` or auto-seq `"20:20:200"` (start:step:stop); overlay multiple effect-size curves for sensitivity (continuous/survival solvers; proportion solvers plot the single p1/p2 series); returns the figure (SVG default per the ct-* uniform figure spec, PNG fallback) **plus the numeric series as machine-readable stats (x/y arrays)**. Full parameters & 49-test examples → `references/cli_examples.md`.
 - **Specialized curve modes (`--effect_seq` / `--dist_plot` / `--power_time_seq` / `--heatmap`, added 2026-08-28):** effect-axis / H0–H1 overlap / follow-up-power / 2-D sensitivity scans for the 9 curve solvers; full parameters & 49-test examples → `references/cli_examples.md`.
 - **★ Default full figure-set (user rule 2026-08-20, expanded 2026-08-28):** when no figure is requested, the R engine auto-attaches the full set for the 9 curve solvers (curves + dist-overlap + heatmap) and the survival follow-up–power curve; each carries a `type` field + bilingual `caption`. Opt out via any explicit figure flag / `--dry-run`. coze emits all figures, stream does not inline — see Figure Output.
 - **★ Default figure for *every* one of the 49 methods (v5.6):** all figure generation moved to the coze side — coze R (`coze_figure_layer.R`) is the primary plotter, `figure_kit.py` is the coze-internal fallback; the local CLI is a **thin client** consuming coze-returned `figures[]` — see [Default Figures (v5.6)](#default-figures-v56) and `references/default_figures.md`. **Zero new R packages** on the coze side.
+
+- **★ NL fallback red line (family red line):** a NL marked `needs_llm_fallback` **must never** let the orchestrator (agent) act as a parameter classifier and hand-assemble a JSON to coze. Mandatory path: local deterministic parse fails → print structured prompt → **ask the user for the missing test/params** (≤2 rounds, then the documented defaults); raw natural-language text is **never** placed into the coze compute envelope (`build_params` only sends `{test, params, mode}`). The workbench is **deterministic-first** (`classify_test` + `param_aliases`, identical to conversation mode); an optional LLM fallback (`adapters/workbench/nl_llm.py`) is enabled only when `CTSS_NL_ENDPOINT` points to a *strong* OpenAI-compatible model and may only **propose** a test when the deterministic rules fail (test=None) — it can **never** override a confidently rule-identified test. The coze compute endpoint (`/run`) has no LLM and accepts no NL — the two must not be conflated.
 
 ---
 
@@ -66,7 +68,7 @@ Before answering, triage the request into the four-level difficulty **Simple / M
 - **Simple** (test already named, params mostly given) → answer directly, **no menu**.
 - **Middle** (single-point but deep — ICH guidance detail, statistical parameter, compliance gray zone, needs 3–4 points) → still answer **directly, no menu** (same path as Simple; mark `difficulty = "middle"` for a richer multi-point answer). When Simple vs Middle is unclear, prefer **Middle**.
 - **Complex** (pick test type / design family / many params) → show the **routing menu** below (**the `## Quick Menu` is for the Complex branch only**).
-- **Vague** ("not sure which test to use") → **bounded grill-me** (branch-by-branch probing), do **not** dump the menu. **Hard cap: ≤3 rounds** (on reaching the cap with the test still undecided, **converge with the accumulated question profile** — pick the best-fit test family and confirm). Each round ask 1–3 focused questions with a recommended default; accumulate confirmed fields into a **question profile**; when the test is locked, **echo a "needs portrait + recommended test + missing params" summary for confirmation** before computing. (This 3-round cap targets locking the test; the global missing-parameter cap is **2 rounds then use defaults** per ct-base AGENTS.md §6.1 — different dimensions, no conflict.)
+- **Vague** ("not sure which test to use") → **bounded grill-me** (branch-by-branch probing), do **not** dump the menu. **Hard cap: ≤3 rounds** (on reaching the cap with the test still undecided, **converge with the accumulated question profile** — pick the best-fit test family and confirm). Each round ask 1–3 focused questions with a recommended default; accumulate confirmed fields into a **question profile**; when the test is locked, **echo a "needs portrait + recommended test + missing params" summary for confirmation** before computing. (This 3-round cap targets locking the test; the global missing-parameter cap is **2 rounds then use defaults** — different dimensions, no conflict.)
 
 **Routing gate (audit follow-up — avoid accidental remote compute):** a **remote coze compute** (data leaves the machine) happens **only** when the user's intent is explicitly a sample-size / power / curve **calculation**. General consulting — "help me figure out my trial design", methodology questions, ICH guidance, "what test should I use" — must be answered **locally without sending anything**, and may use the menu / grill-me flow. Do not fire a coze request on vague or advisory phrasing; ask for the calculation intent first.
 
@@ -74,63 +76,26 @@ Before answering, triage the request into the four-level difficulty **Simple / M
 
 > **Runtime is stateless.** The coze R engine re-supplies `test`+`params` each call and never persists prior fields. Semantic drift (effect/α/power/n silently changing) = highest-risk failure for a stateless remote.
 
-**Hard rules** (full rules → ct-base/references/continuity.md Mode A §5.1; minimal unit = `{test, effect, alpha, power, solve, side, sd}`, `—` = not-yet-known):
+**Hard rules** (full rules below (Cross-turn Continuity); minimal unit = `{test, effect, alpha, power, solve, side, sd}`, `—` = not-yet-known):
 1. **Echo a `## 当前分析设定：` block after every calculation (mandatory):** `## 当前分析设定： test=ttest_ind | effect(d)=0.5 | alpha=0.05 | power=0.8 | solve=n | side=two | sd=1.0 | n=— | ratio=—`. No field omitted (`—` placeholder). `solve=n` solves n given power; `solve=power` reverses; `side=two/one_greater/one_less`.
 2. **On follow-up, change only the changed fields:** read the most recent `## 当前分析设定：` block, override only the changed field, inherit the rest verbatim, then send to coze.
-3. **Deterministic merge (default path, not optional):** every follow-up **MUST run** `merge_spec.py` for a lossless merge, then send the merged spec to coze — never assemble params from LLM memory alone. `echo '{"prev":{...},"cur":{"power":0.9}}' | python scripts/merge_spec.py` (dev: `ct-base/scripts/merge_spec.py`). If `missing_required` is non-empty, clarify first. (The `compute` payload also carries `resolved_spec`, a full snapshot — additive, landed.)
+3. **Deterministic merge (default path, not optional):** every follow-up **MUST run** `merge_spec.py` for a lossless merge, then send the merged spec to coze — never assemble params from LLM memory alone. `echo '{"prev":{...},"cur":{"power":0.9}}' | python scripts/merge_spec.py` (dev: `scripts/merge_spec.py`). If `missing_required` is non-empty, clarify first. (The `compute` payload also carries `resolved_spec`, a full snapshot — additive, landed.)
 
 > Red line: ct-samplesize's coze is a **stateless remote compute**; continuity MUST be solved locally — the remote cannot help unless you actively send history. `merge_spec.py` is the local **deterministic merger** (code-fixed, LLM-executed), not a fragile classifier — upholds family red line 4.
 
-## 批量调用治理（v5.7，必读）
+## Batch-call governance (v5.7, must-read)
 
-> 飞书后台实证：单次分析被拆成 **逐格串行** 调用（4 分 15 秒 54 次），其中约一半是
-> **「单点 + 曲线」成对冗余**、另有 **逐字节重复的整对重跑**。v5.7 服务端已支持
-> `batch` 批量模式 + 请求级幂等缓存（自动去重），但**编排侧必须配合收敛**，否则
-> 冗余调用会照旧发生。以下三条为强制约束：
+> Feishu backend evidence: a single analysis was split into **cell-by-cell serial** calls (54 calls over 4 min 15 s), about half being **"single-point + curve" paired redundancy**, plus **byte-for-byte repeated full re-runs**. v5.7 server now supports `batch` mode + request-level idempotent caching (auto-dedup), but **the orchestration side must converge** — otherwise redundant calls persist. The following three are mandatory constraints:
 
-1. **曲线响应自带单点，禁止「先单点再曲线」**：带 `curve_*_seq` 的响应其 x/y 序列
-   已含所求单点（如 `curve_power_seq` 给出 n 序列与对应 power）。**需要曲线时只发一次
-   带 `curve_*_seq` 的调用，不要先发一次单点 n 再发一次曲线**——这一条即可砍掉约 50% 调用。
-2. **网格/敏感性扫描走 batch，一次性提交**：需要遍历 p1×p2×power 或 nobs×d 网格时，
-   用 `adapters/coze_client.py` 的 `build_batch([(test,args,ctx), ...])` 组装
-   `{"batch":[{test,mode,params}, ...]}`，**一次** POST 到 `/run`。服务端逐项计算并合并
-   飞书日志为单行。绝不要逐格串行打接口。
-3. **只传本 test 生效的字段（精简信封）**：始终走 `build_params`（白名单取自
-   `tests/coze_cases/_contract_index.json` 的 required 字段），**不要**把全家族默认参数
-   （varcorr/sigma/nsim/design/…）一锅炖进 params——既放大飞书日志、也让真实请求与
-   测试样本难以区分。`build_params` 已默认只发 required + alpha + 模式关键参数 + 曲线参数。
+1. **Curve response already carries the single point — forbid "single-point first, then curve":** a response with `curve_*_seq` already contains the requested single point in its x/y series (e.g. `curve_power_seq` returns the n series with corresponding power). **When a curve is needed, fire only ONE call with `curve_*_seq`; do NOT first fire a single-point n call then a curve call** — this alone cuts ~50% of calls.
+2. **Grid / sensitivity scans go through batch, submitted in one shot:** when traversing a p1×p2×power or nobs×d grid, use `adapters/coze_client.py`'s `build_batch([(test,args,ctx), ...])` to assemble `{"batch":[{test,mode,params}, ...]}` and POST it to `/run` **once**. The server computes each item and merges the Feishu log into a single line. Never hit the endpoint cell-by-cell serially.
+3. **Send only fields that apply to this test (trim the envelope):** always use `build_params` (whitelist drawn from the `required` fields in `tests/coze_cases/_contract_index.json`); **do NOT** dump the whole family's default params (varcorr/sigma/nsim/design/…) into params — that bloats the Feishu log and makes real requests indistinguishable from test samples. `build_params` already sends only required + alpha + key mode params + curve params by default.
 
-> 缓存语义：服务端对规范化后的 `(test, params, mode, locale)` 签名做 **10 分钟 TTL 缓存**
-> （`CTSS_CACHE_TTL` 可调）。上层 Agent 对同一网格点的重复规划/重新渲染会被自动去重，
-> 命中缓存直接复用 R 结果（仅重新签名 S3 链接，图形始终可下载）。
+> Cache semantics: the server keeps a **10-minute TTL cache** on the normalized `(test, params, mode, locale)` signature (`CTSS_CACHE_TTL` tunable). Repeated planning/rendering of the same grid point by the upper-layer Agent is auto-deduped; a cache hit reuses the R result directly (only the S3 link is re-signed; figures stay downloadable).
 
-### 本地批量调用（CLI `--batch-file`）
+### Local batch calls (CLI `--batch-file`)
 
-把整张网格/敏感性扫描写进一个 JSON 数组文件，一次提交、本地逐项渲染并合并汇总——对应
-上面的「强制约束 2」。条目只写**差异字段**，其余继承命令行默认值；`ctx.solve_for_power=true`
-表示该项反求 power（自动 `mode=power`）。
-
-```json
-[
-  {"test": "proportion_two", "args": {"p1": 0.3, "p2": 0.5, "power": 0.8, "alpha": 0.05}},
-  {"test": "mean_two",       "args": {"mean1": 10, "mean2": 12, "sd": 3, "power": 0.8, "alpha": 0.05}},
-  {"test": "proportion_two", "args": {"p1": 0.2, "p2": 0.35, "power": 0.85, "alpha": 0.05},
-   "ctx": {"solve_for_power": true}}
-]
-```
-```bash
-# 真实端点（走 coze v5.7 batch，服务端一次算完）
-python samplesize_power.py --batch-file grid.json
-# 仅预览批量请求信封（不发送）
-python samplesize_power.py --batch-file grid.json --dry-run
-# 本地演示（不联网，返回 mock 聚合）
-CTSS_COZE_MOCK=1 python samplesize_power.py --batch-file grid.json
-```
-
-输出：先打印汇总行 `总数 N · 成功 K · 失败 M · tests=[...] · modes=[...] · 状态=...`，
-再逐项渲染（文本 + SVG 落盘 + HTML 报告 + R 代码/数值）；失败项打印服务端错误原因。
-解析路径桩化测试见 `tests/`（`call_batch` 经 `_coze_full` 还原、`compute_batch` 多 spec /
-partial / S3 失败四种路径全覆盖）。
+Write the whole grid / sensitivity scan into a JSON-array file and submit once — the local side renders each item and merges the summary (corresponds to mandatory constraint 2). Each entry lists only **the differing fields**; the rest inherit CLI defaults; `ctx.solve_for_power=true` reverses that item to solve power. CLI examples & output format → `references/cli_examples.md`.
 
 ## Quick Menu — two-level routing (level-1 only here; level-2 in `references/menu.md`)
 
@@ -199,39 +164,21 @@ This skill is **parameter-driven** (design params via CLI / natural language). W
 
 > **Architecture & security:** orchestration (`scripts/samplesize_power.py`) contains **no R code**; `ComputeBackend` (`scripts/compute_backend.py`) routes to `CozeBackend` (default authoritative, server-side R) — the only backend in v5. All R logic lives in the coze-synced, publish-excluded backend directory. Every user string reaching server-side R is validated against a strict allowlist. History → `CHANGELOG.md`.
 
+### Workbench
+
+A local web UI covering the full flow "input → results → figure-option control → follow-up questions": `adapters/workbench/` (backend `server.py` is a stdlib-only `http.server`, frontend `workbench.html` is a single zero-dependency file). The form schema is reflected at runtime from argparse + `_contract_index.json` (49 tests / 178 params, zero-maintenance); follow-up questions reuse the deterministic merge (`merge_spec`). Launch defaults to the **live coze endpoint** (not MOCK — MOCK returns fake results). On Windows hosts with a stale system `HTTP(S)_PROXY` in the registry, strip the proxy env (`HTTPS_PROXY= HTTP_PROXY= ... NO_PROXY=*`) or urllib cannot reach coze. See `adapters/workbench/README.md` for the exact launch command and endpoints.
+
 ---
 
 ## Figure Output & Rendering
 
-Curves and any coze-returned `figures[].svg` follow the **uniform SVG spec shared across the ct-* family** (same pipeline as `meta-analysis`; no bespoke rendering).
-
-- **★ Agent rule (mandatory, 2026-08-28 design revision):** the coze endpoint **emits all figures** (the 9 curve solvers attach curves by default, each with a `type` field); the conversation stream does **NOT** inline individual SVGs — figure presentation is fully delegated to the local `render_html_report`-generated **HTML aggregated report** (stats + all inlined SVGs + R reproduction script, single file openable in a browser). The conversation stream only needs to give the report entry point. To inline per-figure previews, set `CTSS_INLINE_WIDGET=1` to restore the `__SVG_WIDGET__` / `__FIGURE__` inline markers (off by default).
-- **★ No hand-redraw:** present the skill-generated SVG as-is (axes, labels, power reference line included — the fallback generator draws the reference line itself, same `sy()` mapping as data points). Never rebuild curves with ad-hoc coordinates in the reply; charting stays under skill control.
-- Details — figure_mode, render-hint thresholds, fallback ladder, reference line rule, reference implementation → [`references/rendering_rules.md`](references/rendering_rules.md).
+All figures follow the **uniform SVG spec shared across the ct-* family** (same pipeline as `meta-analysis`). The coze endpoint emits all figures; the conversation stream does **NOT** inline SVGs — presentation is delegated to the local HTML aggregated report (`render_html_report`, stats + SVGs + R script). No hand-redraw. Details → [`references/rendering_rules.md`](references/rendering_rules.md). **Default Figures (v5.6):** every method produces ≥1 figure, all on the coze side (8 default kinds, effect ±20 % sensitivity band, zero new R packages). The local allocation-ratio filter (v5.7.1) shows `alloc_suite` only when `--ratio != 1`. Full spec → [`references/default_figures.md`](references/default_figures.md).
 
 ---
 
-## Default Figures (v5.6)
+## Formulas, Reports & Errors
 
-**Every** method produces at least one figure; all generation runs **on the coze side** (coze R `coze_figure_layer.R` primary → coze-internal `figure_kit.py` fallback), and the local CLI is a thin client that only consumes coze-returned `figures[]`. Engine figures come first, defaults are appended; when the engine already returned a power-N curve, the default primary is deduped out. 8 default kinds (`power_n` / `power_events` / `power_n_multi` / `margin_tradeoff` / `icc_sens` / `gs_boundary` / `assurance_n` / secondary `alloc_suite`); curves are pinned exactly through the R anchor via the family-level noncentrality law (z/t/F/X), each with an effect ±20 % sensitivity band. Zero new R packages (`svglite` already tier1); coze platform deployment is manual (user-side), the local `adapters/coze/` mirror stays latest.
-
-> **分配比图形本地过滤（Local render filter，v5.7.1）**：coze 端对 13 个两组方法**始终全量返回** `alloc_suite`（4 张分配比图），coze 侧代码未改动。**本地 HTML 渲染层**（`adapters/rendering.py::render_html_report` 与 `scripts/samplesize_power.py::render_figures` / `_filter_alloc`）据此过滤：仅当请求**显式要求不等比例分配**（`--ratio` 存在且 `!= 1`）时才在本地报告/图形中展示这 4 张图；用户未提及分配比（无 `--ratio`）或明确 1:1 等例（`--ratio = 1`）时，本地报告中隐藏分配比图（coze 仍已返回全量）。过滤依据为图形 caption 含 `alloc` 字样；`hazard_ratio` / `rate_ratio` / `win_ratio_theta` / `sigma_ratio` / `gs_ratio` 及方法名 `odds_ratio` / `risk_ratio` 均为**效应量或设计参数**，不触发该过滤。
-
-> Full spec — layer table, figure-kind table, alloc suite math (Schoenfeld identity, Neyman optimal k*), accuracy, env knobs → [`references/default_figures.md`](references/default_figures.md).
-
----
-
-## Formulas & Reports
-
-**Formulas:** `references/formulas.md` (all 49 types, incl. independent t / Schoenfeld survival / Cox-with-covariate / Cluster DEFF) | **Full functions:** `references/extended_functions.md`
-
----
-
-## Errors
-
-| Error | Fix |
-|:---|:---|
-| coze endpoint not configured / unreachable (coze may surface this as a Chinese or English `error_message`; the user-facing text is auto-localized via the i18n layer, key `error.coze_unreachable`) | Set `CTSS_COZE_ENDPOINT` (real) or `CTSS_COZE_MOCK=1` (demo); v5 has no local compute route (dev: run the legacy backend from the offline dev backend directly) |
+**Formulas:** `references/formulas.md` (all 49 types, incl. independent t / Schoenfeld survival / Cox-with-covariate / Cluster DEFF) | **Full functions:** `references/extended_functions.md` | **Common error:** coze endpoint not configured → set `CTSS_COZE_ENDPOINT` (real) or `CTSS_COZE_MOCK=1` (demo)
 
 ## Bug Reporting
 

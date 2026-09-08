@@ -139,14 +139,20 @@ def _acquire_rate_limit() -> None:
         _LAST_CALL_TS = now
 
 
-try:
-    from coze_token_embedded import (
-        get_token as _embedded_get_token,
-        get_endpoint as _embedded_get_endpoint,
-    )
-except Exception:  # pragma: no cover - 内嵌凭据缺失时退化为仅 env/mock
+# 发布版强制禁用内嵌凭据：设置 CTSS_COZE_NO_EMBEDDED=1 后，即使 coze_token_embedded.py
+# 存在也忽略，强制走 env(CTSS_COZE_TOKEN / CTSS_COZE_ENDPOINT)，避免内嵌密钥随包外泄。
+if os.environ.get("CTSS_COZE_NO_EMBEDDED") in ("1", "true", "yes"):
     _embedded_get_token = None
     _embedded_get_endpoint = None
+else:
+    try:
+        from coze_token_embedded import (
+            get_token as _embedded_get_token,
+            get_endpoint as _embedded_get_endpoint,
+        )
+    except Exception:  # pragma: no cover - 内嵌凭据缺失时退化为仅 env/mock
+        _embedded_get_token = None
+        _embedded_get_endpoint = None
 
 # ---------------------------------------------------------------------------
 # 出站授权确认提示（ct-base language_policy：一次性提示强制走 i18n，禁止硬编码）
@@ -177,7 +183,7 @@ def _compute_query_origin() -> str:
 # 由客户端（技能安装设备）随请求发出，coze 端透传写入飞书日志的 querystr，用于
 # 按技能版本归因调用量与失败率。**可选字段**：老版本技能不发送该字段时，coze 端
 # 按缺省处理（querystr 不含该键），两端均不报错（见 coze_contract.md §2）。
-_SKILL_VERSION_FALLBACK = "5.7.1"
+_SKILL_VERSION_FALLBACK = "5.7.26"
 
 
 def _skill_version() -> str:
@@ -282,6 +288,26 @@ def sanitize(obj):
             obj = pat.sub(repl, obj)
         return obj
     return obj
+
+
+def _with_user_language(params, lang):
+    """把用户语言注入请求 `params`（ct-base coze_io_contract §1.1 唯一承载位）。
+
+    2026-09-03 收敛：此前 `user_language` 既在顶层信封、又在 `params` 内（双写冗余），
+    与 canonical §1.1「位置：请求 params 内（非顶层信封）」不一致。现统一为**仅进
+    params**，顶层信封不再携带该键。
+
+    兼容策略（双向）：
+      - 入参 `params` 已含有效 `user_language`（build_params 总会写入）→ 原样保留，不覆盖；
+      - 缺失/非 zh/en → 用 `lang` 兜底注入；
+      - 服务端（coze）按 `params.user_language` → 顶层 `user_language` 顺序回退读取，
+        老客户端（仍发顶层）不受影响。
+    """
+    out = dict(params) if isinstance(params, dict) else {}
+    cur = out.get("user_language")
+    if cur not in ("zh", "en"):
+        out["user_language"] = lang
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -757,18 +783,20 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
         if token:
             headers["Authorization"] = "Bearer %s" % token
         # 发送前脱敏（剥离 PII）；脱敏副本用于发送，原 params 不受影响
-        # 语言：user_language 为用户机器语言（备用），优先级 user_language > locale > 自动检测；
-        # 两者都发给 coze 端，locale 为主、user_language 为冗余兜底（coze 端容器 LANG 多为英文）。
+        # 语言：locale 为输出语言主字段（顶层信封）；user_language 为备用提示，
+        # 按 ct-base coze_io_contract §1.1 只进请求 params（顶层不再双写）。
+        # 优先级 user_language > locale > 自动检测；coze 端容器 LANG 多为英文，
+        # 服务端自检测不到用户真实语言，故由客户端把解析结果随 params 带出。
         lang = user_language or locale or _current_locale()
+        sent_params = _with_user_language(sanitize(params), lang)
         payload = {
-            "test": test, "params": sanitize(params), "mode": mode,
+            "test": test, "params": sent_params, "mode": mode,
             "return_r_code": return_r_code,
             "locale": lang,
-            "user_language": lang,
             "query_origin": _compute_query_origin(),
             "skill_version": _skill_version(),
             "resolved_spec": resolved_spec or {
-                "test": test, "mode": mode, "params": sanitize(params)
+                "test": test, "mode": mode, "params": sent_params
             },
         }
         try:
@@ -803,7 +831,17 @@ def call_batch(specs, return_r_code=True, user_language=None):
         lang = user_language or _current_locale()
         envelope["return_r_code"] = return_r_code
         envelope["locale"] = lang
-        envelope["user_language"] = lang
+        # ct-base coze_io_contract §1.1：user_language 唯一承载位 = 请求 params（顶层不双写）。
+        # 批量信封顶层无业务 params（各项自带 build_params 产出的 params），故：
+        #   ① 各项 params 的语言统一为批量整体语言 lang（避免逐项 ctx 语言不一致）；
+        #   ② 顶层补仅含 user_language 的 params 承载位 —— 批量模式下服务端忽略顶层
+        #      params 参与计算（state.py 已注明），仅作契约元数据传递，不引发歧义。
+        for item in envelope.get("batch") or []:
+            if isinstance(item, dict):
+                p = dict(item.get("params") or {})
+                p["user_language"] = lang
+                item["params"] = p
+        envelope["params"] = {"user_language": lang}
         envelope["query_origin"] = _compute_query_origin()
         envelope["skill_version"] = _skill_version()
         # batch 内 params 同样脱敏（剥离 PII）
@@ -858,17 +896,20 @@ class CozeBackend(ComputeBackend):
             return None
         mode = "power" if ctx.get("solve_for_power") else "n"
         params = build_params(test, args, ctx)
+        lang = ctx.get("user_language") or _current_locale()
+        # ct-base coze_io_contract §1.1：user_language 只进 params，与 call() 实际出站一致
+        # （dry-run 预览必须逐字段反映真实请求体，否则预览与实发不一致会误导排查）
+        sent_params = _with_user_language(sanitize(params), lang)
         return json.dumps({
             "endpoint": _resolve_endpoint() or "(mock)",
             "test": test,
             "mode": mode,
             "return_r_code": ctx.get("return_r_code", False),
-            "locale": ctx.get("user_language") or _current_locale(),
-            "user_language": ctx.get("user_language") or _current_locale(),
+            "locale": lang,
             "query_origin": _compute_query_origin(),
             "skill_version": _skill_version(),
-            "params": sanitize(params),
-            "resolved_spec": {"test": test, "mode": mode, "params": sanitize(params)},
+            "params": sent_params,
+            "resolved_spec": {"test": test, "mode": mode, "params": sent_params},
         }, ensure_ascii=False, indent=2)
 
     def compute(self, test, args, ctx):

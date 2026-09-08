@@ -9,13 +9,13 @@
 **User query:**
 > "20%35%α=0.05power=0.8"
 
-### Step 1 — Preview R Code (dry-run) — R
+### Step 1 — Run (compute, returns R code) — R
 
 ```bash
 python scripts/samplesize_power.py --test proportion_two --p1 0.35 --p2 0.20 --power 0.8
 ```
 
-Output: R code is displayed (dry-run, NOT executed).
+Output: coze computes and returns the R code plus the result (a request is sent to the coze endpoint; use `--dry-run` to preview the envelope without sending).
 
 ### Step 2 — Execute (after review) —
 

@@ -4,13 +4,13 @@
 > to help a user **pick the right test** when they need to choose. It is a *navigation aid*, not
 > a strict taxonomy — the same test may appear under several headings on purpose.
 >
-> **Triage gate (ct-base §6.2 / SKILL.md 4-level) — read before opening this menu:**
+> **Triage gate (SKILL.md 4-level) — read before opening this menu:**
 > - **Simple** (the user already named a specific test, e.g. "two-sample t-test") → compute directly, **do not show this menu**.
 > - **Middle** (single-point but deep — ICH guidance detail, statistical parameter, compliance gray zone) → same path as Simple: answer **directly, no menu**, with a richer multi-point answer.
-> - **Vague** (the user is unsure what test to use, e.g. "help me figure out the sample size") → enter **bounded grill-me** branch-by-branch probing (**hard cap 3 rounds**, accumulate a question profile, then echo a needs-portrait + recommended test summary); **do not dump this menu**. Clarify the endpoint type, design and goal first, then compute. 注：此 3-round cap 针对「Vague 深挖锁定 test」；参数缺失澄清的全局上限另为 2 轮（ct-base AGENTS.md §6.1），不冲突。
+> - **Vague** (the user is unsure what test to use, e.g. "help me figure out the sample size") → enter **bounded grill-me** branch-by-branch probing (**hard cap 3 rounds**, accumulate a question profile, then echo a needs-portrait + recommended test summary); **do not dump this menu**. Clarify the endpoint type, design and goal first, then compute. 注：此 3-round cap 针对「Vague 深挖锁定 test」；参数缺失澄清的全局上限另为 2 轮（AGENTS.md §6.1），不冲突。
 > - **Complex** (the user knows the design but hesitates between test types / design families) → use this menu **two-level**: first the level-1 categories (SKILL.md Quick Menu), then this file's **Part 1** for the picked category. When they waver on a choice, offer the **③ explain-differences** option (see below) instead of deciding for them.
 >
-> **③ Can't decide?** → say *"explain the differences between these choices in detail"*, and I'll clarify the clinical/statistical meaning before you choose. This entry is required on every Complex routing menu — **wording must match the family standard verbatim** (ct-base `interaction_frameworks.md` §5.2 / `compute_menu.md` §5): 中文 `③ 还拿不准？→ 说「详细解释这些选择之间的差异」，我先讲清临床与统计含义再让你决定`.
+> **③ Can't decide?** → say *"explain the differences between these choices in detail"*, and I'll clarify the clinical/statistical meaning before you choose. This entry is required on every Complex routing menu — **wording must match the family standard verbatim**: 中文 `③ 还拿不准？→ 说「详细解释这些选择之间的差异」，我先讲清临床与统计含义再让你决定`.
 
 **Total: 49 test types** — a primary tree of 6 endpoint categories, plus a design-family cross-index.
 
@@ -185,7 +185,7 @@ who think in design terms rather than endpoint type.
 2. If the user thinks in **design terms** (e.g. "I want a group-sequential trial"), use the **Design-Family Cross-Index** to locate the test, then confirm the endpoint.
 3. The same test may appear in both views — that is intentional (non-exclusive).
 4. After picking a test, see [`cli_examples.md`](cli_examples.md) for the exact CLI flags.
-5. On any hesitation between choices, offer **③ explain-differences** (ct-base §4.4) before deciding.
+5. On any hesitation between choices, offer **③ explain-differences** before deciding.
 
 ---
 
