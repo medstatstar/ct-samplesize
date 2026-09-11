@@ -3,7 +3,7 @@ slug: ct-samplesize
 displayName: Clinical Trial Sample Size / 临床试验样本量专家
 name: ct-samplesize
 cn_name: 临床试验样本量专家
-version: 5.7.26
+version: 5.7.27
 invocable: true
 required_commands: [python]
 summary: 临床试验样本量与检验效能计算工具，云端 R 计算覆盖 49 种检验并提供出版级 SVG 图形。
@@ -92,6 +92,8 @@ Before answering, triage the request into the four-level difficulty **Simple / M
 3. **Send only fields that apply to this test (trim the envelope):** always use `build_params` (whitelist drawn from the `required` fields in `tests/coze_cases/_contract_index.json`); **do NOT** dump the whole family's default params (varcorr/sigma/nsim/design/…) into params — that bloats the Feishu log and makes real requests indistinguishable from test samples. `build_params` already sends only required + alpha + key mode params + curve params by default.
 
 > Cache semantics: the server keeps a **10-minute TTL cache** on the normalized `(test, params, mode, locale)` signature (`CTSS_CACHE_TTL` tunable). Repeated planning/rendering of the same grid point by the upper-layer Agent is auto-deduped; a cache hit reuses the R result directly (only the S3 link is re-signed; figures stay downloadable).
+
+> **Backend-log evidence (2026-09-11, v5.7.27 hardening):** 26 requests / 11 min / single session showed all three violations co-occurring — ① 13 single-point + 13 curve **paired serial calls** (curve already contains the single point → ~50% of calls wasted); ② every request carried **~135 params (2.8 KB)** while only 6 were consumed (orchestrator bypassed `build_params` and hand-assembled the full-family argparse dump — a red-line violation); ③ the same 8-point grid `0.6:0.05:0.95` recomputed 5× (38% of curve calls) because noise keys defeat the TTL-cache signature. The client now enforces an **outbound envelope guard** (`_trim_bloated_params`): params far exceeding the test's contract whitelist are trimmed to `required ∪` generic/curve keys with a stderr warning — but the guard is a safety net, NOT permission to bypass `build_params`. Orchestration-side discipline (constraints 1–3 above) remains mandatory.
 
 ### Local batch calls (CLI `--batch-file`)
 

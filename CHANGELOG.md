@@ -1,5 +1,15 @@
 # Changelog / 版本历史
 
+## v5.7.27 补丁（2026-09-11）· 出站信封守卫 + 版本正则修复（后端日志实证驱动）
+
+- **背景**：后端日志（2026-09-11 11 分钟窗口、单会话 26 条请求）实证三类结构性冗余：① 「单点+曲线」成对串行（13:13，~50% 请求可省）；② 每条请求 ~135 参数 / 2.8KB（仅 6 个被消费）——编排 agent **绕过 `build_params` 手拼全家族 argparse 默认值信封**（违反 v5.7 约束 3 红线）；③ 同 8 点网格重复计算 5 次（占曲线请求 38%）——噪声键破坏服务端 TTL 缓存签名。
+- **`adapters/coze_client.py`**：
+  - **新增出站信封守卫 `_trim_bloated_params(test, params)`**：params 键数显著超过该 test 契约白名单（`required`，阈值 `max(30, len(required)+15)`）时判定为过肥信封，裁剪至 `required ∪` 通用/模式键（alpha/power/nobs/side/alt/d_val/solve_for_power/user_language）∪ curve_* 协议键，stderr 告警并保底回补模式关键参数。`call()` / `call_batch()`（经 `build_batch`）/ `preview()` 三处出站路径统一施加——无论调用方如何拼装，**135 参数级信封从此物理上无法出站**。正常 CLI / workbench 路径（build_params 产物 ~10-20 键）零影响。
+  - **修复 `_skill_version()` 正则损坏（P0）**：`^version://s*([0-9][//w.//-]*)`（反斜杠丢失、永不匹配，版本号一直靠 `_SKILL_VERSION_FALLBACK` 常量撑着）→ 修正为 `^version:\s*([0-9][\w.\-]*)`，恢复 SKILL.md frontmatter 单一事实来源。此损坏会导致**升版后服务端仍归因到旧 fallback 版本号**（版本漂移静默发生）。
+- **验证（全离线）**：正常路径 10 键 → 守卫后不变；模拟 36 键过肥信封 → 裁剪至 10 键（保留 p1/p2/alpha/power/ratio/side，剔除 auc0/win_ratio_theta/junk）；`py_compile` 通过；`_skill_version()` 从 SKILL.md 读到 5.7.27。
+- **编排侧（文档强化，`SKILL.md` Batch-call governance）**：补后端日志实证段——曲线响应已含单点（禁止先单点后曲线）、`build_params` 白名单强制、噪声键破坏缓存签名；明确守卫是安全网而非绕过许可。
+- **遗留（服务端，需用户随 coze 部署节奏处理，客户端无依赖）**：① 同网格近似参数模糊缓存（38% 曲线请求可命中）；② 飞书日志 87% 空白行写入/导出修复。详见 `references/backend_optimization_2026-09-11.md`。
+
 ## v5.7.26 补丁（2026-09-04）· 工作台 NL 兜底与发布安全收敛
 
 - **背景**：用户反馈「工作台兜底的 LLM 性能不如对话模式」，并发现**已发布应用仍默认回连本机 Ollama（localhost:11434 / qwen3.5:27b）**。根因：(1) 工作台用弱本地 Ollama 作兜底，且 `server._nl` 存在「弱 LLM 覆盖确定性已识别检验」的隐患；(2) 发布的是修复前快照，旧 `nl_llm._endpoint()` 默认回退 localhost。

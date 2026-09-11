@@ -183,7 +183,7 @@ def _compute_query_origin() -> str:
 # 由客户端（技能安装设备）随请求发出，coze 端透传写入飞书日志的 querystr，用于
 # 按技能版本归因调用量与失败率。**可选字段**：老版本技能不发送该字段时，coze 端
 # 按缺省处理（querystr 不含该键），两端均不报错（见 coze_contract.md §2）。
-_SKILL_VERSION_FALLBACK = "5.7.26"
+_SKILL_VERSION_FALLBACK = "5.7.27"
 
 
 def _skill_version() -> str:
@@ -196,7 +196,7 @@ def _skill_version() -> str:
     try:
         skill_md = Path(__file__).resolve().parent.parent / "SKILL.md"
         head = skill_md.read_text(encoding="utf-8")[:4000]
-        m = re.search(r"^version://s*([0-9][//w.//-]*)", head, re.M)
+        m = re.search(r"^version:\s*([0-9][\w.\-]*)", head, re.M)
         if m:
             return m.group(1)
     except Exception:  # pragma: no cover - 文件缺失/编码异常时静默回退
@@ -464,10 +464,55 @@ def build_batch(specs):
         test = spec[0]
         args = spec[1]
         ctx = spec[2] if len(spec) > 2 else {}
-        params = build_params(test, args, ctx or {})
+        params = _trim_bloated_params(test, build_params(test, args, ctx or {}))
         mode = "power" if (ctx or {}).get("solve_for_power") else "n"
         items.append({"test": test, "mode": mode, "params": params})
     return {"batch": items}
+
+
+# ---------------------------------------------------------------------------
+# 出站信封守卫（v5.7.27 · 2026-09-11 后端日志实证驱动）
+# ---------------------------------------------------------------------------
+# 2026-09-11 后端日志（26 条请求）实证：每条请求平均携带 135 个参数（2.8KB），
+# 而真正被消费的仅 6 个 —— 调用方（编排 agent）绕过 build_params 手拼了全家族
+# argparse 默认值信封（auc0/cv/design/n_doses/win_ratio_theta/...），导致：
+#   ① 飞书日志「全参数扫描」假象，真实请求与测试样本不可区分；
+#   ② (test, params, mode, locale) 归一化签名含大量噪声键 → 服务端 10min TTL
+#      幂等缓存几乎永不命中（同网格曲线重复计算占曲线请求 38%）。
+# 守卫策略：params 键数显著超过该 test 契约白名单（required）时，判定为疑似
+# 绕过 build_params 的过肥信封，裁剪至 required ∪ 通用/曲线键，stderr 告警。
+# 正常 CLI / workbench 路径（build_params 产出 ~10-20 键）完全不受影响。
+_ALWAYS_ALLOWED_PARAMS = frozenset({
+    # 通用模式参数（build_params 派生量 + 求解关键参数）
+    "alpha", "power", "nobs", "solve_for_power", "alt", "d_val", "side",
+    "user_language",
+    # curve_* 协议键（曲线 / 图形开关）
+    "curve_n_seq", "curve_power_seq", "curve_effects", "curve_effect_seq",
+    "plot_dist", "curve_power_time_seq", "curve_heatmap",
+})
+
+
+def _trim_bloated_params(test, params):
+    """出站信封守卫：裁剪疑似绕过 build_params 的过肥 params（详情见上方块注释）。"""
+    if not isinstance(params, dict):
+        return params
+    required = _load_contract_required(test)
+    if not required:
+        return params  # 契约未登记 → 无法判定，放行（不裁剪）
+    limit = max(30, len(required) + 15)
+    if len(params) <= limit:
+        return params
+    trimmed = {k: v for k, v in params.items()
+               if k in required or k in _ALWAYS_ALLOWED_PARAMS}
+    # 保底回补：模式关键参数任一缺失则计算必然失败，从原 params 回补
+    for k in ("alpha", "power", "nobs"):
+        if k not in trimmed and k in params:
+            trimmed[k] = params[k]
+    sys.stderr.write(
+        "[ct-samplesize][guard] 检测到过肥请求信封：params %d 键 → 裁剪至 %d 键"
+        "（疑似绕过 build_params 手拼全家族默认值；契约白名单=%s）\n"
+        % (len(params), len(trimmed), ",".join(sorted(required))))
+    return trimmed
 
 
 def _fill_external_svgs(parsed, timeout=30):
@@ -788,6 +833,8 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
         # 优先级 user_language > locale > 自动检测；coze 端容器 LANG 多为英文，
         # 服务端自检测不到用户真实语言，故由客户端把解析结果随 params 带出。
         lang = user_language or locale or _current_locale()
+        # 出站信封守卫：裁剪疑似绕过 build_params 的过肥 params（v5.7.27）
+        params = _trim_bloated_params(test, params)
         sent_params = _with_user_language(sanitize(params), lang)
         payload = {
             "test": test, "params": sent_params, "mode": mode,
@@ -895,7 +942,7 @@ class CozeBackend(ComputeBackend):
         if not (ctx.get("dry_run") or ctx.get("show_code")):
             return None
         mode = "power" if ctx.get("solve_for_power") else "n"
-        params = build_params(test, args, ctx)
+        params = _trim_bloated_params(test, build_params(test, args, ctx))
         lang = ctx.get("user_language") or _current_locale()
         # ct-base coze_io_contract §1.1：user_language 只进 params，与 call() 实际出站一致
         # （dry-run 预览必须逐字段反映真实请求体，否则预览与实发不一致会误导排查）
