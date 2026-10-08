@@ -6,7 +6,7 @@ cn_name: 临床试验样本量专家
 version: 5.7.27
 invocable: true
 required_commands: [python]
-summary: 临床试验样本量与检验效能计算工具，云端 R 计算覆盖 49 种检验并提供出版级 SVG 图形。
+summary: 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
 license: MIT
 description: "Sample size and power calculation tool for clinical trial practitioners. No local R install needed — a cloud R compute service covers all 49 test types and returns publication-grade SVG figures. Natural-language driven; full reproducible R code is returned by default; default output in Chinese or English per OS language setting (prompt can force-switch). / 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 49 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。"
 triggers:
@@ -33,6 +33,22 @@ permissions:
 
 # Clinical Trial Sample Size
 
+## Published Application
+
+| Item | Value |
+|---|---|
+| Share link | `https://ct-samplesize.app.workbuddy.host/` |
+| appId | `wbapp_9K1dei1PydVQ66YmawCD3C` |
+| domainPrefix | `ct-samplesize` |
+| Deploy metadata | `adapters/workbench/app.config.json` |
+| Deployed as | Static site (`python -m http.server $PORT --bind 0.0.0.0`) |
+| Payload | `WorkBuddy/2026-09-14-14-39-40/deploy_ctss/static/index.html` |
+
+> **Re-publish rule**: always overwrite with the existing `appId` — the link must stay
+> `https://ct-samplesize.app.workbuddy.host/`. Never `createNewApp`. After deploy, assert the returned
+> `shareLink` equals the expected URL (see ct-base §13.5 dirty-binding red line). Last republished
+> 2026-09-26 (feedback two-stage fix).
+
 ## Language
 
 - **English guide** → [README.md](https://github.com/medstatstar/ct-samplesize/blob/main/README.md) · **中文指南** → [README_zh-CN.md](https://github.com/medstatstar/ct-samplesize/blob/main/README_zh-CN.md)
@@ -51,14 +67,11 @@ This skill provides clinical trial researchers with an easy-to-use, comprehensiv
 | **① Sample size ⇄ Power (bidirectional)** | Solve n given target power, AND solve achievable power given fixed n. `--power` (forward) and `--nobs` (reverse) are mutually exclusive; covers all 49 types. | Sample size fixed, evaluate if power meets target |
 | **② Power curve** | Given a sample-size sequence, batch-compute and plot the **Power curve** (x=sample size, y=power), with a target-power reference line. | Sample-size sensitivity analysis, protocol reporting |
 | **③ Sample-size curve** | Given a power-target sequence, batch-compute and plot the **sample-size curve** (x=target power, y=required n). | Resource planning, feasibility assessment |
-| **④ Deterministic NL pre-route (zero-LLM)** | `--nl "<natural language>"` runs a local zero-LLM deterministic detector that identifies `--test` and extracts params (power 80%→0.8, rate 70%→0.7, "enroll 30"→reverse-solve power, etc.), emitting a strong signal for the coze request; when confidence is low / params incomplete it prints a structured prompt and **never silently mis-params** — the local agent then asks the user for the missing test/params (≤2 rounds, then defaults); **raw NL text is never sent to coze** (the workbench is **deterministic-first** — `classify_test` + `param_aliases`, identical to conversation mode; an optional LLM fallback in `adapters/workbench/nl_llm.py` is enabled only via `CTSS_NL_ENDPOINT` pointing to a strong model and may only propose a test when rules fail — never override a rule-identified test; the coze compute endpoint has no NL/LLM path). Logic in `scripts/classify_test.py` + `scripts/param_aliases.py`; per-test contract baselines in `tests/coze_cases/` (`tests/coze_cases_regression.py` offline regression), 49-test enumeration in `adapters/coze/coze_contract.md`. | User phrases it colloquially, e.g. "non-inferiority survival trial, NI margin 1.25…" |
+| **④ Deterministic NL pre-route (zero-LLM)** | `--nl "<natural language>"` runs a local zero-LLM deterministic detector that identifies `--test` and extracts params (power 80%→0.8, rate 70%→0.7, "enroll 30"→reverse-solve power, etc.), emitting a strong signal for the coze request; when confidence is low / params incomplete it prints a structured prompt and **never silently mis-params** — the local agent then asks the user for the missing test/params (≤2 rounds, then defaults); **raw NL text is never sent to coze** (the workbench is **deterministic-first** — `classify_test` + `param_aliases`, identical to conversation mode; the LLM fallback in `adapters/workbench/nl_llm.py` defaults to the family backend model LongCat-2.0 per ct-base §12 (key via `load_llm_key()`: `LONGCAT_API_KEY` env > obfuscated `config/llm_key.py`; `CTSS_NL_ENDPOINT` overrides to any OpenAI-compatible model) and may only propose a test when rules fail — never override a rule-identified test; the coze compute endpoint has no NL/LLM path). Logic in `scripts/classify_test.py` + `scripts/param_aliases.py`; per-test contract baselines in `tests/coze_cases/` (`tests/coze_cases_regression.py` offline regression), 49-test enumeration in `adapters/coze/coze_contract.md`. | User phrases it colloquially, e.g. "non-inferiority survival trial, NI margin 1.25…" |
 
 - ②③ curve mode: list `"20,40,200"` or auto-seq `"20:20:200"` (start:step:stop); overlay multiple effect-size curves for sensitivity (continuous/survival solvers; proportion solvers plot the single p1/p2 series); returns the figure (SVG default per the ct-* uniform figure spec, PNG fallback) **plus the numeric series as machine-readable stats (x/y arrays)**. Full parameters & 49-test examples → `references/cli_examples.md`.
 - **Specialized curve modes (`--effect_seq` / `--dist_plot` / `--power_time_seq` / `--heatmap`, added 2026-08-28):** effect-axis / H0–H1 overlap / follow-up-power / 2-D sensitivity scans for the 9 curve solvers; full parameters & 49-test examples → `references/cli_examples.md`.
-- **★ Default full figure-set (user rule 2026-08-20, expanded 2026-08-28):** when no figure is requested, the R engine auto-attaches the full set for the 9 curve solvers (curves + dist-overlap + heatmap) and the survival follow-up–power curve; each carries a `type` field + bilingual `caption`. Opt out via any explicit figure flag / `--dry-run`. coze emits all figures, stream does not inline — see Figure Output.
-- **★ Default figure for *every* one of the 49 methods (v5.6):** all figure generation moved to the coze side — coze R (`coze_figure_layer.R`) is the primary plotter, `figure_kit.py` is the coze-internal fallback; the local CLI is a **thin client** consuming coze-returned `figures[]` — see [Default Figures (v5.6)](#default-figures-v56) and `references/default_figures.md`. **Zero new R packages** on the coze side.
-
-- **★ NL fallback red line (family red line):** a NL marked `needs_llm_fallback` **must never** let the orchestrator (agent) act as a parameter classifier and hand-assemble a JSON to coze. Mandatory path: local deterministic parse fails → print structured prompt → **ask the user for the missing test/params** (≤2 rounds, then the documented defaults); raw natural-language text is **never** placed into the coze compute envelope (`build_params` only sends `{test, params, mode}`). The workbench is **deterministic-first** (`classify_test` + `param_aliases`, identical to conversation mode); an optional LLM fallback (`adapters/workbench/nl_llm.py`) is enabled only when `CTSS_NL_ENDPOINT` points to a *strong* OpenAI-compatible model and may only **propose** a test when the deterministic rules fail (test=None) — it can **never** override a confidently rule-identified test. The coze compute endpoint (`/run`) has no LLM and accepts no NL — the two must not be conflated.
+- **★ Default figures (v5.6 + 2026-08-28):** when no figure is requested, the R engine auto-attaches the full set for the 9 curve solvers (curves + dist-overlap + heatmap) and the survival follow-up–power curve (`type` field + bilingual `caption`); all figure generation moved to the coze side — coze R (`coze_figure_layer.R`) is the primary plotter, `figure_kit.py` the coze-internal fallback, the local CLI a **thin client** consuming coze-returned `figures[]`. **Zero new R packages**. Opt out via any explicit figure flag / `--dry-run`; see [Default Figures (v5.6)](#default-figures-v56) and `references/default_figures.md`.
 
 ---
 
@@ -84,20 +97,7 @@ Before answering, triage the request into the four-level difficulty **Simple / M
 > Red line: ct-samplesize's coze is a **stateless remote compute**; continuity MUST be solved locally — the remote cannot help unless you actively send history. `merge_spec.py` is the local **deterministic merger** (code-fixed, LLM-executed), not a fragile classifier — upholds family red line 4.
 
 ## Batch-call governance (v5.7, must-read)
-
-> Feishu backend evidence: a single analysis was split into **cell-by-cell serial** calls (54 calls over 4 min 15 s), about half being **"single-point + curve" paired redundancy**, plus **byte-for-byte repeated full re-runs**. v5.7 server now supports `batch` mode + request-level idempotent caching (auto-dedup), but **the orchestration side must converge** — otherwise redundant calls persist. The following three are mandatory constraints:
-
-1. **Curve response already carries the single point — forbid "single-point first, then curve":** a response with `curve_*_seq` already contains the requested single point in its x/y series (e.g. `curve_power_seq` returns the n series with corresponding power). **When a curve is needed, fire only ONE call with `curve_*_seq`; do NOT first fire a single-point n call then a curve call** — this alone cuts ~50% of calls.
-2. **Grid / sensitivity scans go through batch, submitted in one shot:** when traversing a p1×p2×power or nobs×d grid, use `adapters/coze_client.py`'s `build_batch([(test,args,ctx), ...])` to assemble `{"batch":[{test,mode,params}, ...]}` and POST it to `/run` **once**. The server computes each item and merges the Feishu log into a single line. Never hit the endpoint cell-by-cell serially.
-3. **Send only fields that apply to this test (trim the envelope):** always use `build_params` (whitelist drawn from the `required` fields in `tests/coze_cases/_contract_index.json`); **do NOT** dump the whole family's default params (varcorr/sigma/nsim/design/…) into params — that bloats the Feishu log and makes real requests indistinguishable from test samples. `build_params` already sends only required + alpha + key mode params + curve params by default.
-
-> Cache semantics: the server keeps a **10-minute TTL cache** on the normalized `(test, params, mode, locale)` signature (`CTSS_CACHE_TTL` tunable). Repeated planning/rendering of the same grid point by the upper-layer Agent is auto-deduped; a cache hit reuses the R result directly (only the S3 link is re-signed; figures stay downloadable).
-
-> **Backend-log evidence (2026-09-11, v5.7.27 hardening):** 26 requests / 11 min / single session showed all three violations co-occurring — ① 13 single-point + 13 curve **paired serial calls** (curve already contains the single point → ~50% of calls wasted); ② every request carried **~135 params (2.8 KB)** while only 6 were consumed (orchestrator bypassed `build_params` and hand-assembled the full-family argparse dump — a red-line violation); ③ the same 8-point grid `0.6:0.05:0.95` recomputed 5× (38% of curve calls) because noise keys defeat the TTL-cache signature. The client now enforces an **outbound envelope guard** (`_trim_bloated_params`): params far exceeding the test's contract whitelist are trimmed to `required ∪` generic/curve keys with a stderr warning — but the guard is a safety net, NOT permission to bypass `build_params`. Orchestration-side discipline (constraints 1–3 above) remains mandatory.
-
-### Local batch calls (CLI `--batch-file`)
-
-Write the whole grid / sensitivity scan into a JSON-array file and submit once — the local side renders each item and merges the summary (corresponds to mandatory constraint 2). Each entry lists only **the differing fields**; the rest inherit CLI defaults; `ctx.solve_for_power=true` reverses that item to solve power. CLI examples & output format → `references/cli_examples.md`.
+Mandatory constraints (curve-already-contains-single-point; batch-grid-submit; trim-envelope via `build_params`) + Feishu-backend evidence + outbound envelope guard + local `--batch-file` → `references/batch_calls.md`.
 
 ## Quick Menu — two-level routing (level-1 only here; level-2 in `references/menu.md`)
 
@@ -114,7 +114,7 @@ Write the whole grid / sensitivity scan into a JSON-array file and submit once �
 
 > The menu is a *navigation aid*, not a strict taxonomy: the same test is reachable from multiple categories (e.g. `gsd_survival` from both ④ Survival and the Group-Sequential index). Still unsure where to start? Use **Part 0** in `references/menu.md` — find your test by *research question*, no jargon needed.
 
-**Advanced:** `--test adaptive_simulate` empirically validates adaptive / group-sequential designs (power, type I error, expected N) — full guide → [`references/adaptive_simulator.md`](references/adaptive_simulator.md). `--verify` (default OFF) re-simulates an **analytic** solution with an **independent** Monte-Carlo engine (checks empirical power ±2 pp / type-I error ±0.5 pp; takes only the n as input, so a wrongly-derived n is caught) — supports `ttest_* / proportion_two / survival(log-rank) / group_sequential / adaptive_reestimate`; reports MC 95% CI, returns `INCONCLUSIVE` rather than a false PASS. Pure local, no network.
+**Advanced:** `--test adaptive_simulate` empirically validates adaptive / group-sequential designs (power, type I error, expected N) — full guide → [`references/adaptive_simulator.md`](references/adaptive_simulator.md). `--verify` (default OFF) re-simulates an **analytic** solution with an **independent** Monte-Carlo engine (checks empirical power ±2 pp / type-I error ±0.5 pp; takes only the n as input, so a wrongly-derived n is caught) — supports `ttest_* / proportion_two / survival(log-rank) / group_sequential / adaptive_reestimate`; reports MC 95% CI, returns `INCONCLUSIVE` rather than a false PASS. Pure local, no network. `--audit` (added 2026-09-29, planning layer) grades every design assumption **known / weak / unknown / missing** (with fabrication-signature heuristics + `--evidence-source` promotion), maps the test into 7 design-logic families with self-consistency checks, and emits **fallback/contingency plans** per weakest assumption; exits without computing; complements (not replaces) `--show-assumptions`. Pure local (`scripts/hypothesis_audit.py`). `--mcid Δ --sd S [--mcid-source …]` (J1) is a clinically-worded alias of the Δ/sd conversion channel (d = MCID/SD, echo + audit linkage); `--justify` (J2) appends an **IRB/SAP-ready bilingual justification paragraph** — hidden by default: the paragraph text renders software as `R <ver> + rpact/TrialSize <ver>` (versions from the result envelope; no cloud/local wording; unknown versions render as fill-in placeholders), and after a successful single computation the CLI prints a one-line offer — **when you see that offer, ask the user whether they want the document paragraph; generate it only on their yes (re-run with `--justify`)**. Skeleton = CONSORT-SPIRIT Item14/DELTA2 Box4 + CDE《样本量估计指导原则(试行)》2024-12-23; placeholders must be filled by the investigator — anti fake-precision. Details → [`references/justification_templates.md`](references/justification_templates.md). Pure local (`scripts/justify_text.py`).
 
 ---
 

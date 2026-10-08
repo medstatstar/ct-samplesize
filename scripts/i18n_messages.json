@@ -946,5 +946,9 @@
   "error.dependency_fatal": {
     "en": "[ct-advisor][FATAL] refiner dependency missing: this issue will NOT silently fall back; install per the command below and retry.\n     {cmd}",
     "zh": "[ct-advisor][FATAL] 精校依赖缺失：此问题不会静默回退；请按以下命令安装后重试。\n     {cmd}"
+  },
+  "offer.justification": {
+    "en": "Tip: this result can be turned into an IRB/SAP-ready sample-size justification paragraph (bilingual EN/中文, CONSORT-SPIRIT + CDE aligned). Ask me to generate it, or re-run with --justify (add --mcid/--mcid-source for the MCID narrative).",
+    "zh": "提示：本次结果可生成 IRB/SAP 可用的样本量论证段落（中英对照，CONSORT-SPIRIT + CDE 骨架）。需要的话告诉我，或加 --justify 重跑（配 --mcid/--mcid-source 可得 MCID 论证叙事）。"
   }
 }

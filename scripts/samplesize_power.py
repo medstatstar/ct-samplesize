@@ -176,8 +176,15 @@ def _filter_alloc(figs, show_alloc):
     return [f for f in figs if not _is_alloc_figure(f)]
 
 
+# 跨 render_figures 调用单调递增的落盘文件序号：避免默认出图（批量折叠）时曲线
+# 调用从 1 重新开始、覆盖主线首图 ctss_<test>_1.svg（pre-existing 磁盘归档层缺陷）。
+# 每次 CLI 调用在 main() 入口重置为 0，保证序号确定性且跨调用唯一。
+_FIG_FILE_SEQ = 0
+
+
 def render_figures(figures, test: str, figure_mode=None, show_alloc=True):
     """把后端回传的图形写入磁盘，并打印标记供宿主渲染。
+    落盘文件序号由模块级 _FIG_FILE_SEQ 跨调用单调递增（见下方循环），避免曲线覆盖主线首图。
 
     标记格式（宿主 agent 据此调用可视化 / 文件展示能力）：
         __FIGURE__ <format> <abs_path> caption="..."
@@ -194,6 +201,8 @@ def render_figures(figures, test: str, figure_mode=None, show_alloc=True):
         - render_svg_kb：所有 SVG 字节合计（KB），界面渲染无法精确计时，用此作代理
         - 任一超阈值（>30s / >200KB）生成 __RENDER_HINT__，建议切换 png_file
     """
+    global _FIG_FILE_SEQ
+
     if not figures:
         return
     # 本地渲染层：未显式要求不等比例分配时，剔除 coze 默认返回的「分配比四图」
@@ -206,7 +215,9 @@ def render_figures(figures, test: str, figure_mode=None, show_alloc=True):
     _svg_paths = []
     _svg_kb = 0.0
     _t0 = time.time()
-    for i, fig in enumerate(figures, 1):
+    for fig in figures:
+        _FIG_FILE_SEQ += 1
+        i = _FIG_FILE_SEQ
         fmt = (fig.format or "svg").lower()
         ext = _FIG_EXT.get(fmt, ".txt")
         path = os.path.join(outdir, "ctss_%s_%d%s" % (test, i, ext))
@@ -239,9 +250,10 @@ def render_figures(figures, test: str, figure_mode=None, show_alloc=True):
 
             if mode == "png_file":
                 # 本地 cairosvg 转 PNG（同一处理链：strip clip → fix xml → bbox → viewBox → 光栅化）
-                for j, f in enumerate(svg_figs, 1):
+                for f in svg_figs:
+                    _FIG_FILE_SEQ += 1
                     try:
-                        png_path = os.path.join(outdir, "ctss_%s_%d.png" % (test, j))
+                        png_path = os.path.join(outdir, "ctss_%s_%d.png" % (test, _FIG_FILE_SEQ))
                         svg_to_png(f["svg"], png_path, scale=2.0)
                         if os.environ.get("CTSS_INLINE_WIDGET") == "1":
                             print('__FIGURE__ png %s caption="%s"' % (png_path, (f.get("type") or "").replace('"', "'")))
@@ -493,6 +505,14 @@ def build_parser():
     p.add_argument("--nobs", type=int, default=None, help="给定样本量求效能 (与 --power 互斥)")
     p.add_argument("--show-assumptions", action="store_true", default=False,
                    help="打印本次计算的假设清单（显式输入 / 静默默认值 / 合理区间 / 解读风险）后退出，不做求解")
+    # upgrade I (2026-09-29): 规划层假设质量审计（四分级 + 设计逻辑族 + fallback）
+    p.add_argument("--audit", action="store_true", default=False,
+                   help="假设质量审计（规划层）：known/weak/unknown/missing 四分级 + "
+                        "设计逻辑族自洽核查 + fallback 场景规划，打印后退出，不做求解。"
+                        "与 --show-assumptions（计算层参数清单）互补。")
+    p.add_argument("--evidence-source", default="",
+                   help="--audit 用：已附历史证据来源的参数名清单（逗号分隔，如 "
+                        "effect,sd），命中者假设升为 known。")
     p.add_argument("--batch-file", default=None,
                    help="批量计算：JSON 文件路径（数组）。每个元素 "
                         '{"test": 终点类型, "args": {覆盖字段}, "ctx": {覆盖字段}}；'
@@ -505,6 +525,18 @@ def build_parser():
                    help="检验方向: one=单侧, two=双侧(默认)")
     p.add_argument("--sd", type=float, default=None,
                    help="标准差。提供时 --effect 视为原始均差(Δ), 自动折算 Cohen's d = effect/sd; 否则 --effect 直接作为 d")
+    # upgrade J1 (2026-09-29): MCID 语义入口——原始单位的最小重要差值，折算 d=MCID/sd
+    p.add_argument("--mcid", type=float, default=None,
+                   help="最小重要差值 MCID（原始单位，需配合 --sd；等效于 --effect 传原始差值）。"
+                        "建议同时用 --mcid-source 声明依据（anchor/distribution/expert+出处），"
+                        "满足 CONSORT-SPIRIT Item14 / CDE 样本量指导原则『目标差值依据』要求。")
+    p.add_argument("--mcid-source", default=None,
+                   help="MCID 依据声明（如 'anchor: PASS 2015 cut-point' / 'distribution: 0.5*SD "
+                        "(norman2003)' / 'expert: Delphi 共识 XX'）。输出与假设审计将引用该来源。")
+    p.add_argument("--justify", action="store_true", default=False,
+                   help="计算完成后追加输出 IRB/SAP-ready 论证段落（中英双语，J2，"
+                        "结构对齐 CONSORT-SPIRIT Item14 + CDE《样本量估计指导原则(试行)》）。"
+                        "规划层独立预览可配 --test 直接运行 scripts/justify_text.py。")
     p.add_argument("--ratio", type=float, default=None,
                    help="两组不等例分配比 n2/n1（仅 ttest_ind 用；缺省=1 等例）。提供时 --nobs 视为第一组 n1，n2=nobs*ratio")
     # ── Proportion ──
@@ -942,6 +974,8 @@ def _run_batch(backend, args, base_ctx):
 
 
 def main():
+    global _FIG_FILE_SEQ
+    _FIG_FILE_SEQ = 0  # 重置落盘文件序号，保证每次 CLI 调用从 1 起、序号确定
     p = build_parser()
     args = p.parse_args()
 
@@ -1050,6 +1084,15 @@ def main():
     # alt: one-sided -> "greater" (预期处理组更优); two-sided -> "two.sided"
     alt = "greater" if args.side == "one" else "two.sided"
     # d_val: 提供 --sd 时 --effect 视为原始均差 Δ, 自动折算 d = Δ/sd; 否则 --effect 直接为 d
+    # upgrade J1: --mcid 是 --effect(原始单位) 的语义别名——MCID 必须以原始单位 + sd
+    # 折算（d = MCID/sd），单独给出即声明"目标差值来自临床锚定"而非拍脑袋效应量。
+    _mcid_mode = args.mcid is not None
+    if _mcid_mode:
+        if args.sd is None or args.sd <= 0:
+            p.error("--mcid 需配合 --sd（MCID 以原始终点单位表示，折算 d = MCID / SD）")
+        if args.effect is not None:
+            p.error("--mcid 与 --effect 互斥：MCID 即目标差值（原始单位），请二选一")
+        args.effect = args.mcid   # 折算通道复用：effect(Δ)/sd
     if args.sd is not None and args.sd > 0:
         d_val = (args.effect if args.effect is not None else 0.5) / args.sd
     else:
@@ -1061,6 +1104,14 @@ def main():
                     + "（自然语言路由未能识别终点类型：请用 --test 显式指定，或换种表述后重试）")
         else:
             p.error(t("error.test_required"))
+
+    # ── upgrade J1：MCID 折算回显（计算模式；规划审计另见 --audit 分支）──
+    if _mcid_mode:
+        print("[MCID] 目标差值 = MCID %s（原始单位）｜ SD = %s ｜ 折算效应量 d = %.4f"
+              % (args.mcid, args.sd, d_val))
+        print("[MCID] 依据: %s" % (args.mcid_source
+              or "（未声明——SPIRIT Item14/CDE 要求『目标差值须有临床依据』，建议 --mcid-source 标注 "
+              "anchor-/distribution-/expert- 来源与出处）"))
 
     # ── 假设清单显式化（ct-update 建议 ct-samplesize::E）──
     # 独立于后端（coze/R），仅做可审计性清单输出，不触碰数值真相源。
@@ -1074,6 +1125,28 @@ def main():
         print("假设清单 / Assumption Block")
         print("=" * 60)
         print(_ab.json.dumps(block, ensure_ascii=False, indent=2))
+        sys.exit(0)
+
+    # ── 假设质量审计（ct-update 建议 ct-samplesize::I，规划层）──
+    # 四分级证据审计 + 设计逻辑族自洽 + fallback 规划；同样独立于后端。
+    if args.audit:
+        try:
+            import hypothesis_audit as _ha
+        except ImportError:
+            import scripts.hypothesis_audit as _ha
+        _ov = {}
+        for _k in (args.evidence_source or "").split(","):
+            if _k.strip():
+                _ov[_k.strip()] = "known"
+        if _mcid_mode:
+            # J1 联动：MCID 有临床来源声明 → 效应量假设升 known（无来源时仍按
+            # 启发式判定，distribution 拍值不豁免）
+            _ov["effect"] = "known" if args.mcid_source else "weak"
+        _rep = _ha.audit_hypotheses(args, args.test, p, grades_override=_ov)
+        if _mcid_mode:
+            print("[MCID] d = MCID(%s) / SD(%s) = %.3f | 依据: %s"
+                  % (args.mcid, args.sd, d_val, args.mcid_source or "（未声明——建议 --mcid-source 标注 anchor/distribution/expert 来源）"))
+        print(_ha.render_text(_rep))
         sys.exit(0)
 
     # ═════════════════════════════════════════════════════════════════════════
@@ -1136,8 +1209,46 @@ def main():
         print(t("exec.running"))
         sys.stdout.flush()
 
+    # ── 自动附带曲线（v5.3.2 起契约 default_curve 配置）── 折叠改造 2026-10-07 ──
+    # 不发起第二次 coze POST（原 res2 块）；改为把 [主求解, 曲线] 组装为批量信封，
+    # 经 compute_batch 一次性发出（1 次 POST / 1 行 searchlog），coze 内部逐 spec 独立
+    # 求解——主 n 求解与曲线互不影响（coze 收到 curve_* 会切换为「仅曲线」模式，不能并入
+    # 主 POST，否则主求解被吞）。用户显式 --power_seq/--n_seq 时 ctx["curve"]=True，走用户
+    # 自己的曲线，不触发本块。coze 端点契约未变 ⇒ 旧版本地客户端（仍发 res2）不受影响。
+    auto_curve = (not ctx["curve"] and args.test in _auto_curve_tests()
+                  and not args.dry_run and not gated)
+
+    def _make_curve_spec():
+        a2 = argparse.Namespace(**vars(args))
+        a2.n_seq = None
+        a2.power_seq = None
+        a2.plot_effects = None
+        c2 = dict(ctx)
+        c2["curve"] = True
+        if solve_for_power and args.nobs:
+            _n = args.nobs
+            _n_min = max(5, int(_n * 0.5))
+            _n_max = max(_n_min + 8, int(_n * 1.5))
+            _step = max(1, round((_n_max - _n_min) / 8))
+            a2.n_seq = "%d:%d:%d" % (_n_min, _step, _n_max)
+        else:
+            a2.power_seq = "0.6:0.05:0.95"
+        return a2, c2
+
     try:
-        res = backend.compute(args.test, args, ctx)
+        if auto_curve:
+            a2, c2 = _make_curve_spec()
+            _batch = backend.compute_batch(
+                [(args.test, args, ctx), (args.test, a2, c2)])
+            res = _batch.items[0].result
+            _curve_res = _batch.items[1].result
+            if res is None:
+                raise RuntimeError(
+                    "批量计算主求解项失败: %s"
+                    % (_batch.items[0].error or "未知错误"))
+        else:
+            res = backend.compute(args.test, args, ctx)
+            _curve_res = None
     except RuntimeError as exc:
         print(str(exc))
         sys.exit(1)
@@ -1145,45 +1256,42 @@ def main():
     _render_single_result(res, args.test, figure_mode=args.figure_mode,
                           show_alloc=_ratio_is_unequal(args.ratio))
 
-    # ── 自动附带曲线（v5.3.2 起每种检验的默认出图由契约 default_curve 分别配置）──
-    # 规则: forward（求 n）→ 自动补「样本量随把握度」曲线；reverse（求 power）→
-    # 自动补「把握度随样本量」曲线。仅当：① 该 test 契约 default_curve=true；② 用户未
-    # 显式指定曲线（--n_seq / --power_seq）；③ 非 dry-run；④ coze 路径（非本地 R）。
-    # 关闭/开启方式：编辑 tests/coze_cases/_contract_index.json 的 default_curve 字段，
-    # 或显式指定 --n_seq / --power_seq（走用户自己的曲线）、--dry-run 关闭。
-    if (not ctx["curve"] and args.test in _auto_curve_tests()
-            and not args.dry_run and not gated):
+    # ── 自动附带曲线渲染（折叠后曲线来自批量信封第二项；按用户口径不打印"已自动附带"提示）──
+    if _curve_res is not None:
+        if getattr(_curve_res, "figures", None):
+            render_figures(_curve_res.figures, args.test, figure_mode=args.figure_mode,
+                           show_alloc=_ratio_is_unequal(args.ratio))
+        else:
+            render_curve_fallback(getattr(_curve_res, "meta", None), args.test,
+                                  target_power=getattr(args, "power", None) or 0.8,
+                                  ref_n=getattr(args, "nobs", None))
+
+    # ── upgrade J2：IRB/SAP-ready 论证段落（中英双语，计算完成后追加）──
+    # 默认隐藏（用户口径 2026-09-29）：不带 --justify 不直接生成段落，仅在单次
+    # 计算成功后给一行"可生成文档段落"提示，由用户/agent 决定是否补跑。
+    if getattr(args, "justify", False):
         try:
-            args2 = argparse.Namespace(**vars(args))
-            args2.n_seq = None
-            args2.power_seq = None
-            args2.plot_effects = None
-            ctx2 = dict(ctx)
-            ctx2["curve"] = True
-            _what = ""
-            if solve_for_power and args.nobs:
-                _n = args.nobs
-                _n_min = max(5, int(_n * 0.5))
-                _n_max = max(_n_min + 8, int(_n * 1.5))
-                _step = max(1, round((_n_max - _n_min) / 8))
-                args2.n_seq = "%d:%d:%d" % (_n_min, _step, _n_max)
-                _what = "把握度随样本量（以 n=%d 为中心 ±50%%）" % _n
-            else:
-                args2.power_seq = "0.6:0.05:0.95"
-                _what = "样本量随把握度（power 0.60~0.95）"
-            res2 = backend.compute(args.test, args2, ctx2)
-            if res2 and getattr(res2, "figures", None):
-                render_figures(res2.figures, args.test, figure_mode=args.figure_mode,
-                               show_alloc=_ratio_is_unequal(args.ratio))
-            else:
-                # coze 无图 → 本地兜底（★ 参考线目标 = 用户 --power 或默认 0.8）
-                render_curve_fallback(getattr(res2, "meta", None), args.test,
-                                      target_power=getattr(args2, "power", None) or 0.8,
-                                      ref_n=getattr(args2, "nobs", None))
-            print("# 已自动附带%s曲线（简单单/两组问题默认出图；如需关闭请显式指定 "
-                  "--n_seq / --power_seq 或 --dry-run）" % _what)
-        except Exception as _e:  # noqa: BLE001 - 自动曲线失败不阻断主结果
-            print("# 自动曲线生成跳过: %s" % _e)
+            import justify_text as _jt
+        except ImportError:
+            import scripts.justify_text as _jt
+        _n_res, _n_key = None, ""
+        for _src in (res.meta, res.r_result):
+            if isinstance(_src, dict):
+                for _k in ("n", "n_total", "total_n", "N", "required_n",
+                           "n_per_group", "nPerGroup", "n1"):
+                    if _src.get(_k) is not None:
+                        _n_res, _n_key = _src[_k], _k
+                        break
+            if _n_res is not None:
+                break
+        _n_note = "每组" if _n_key in ("n_per_group", "nPerGroup", "n1") else "总"
+        print(_jt.render(args.test, args, d_val, n_total=_n_res,
+                         mcid_mode=_mcid_mode, n_note=_n_note, meta=res.meta))
+    elif not ctx["curve"]:
+        try:
+            print("\n" + t("offer.justification"))
+        except Exception:  # noqa: BLE001 - 提示缺失不影响主结果输出
+            pass
 
     # ── 默认图形层（v5.6 起全部上 coze）────────────────────────────────────
     # 架构：coze 端 R（coze_figure_layer.R）为主出图；若其失败，coze 内部回退到

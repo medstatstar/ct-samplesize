@@ -78,3 +78,11 @@ Thumbs.db
 
 # publish_inject.py 注入清单（本地元信息，不入库 / 不发布）
 .ctbase_injected.json
+
+# ── 工作台发布基础设施与运行载荷（2026-09-26 带后端升级，与 .gitignore 对齐）──
+workbench/
+workbench/publish-kit/
+workbench/publish-dist/
+
+# ── F20 周备份目录（与 .gitignore 对齐，不进发布包）──
+_bak_weekly_*/

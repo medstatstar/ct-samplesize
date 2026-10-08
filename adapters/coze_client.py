@@ -180,9 +180,10 @@ def _compute_query_origin() -> str:
 # ---------------------------------------------------------------------------
 # skill_version：技能版本号（2026-09-02 新增 · 服务端分版本归因）
 # ---------------------------------------------------------------------------
-# 由客户端（技能安装设备）随请求发出，coze 端透传写入飞书日志的 querystr，用于
+# 由客户端（技能安装设备）随请求发出，coze 端透传写入飞书日志的 **resultstr 顶层**
+# （ct-base coze_io_contract §2.1，2026-09-17 起；此前曾并入 querystr，已移除），用于
 # 按技能版本归因调用量与失败率。**可选字段**：老版本技能不发送该字段时，coze 端
-# 按缺省处理（querystr 不含该键），两端均不报错（见 coze_contract.md §2）。
+# 按缺省处理（resultstr 不含该键），两端均不报错（见 coze_contract.md §2）。
 _SKILL_VERSION_FALLBACK = "5.7.27"
 
 
@@ -290,6 +291,19 @@ def sanitize(obj):
     return obj
 
 
+# 入口标识（entry_point）— 2026-10-07 新增（ct-base coze_io_contract §1.3）
+# 区分调用来源：技能本身（"skill"） vs 工作台 web 应用（"workbench"）。
+# 透传写入飞书 entry_point 列，供后台按来源筛选/统计。
+# 默认 "skill"；工作台进程在 fullflow 入口调用 set_entry_point("workbench") 覆盖。
+_ENTRY_POINT = "skill"
+
+
+def set_entry_point(value: str) -> None:
+    """覆盖进程级入口标识（工作台调用以标记 workbench）。"""
+    global _ENTRY_POINT
+    _ENTRY_POINT = value or "skill"
+
+
 def _with_user_language(params, lang):
     """把用户语言注入请求 `params`（ct-base coze_io_contract §1.1 唯一承载位）。
 
@@ -363,6 +377,27 @@ _CONTRACT_REQUIRED_CACHE = None
 _CONTRACT_LOAD_FAILED = False
 
 
+# 连续效应量键：仅这些参数出现的 test 才以 Cohen's d 解释效应量，才需要随信封发送
+# d_val；比例/率/生存/诊断等 test 不消费 d_val，发送 d_val:0.5 默认值属脏参数泄漏
+# （飞书 querystr 噪声），故在 build_params 中剔除。
+_CONTINUOUS_EFFECT_KEYS = frozenset({"effect", "sd", "delta", "mean_diff"})
+
+
+def _test_consumes_d_val(test):
+    """契约驱动判定：该 test 是否消费连续型效应量 d_val（Cohen's d）。
+
+    依据 tests/coze_cases/_contract_index.json 的 required 字段：若含连续效应量键
+    （effect/sd/delta/mean_diff）则视为均值类 test，需要 d_val；否则（比例/率/生存/
+    诊断等）剔除。契约未登记（加载失败或该 test 缺失）时保守返回 True，保留旧行为，
+    避免误伤真正需要 d_val 的 test（零回归风险）。
+    """
+    required = _load_contract_required(test)
+    if not required:
+        # 契约缺失 → 保守发送（与旧行为一致）
+        return True
+    return any(k in required for k in _CONTINUOUS_EFFECT_KEYS)
+
+
 def _load_contract_required(test):
     """从 _contract_index.json 加载该 test 的 required 参数白名单（单一真相源）。
 
@@ -429,12 +464,15 @@ def build_params(test, args, ctx):
     params.update({
         "solve_for_power": ctx.get("solve_for_power", False),
         "alt": ctx.get("alt", "two.sided"),
-        "d_val": ctx.get("d_val"),
         # 用户语言（zh/en）备用：随 params 进入 coze 端，作为 locale 的冗余兜底。
         # coze 端容器 LANG 多为英文，服务端自检测不到用户真实语言；
         # 此字段让 R 引擎在 req$locale 缺失时仍有用户语言可用。
         "user_language": ctx.get("user_language") or _current_locale(),
     })
+    # d_val（Cohen's d）仅连续均值类 test 消费；比例/率/生存/诊断等 test 不消费，
+    # 不发送以避免脏参数泄漏（飞书 querystr 噪声）。契约缺失时保守发送，不回归。
+    if _test_consumes_d_val(test):
+        params["d_val"] = ctx.get("d_val")
     # 曲线参数映射（CLI 名 → coze 端 curve_* 协议，R 端 run_task.R 曲线分支消费）
     for cli_key, coze_key in (("n_seq", "curve_n_seq"),
                               ("power_seq", "curve_power_seq"),
@@ -842,6 +880,8 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
             "locale": lang,
             "query_origin": _compute_query_origin(),
             "skill_version": _skill_version(),
+            # 入口标识（2026-10-07）：skill/workbench，透传飞书 entry_point 列
+            "entry_point": _ENTRY_POINT,
             "resolved_spec": resolved_spec or {
                 "test": test, "mode": mode, "params": sent_params
             },
@@ -891,6 +931,8 @@ def call_batch(specs, return_r_code=True, user_language=None):
         envelope["params"] = {"user_language": lang}
         envelope["query_origin"] = _compute_query_origin()
         envelope["skill_version"] = _skill_version()
+        # 入口标识（2026-10-07）：skill/workbench，透传飞书 entry_point 列
+        envelope["entry_point"] = _ENTRY_POINT
         # batch 内 params 同样脱敏（剥离 PII）
         envelope["batch"] = sanitize(envelope["batch"])
         try:
@@ -955,6 +997,8 @@ class CozeBackend(ComputeBackend):
             "locale": lang,
             "query_origin": _compute_query_origin(),
             "skill_version": _skill_version(),
+            # 入口标识（2026-10-07）：skill/workbench，透传飞书 entry_point 列
+            "entry_point": _ENTRY_POINT,
             "params": sent_params,
             "resolved_spec": {"test": test, "mode": mode, "params": sent_params},
         }, ensure_ascii=False, indent=2)
@@ -1105,6 +1149,13 @@ def _envelope_to_result(env, test, ctx):
     meta["_needs_upgrade"] = needs_upgrade
     if drift_notes:
         meta["_contract_drift"] = drift_notes
+    # 可复现性透传（upgrade J2 措辞修订，2026-09-29）：R 版本 + 包版本进 meta，
+    # 供 --justify 渲染 "R <ver> + rpact <ver>/TrialSize <ver>" 式引擎声明
+    #（用户口径：只报版本号，不区分云端/本地）。stats 已有同名键时不覆盖。
+    if repro.get("r_version") and "r_version" not in meta:
+        meta["r_version"] = repro.get("r_version")
+    if repro.get("packages") and "packages" not in meta:
+        meta["packages"] = repro.get("packages")
     return Result(
         text=text,
         figures=[Figure(f.get("format", "svg"), f.get("content", ""),

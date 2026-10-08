@@ -77,3 +77,14 @@ Thumbs.db
 
 # publish_inject.py 注入清单（本地元信息，不入库 / 不发布）
 .ctbase_injected.json
+
+# ── 工作台发布基础设施与运行载荷（2026-09-26 带后端升级，ct-workbench-publish §13.5）──
+# workbench/ = 发布载荷家 publish-dist/ 的宿主目录；其内容已在
+# adapters/workbench/ 排除范围之外单独成形，属云端运行镜像而非技能发布包资产。
+# publish-kit/ 独立护栏：appId 标记 / 安装器 / 构建脚本绝不随 GitHub/ClawHub/SkillHub 外发。
+workbench/
+workbench/publish-kit/
+workbench/publish-dist/
+
+# ── F20 周备份目录（2026-10-04 周检备份，本地回滚用，不进 VCS/发布包）──
+_bak_weekly_*/

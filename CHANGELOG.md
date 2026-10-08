@@ -1,5 +1,144 @@
 # Changelog / 版本历史
 
+## [Unreleased] — 2026-09-29 · MCID 语义入口 + IRB/SAP 论证段落（ct-update upgrade J 落地）
+
+- **J1 `--mcid` / `--mcid-source`（samplesize_power.py）**：临床措辞的目标差值入口——
+  MCID（原始终点单位）经既有 Δ/sd 通道折算 d = MCID/SD；需配合 --sd、与 --effect 互斥
+  （均报错引导）；计算与 --audit 均回显折算行；审计联动：有来源声明 → 效应量假设升
+  known（anchor/distribution/expert 三流派提示见 references/justification_templates.md）。
+- **J2 措辞/交互修订（用户审阅后 2026-09-29）**：① 引擎声明改为
+  `R <版本> + rpact <版本> + TrialSize <版本>`——repro.r_version/packages 经
+  `_envelope_to_result` 透传进 meta，`--justify` 自动填充；**删除"云端/coze"字样**
+  （版本对文书有意义、部署形态无意义）；mock 版本视同缺失走 [__填写] 占位。
+  ② 默认隐藏确认：不带 --justify 时单次计算成功后仅输出一行 i18n 提示
+  （`offer.justification`，"需要的话告诉我/加 --justify 重跑"），不直接生成段落。
+- **J2 `scripts/justify_text.py`（纯 stdlib，`--justify` 计算后附加 / 独立预览）**：
+  IRB/SAP-ready 中英对照论证段落，四个设计变体（优效连续/NI-EQ/生存事件驱动/通用回退），
+  骨架逐句锚定 CONSORT-SPIRIT Item 14 + DELTA2 Box 4（英文语序）与 CDE《药物临床试验
+  样本量估计指导原则（试行）》2024-12-23（中文口径）；n 自动填充并按引擎返回字段判定
+  口径（n_per_group→每组；其余→总）；所有依据类空位强制渲染为 [__填写]/___ 占位
+  （anti fake-precision，不替研究者做临床判断、不替代监管沟通）。
+- **新文档** `references/justification_templates.md`（骨架出处/变体矩阵/MCID 三流派/使用约束）。
+- **测试**：justify_text 单测（单位口径×2 + 双单位回归×4 变体 + 占位保留）全通过；
+  主流程 MOCK E2E（--mcid 折算回显 + --justify 段落）通过；--mcid 缺 sd / 与 effect
+  并用的报错路径验证。py_compile 全绿。
+- 对标来源：Sample Size Calculation (ProFlow-Labs-Ai/medsyniq-lite, LobeHub) 的
+  "监管感知"叙事 + calc-sample-size (Aperivue) 的 IRB-ready justification；
+  J 评估结论（2026-09-29）：其余卖点均已被技能覆盖，仅 MCID 与论证叙事为真缺口。
+
+## [Unreleased] — 2026-09-29 · 假设质量审计（ct-update upgrade I 落地）
+
+- **新增 `scripts/hypothesis_audit.py`（规划层审计，纯标准库零联网）**：
+  - **四分级**：逐个设计假设评定 known / weak / unknown / missing（分级逻辑：
+    显式给值+附证据来源→known；「拍脑袋」整数直觉值 d=0.5/SD=1/r=0.5~0.9/ICC=0.05
+    启发式→unknown；必需参数无值→missing；默认值未确认→weak；结构参数豁免）。
+    α/power 惯例值（0.05/0.025、0.8/0.9）显式给出即 known。
+  - **设计逻辑族**：49 个 test 全量归入七族（经典两组/NI-EQ/生存事件驱动/群随机/
+    序贯自适应/诊断方法比较/历史对照），逐族给假设重心与自洽核查问题（经
+    `_contract_index.json` 全量校验，归族与 REQUIRED_BY_TEST 零遗漏）。
+  - **fallback 场景规划**：按最脆弱假设维度（weak/unknown/missing）输出退路模板
+    （事件不足→随访延长/事件富集、ICC 超界→加群、界值未共识→先 pre-ICE 再锁 n 等）。
+  - **总体判定**：NOT_READY / ADAPTIVE_RECOMMENDED / READY_WITH_SENSITIVITY / READY
+    四档出口，missing>0 阻断式提示先补齐。
+- **`scripts/samplesize_power.py`**：新增 `--audit`（打印审计报告后退出，不做求解）与
+  `--evidence-source`（命中参数升 known）；与既有 `--show-assumptions`（计算层参数
+  清单）互补——本审计为方案/SAP 撰写前的规划层评估。
+- **测试**：单元 8 例（分级路径×5 + 归族/必需覆盖×2 + 渲染）全通过；主入口
+  E2E（真实 parser 默认值语义）通过。`py_compile` 全绿。
+- 对标来源：sample-size-and-power-planning-assistant（aipoch medical-research-skills，
+  ct-update 2026-09-29 增量发现）；对应 ct-samplesize 升级项 I。
+
+## [Unreleased] — 2026-09-26 · 工作台应用升级「带后端版」（部署形态，技能代码零改动）
+
+- **背景**：2026-09-14 首发为最简静态壳（`python -m http.server`），页面依赖的
+  `/api/*` 一律 404 → 线上红条「无法加载检验目录」。本次照 ct-literature 先例升级为
+  python http-service，用原 appId `wbapp_9K1dei1PydVQ66YmawCD3C` 覆盖发布，
+  链接保持 `https://ct-samplesize.app.workbuddy.host/` 不变。
+- **新增发布基础设施**（`workbench/`，被 .gitignore/.clawhubignore 整目录排除、不进技能发布包）：
+  `workbench/app.config.json`（deployedAs=http-service，startCmd=`python adapters/workbench/server.py`，
+  publishDir=`workbench/publish-dist`）+ `publish-kit/`（genie 权威副本 + build_publish.py +
+  install_genie.py，照 ct-literature 模板）。旧 `adapters/workbench/app.config.json` 删除（重复登记源）。
+- **载荷构成**（35 文件 / ~785 KB，还原技能根层级——server.py 以 `_HERE/../..` 定位 `_SKILL`）：
+  `adapters/workbench/`（server/form_schema/session_store/nl_llm/workbench.html）+
+  `adapters/` 四件（coze_client/coze_token_embedded/rendering/bug_report）+ `scripts/` 全套 +
+  `config/config.json`（**出站授权白名单，缺了 compute 被门控静默拦截**）+
+  `tests/coze_cases/_contract_index.json`（form_schema 反射数据源，唯一入包的 tests/ 文件）+ SKILL.md（版本号）。
+  红线排除：coze/、r-assets/、publish-kit/、*.genie、sessions.json、README.md。
+- **server.py 无需包装**：main() 已内置云端通道——`PORT` 环境变量 → 绑 0.0.0.0，
+  `/` 路由直服 workbench.html，不同于 ct-literature 需 app.py 改写 argv。
+- **线上验证**：载荷形态本地冒烟（8766 无显式 env）health/schema/ttest_ind n=64 全通；
+  发布闸门 pre/post 双绿、shareLink 断言通过、genie 回读无污染；
+  线上端到端 compute ok=true（8 图 + R 代码）；首页与载荷 MD5 逐字节一致（7e2ad6f7）。
+- **同日 UI 微调（用户指示，二次覆盖发布 11:32，链接不变）**：① 简化版声明条改左对齐
+  （`justify-content:center → flex-start`）；② 删除「本界面只是为了方便操作…」提示横幅
+  （HTML 元素 + 中英 i18n 文案 + `.app-hint` CSS 整簇清除，残留 grep=0）；线上 MD5 复核 MATCH。
+- **同日 NL 兜底接入 LongCat-2.0（用户指示「按 ct-base 规范接 longcat2」，三次覆盖发布 ~12:10，链接不变）**：
+  - 背景：页面「智能识别并计算」实为确定性正则（classify_test/param_aliases），与对话模式的
+    Agent LLM 理解力差距大；旧版 `nl_llm.py` LLM 兜底默认禁用（需显式 CTSS_NL_ENDPOINT），云端无 env → 死路径。
+  - 改造：按 ct-base §12（2026-09-25 家族统一 LongCat-2.0）——`nl_llm.py` 默认端点
+    `https://api.longcat.chat/openai/chat/completions`、模型 `LongCat-2.0`，key 经
+    `load_llm_key()`（env `LONGCAT_API_KEY` > 混淆 `config/llm_key.py`）；新增 `adapters/llm_loader.py`
+    + `config/llm_key.py`（自 ct-base 拷贝，入载荷白名单，载荷 35→37 文件）；
+    max_tokens 800→2048 + 超时 25→45s（LongCat 为推理模型，reasoning 吃预算，meta-analysis 实测教训）。
+  - 红线不变：deterministic-first（规则命中即权威，LLM 只在 test=None 时提议、零覆写权）、
+    advisory 闸门照旧、LLM 幻觉未知检验置 null、无 key/不可达优雅降级回规则。
+  - 前端标识 `本地大模型识别 → 大模型识别`（引擎标签语义修正）。
+  - 验证：本地单测 2.8s 口语句正确 ttest_ind + Δ4/σ12；载荷形态无 env 等价云端复测通过；
+    线上 `engine: llm` 实证（规则不命中英文句 → proportion_paired + p1/p2 抽取）；guard pre/post 双绿。
+  - 已知边界：中文规则词表很宽（「血压」「评分」「安慰剂」甚至 `ve\b` 都命中），常见中文口语句
+    多走 rule 分支而非 LLM；advisory 措辞（"怎么设计"类）被闸门拦下不点火——均为既有设计，非回归。
+- **同日顶栏瘦身（用户指示，四次覆盖发布 15:55，链接不变）**：删除左上角 `CozeBackend` 后端徽标
+  （`#hBackend` 元素 + `header .badge` CSS + init 中 `/api/health` 显示调用 + 中英 `offline` i18n 键
+  整簇清除；后端 `/api/health` 端点保留作运维探活，仅前端不再消费）。node --check 内联 JS 语法通过，
+  线上残留 grep=0、index MD5 MATCH。
+- **同日会话默认开启（用户反馈「追加提问/跨轮继承没有实现」，五次覆盖发布 16:02，链接不变）**：
+  实测后端链路完好（session/create → 两轮 compute delta 继承 → audit
+  inherited/overridden 全对，d=0.5/power=0.8→0.9 得 n 64→86），根因是入口 UX：
+  会话挂在默认**不勾选**的 `#keepSession` 复选框上，不勾则追加提问/继承整条链路不激活。
+  修复：复选框默认 `checked`——首算自动建线程，改参数再点即「应用修改并重新计算」（仅发
+  delta，跨轮继承），线程面板逐轮显示继承/覆盖/缺失胶囊。线上 keepSession checked 断言通过。
+  同批：线程面板空态改为引导文案（中英双语，六次覆盖发布 16:10 上线，index MD5 MATCH）。
+- **同日反馈入口对齐 ct-base §199（用户指示，七次覆盖发布 16:12，链接不变）**：底部
+  「报告问题 / Bug 反馈」按钮移至**右上角顶栏**（`#wb-bug`，位于会话选择器之后、页面最右），
+  文案改为规范短标签 `反馈 / Feedback`（`bugBtn` 键；长文案「报告问题 / Bug 反馈」保留为
+  弹窗标题 `bugTitle`）。footer 整簇删除（`<footer>` HTML + `.foot*` CSS 三条，页面已无
+  其他消费方；两段式弹窗流程本身已合规未动）。node --check 通过、冒烟断言
+  header 内位置/footer 消失/弹窗与 openBug 保留全绿、guard pre/post 双绿、线上 MD5 MATCH。
+- **同日会话历史 localStorage 镜像（用户指示参考 ct-advisor 实现，八次覆盖发布 16:18，链接不变）**：
+  根因：云端沙箱重新部署清空服务端 `sessions.json`（本日已 7 次发布），线程面板「无任何记录」。
+  照 ct-advisor 范式（`wb_ctadvisor_hist_` localStorage 本地优先）为 samplesize 加**浏览器本地
+  会话镜像**（`wb_ctss_threads_`/`wb_ctss_active_sess_`，服务端仍是计算/合并权威，镜像供展示与恢复）：
+  ① `threadMirror(sid,patch)` 补丁合并（title/current/turns 各自非 null 才覆盖，LRU 保留 30 会话）；
+  ② `loadSession(id)` 统一读：服务端优先、404 回落镜像；③ `refreshSessions` 下拉并入本地独有线程
+  并标「本地缓存」（i18n `histLocal`）；④ **404 自愈**：`doCompute` 收到 `session not found` 时
+  自动重建会话、按本地镜像设定延续、原样重发一次（计算结果不丢）；⑤ `init` 自动恢复活动会话
+  （刷新/重进秒恢复，ct-advisor 同款体验）。node --check + 镜像合并单测（node stub localStorage
+  4 断言）+ 404 错误形状核对全过；guard pre/post 双绿、线上 localStorage/selfheal 断言在位。
+- **安全注意**：云端实例无 CTSS_WB_TOKEN（POST 开放，与既有 coze 公开端点授权一致）；
+  载荷内嵌公共 coze 凭据系 2026-08-18 用户授权的公共 token，非私密。
+
+## [Unreleased] — 2026-09-17 · 飞书版本字段落点统一：一律写 `resultstr`，`querystr` 不再存版本信息
+
+- **依据**：ct-base `references/coze_io_contract.md` §2.1（2026-09-17 定）——版本类元数据
+  （`skill_version` / `coze_version`）**一律写入飞书 `resultstr` 顶层键**，`querystr` 不再承载任何版本字段。
+  此前 ct-samplesize 把 `skill_version` 写进 `querystr`，与 ct-advisor / meta-analysis 落点不一致，无法统一检索。
+- **服务端改动（coze：需重新上传部署包才生效）**：
+  1. `src/graphs/nodes/feishu_write_node.py`：`build_querystr()` **移除** `skill_version` 参数
+     （querystr 只留 `test`/`params`/`mode`）；`build_resultstr()` 新增可选参数
+     `skill_version` / `coze_version`（`runtime_sec` 保留），三者**仅非空才并入顶层**
+     （为空 → 不写键，与历史格式逐字节一致）。
+  2. 新增 `src/graphs/nodes/_version.py::COZE_VERSION = "5.3.11"`（单一真源）：飞书
+     `coze_version` 列与响应信封标记 `_coze_version` 共用，杜绝两处漂移。
+  3. `src/graphs/nodes/samplesize.py`：`_COZE_ENVELOPE_VERSION` 改为引用 `_version.COZE_VERSION`。
+  4. `src/graphs/nodes/feishu_save_node.py`：单条 / **批量**两条分支均改为把
+     `skill_version` + `coze_version` 写进 resultstr（批量摘要 `batch_summary` 不再带 `skill_version`）。
+  5. `src/graphs/state.py`：`skill_version` 字段描述由「写入 querystr」改为「写入 resultstr」。
+  6. 契约同步：`adapters/coze/coze_contract.md` 与其生成器 `tests/coze_cases/gen_contract_doc.py`。
+- **客户端无改动**：`coze_client._skill_version()` 仍按 §1.2 发顶层信封，落点变化只在服务端。
+- **验证**：5 文件 `py_compile` 通过；`build_querystr` 输出键集恰为 `{test, params, mode}`（无版本键）；
+  `build_resultstr` 元信息全空时与历史格式逐字节一致；全字段时
+  `runtime_sec=2.001` / `skill_version` / `coze_version` 均在顶层，R 出参原键完好。
+
 ## v5.7.27 补丁（2026-09-11）· 出站信封守卫 + 版本正则修复（后端日志实证驱动）
 
 - **背景**：后端日志（2026-09-11 11 分钟窗口、单会话 26 条请求）实证三类结构性冗余：① 「单点+曲线」成对串行（13:13，~50% 请求可省）；② 每条请求 ~135 参数 / 2.8KB（仅 6 个被消费）——编排 agent **绕过 `build_params` 手拼全家族 argparse 默认值信封**（违反 v5.7 约束 3 红线）；③ 同 8 点网格重复计算 5 次（占曲线请求 38%）——噪声键破坏服务端 TTL 缓存签名。
@@ -474,7 +613,7 @@
 ## v5.6.0 补丁（2026-08-30 深夜）· 三平台发布（GitHub / SkillHub / ClawHub）
 
 - **三平台同步发布 v5.6.0**：GitHub 推送 `main`（commit `81bf113`，`a235725..81bf113`）并设 upstream；SkillHub 发布 `skillId=98998`；ClawHub `latest=5.6.0`（账户 @medstatstar，经 "Version 5.6.0 already exists" 权威回执确认入库）。
-- **发布前修复 ClawHub 环境**：受管 node 版本迁移（22.22.2→22.22.2-2）清掉了 `clawhub` 包与登录凭据（`~/.workbuddy/AppData/Roaming/clawhub/config.json` 一并丢失）；已在 `22.22.2-2` 的 workspace 重装 `clawhub` v0.23.3 并 `login --token` 写回真实路径 `C:/Users/WintoneFileSrv/AppData/Roaming/clawhub/config.json`。注意 `clawhub publish` 在沙箱内会挂起（沙箱拦截上传），须 `dangerouslyDisableSandbox: true`。
+- **发布前修复 ClawHub 环境**：受管 node 版本迁移（22.22.2→22.22.2-2）清掉了 `clawhub` 包与登录凭据（`~/.workbuddy/AppData/Roaming/clawhub/config.json` 一并丢失）；已在 `22.22.2-2` 的 workspace 重装 `clawhub` v0.23.3 并 `login --token` 写回真实路径 `~/AppData/Roaming/clawhub/config.json`。注意 `clawhub publish` 在沙箱内会挂起（沙箱拦截上传），须 `dangerouslyDisableSandbox: true`。
 - **仓库清理**：`tests/` 此前经 `git mv` 误带入 index，发布前 `git rm --cached -r tests/` 取消跟踪（`.gitignore` 已声明 `tests/`、`adapters/coze/`、`archives/` 整目录排除，不进仓库与发布包）。
 - **发布包裁剪**：SkillHub 走 `git archive` 固定路径副本 + `scrub_copy.py --platform skillhub`（RESULT: PASS，删 7 个非白名单文件），并在副本上做双语 frontmatter 本地化（displayName 中文在前、description 仅中文）；ClawHub 走 `git archive` 精简副本（自动排除 coze/tests/archives，1.1MB）直发，遵守 `.clawhubignore` 整目录排除 `coze/`。全程未触碰 `adapters/coze/` 源（coze 平台部署仍由人工处理）。
 
