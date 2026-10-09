@@ -6,7 +6,7 @@
   <img src="assets/icon.svg" alt="ct-samplesize 图标" width="240" height="240">
 </div>
 
-> **不想安装也能用：** 如果你不想安装本技能、只想快速使用技能的基础功能，可直接访问网页 **https://ct.medstatstar.com** 使用。
+> **不安装也能用：** 如果你不想安装，只想快速使用本技能的基础功能，也可直接访问ct系列技能的总入口网页 **https://ct.medstatstar.com** 使用。
 
 > **面向临床试验从业者的易用型样本量与检验效能计算工具**
 >
@@ -239,7 +239,7 @@ CLI 命令示例、双向求解、曲线模式、核心公式、系统要求、�
 
 ---
 
-**Version**: v5.7.26 | **License**: MIT | **Authors**: medstatstar, phoe-zip
+**Version**: v5.8.0 | **License**: MIT | **Authors**: medstatstar, phoe-zip
 
 如有功能改进建议、Bug 报告或其他反馈，请直接联系作者：medstatstar@gmail.com（张文彤 / Wintone Zhang）。
 

@@ -6,6 +6,8 @@
   <img src="assets/icon.svg" alt="ct-samplesize logo" width="240" height="240">
 </div>
 
+> **Works without installation:** If you'd rather not install and just want to quickly use this skill's basic features, you can also visit the ct-series unified web portal **https://ct.medstatstar.com** directly.
+
 > **Easy-to-use Clinical Sample Size & Power Calculator for Clinical Researchers**
 >
 > You don't need to code or memorize commands — just describe your trial design in **plain language inside a chat**, and the skill performs **49** professional sample-size & power calculations for you. The default authoritative engine is a **remote coze R compute service** (rpact, TrialSize, PowerTOST and 20+ other packages running server-side, so your machine needs **no local R**; the published skill has **no local compute fallback**). Results come in Chinese or English per your OS setting (force-switchable via prompt). By default the skill shows a **SAFE PREVIEW** of the exact request it would send to coze — nothing leaves your machine until you confirm; full R code can be returned on request.
@@ -245,7 +247,7 @@ CLI examples, bidirectional solving, curve mode, core formulas, system requireme
 
 ---
 
-**Version**: v5.7.26 | **License**: MIT | **Authors**: medstatstar, phoe-zip
+**Version**: v5.8.0 | **License**: MIT | **Authors**: medstatstar, phoe-zip
 
 For feature requests, bug reports, or other feedback, please contact the author directly at medstatstar@gmail.com (Wintone Zhang / 张文彤).
 

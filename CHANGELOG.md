@@ -1,6 +1,17 @@
 # Changelog / 版本历史
 
-## [Unreleased] — 2026-09-29 · MCID 语义入口 + IRB/SAP 论证段落（ct-update upgrade J 落地）
+## v5.8.0 — 2026-10-09 · xlsx 输出 i18n + 词典/术语扩充 + 本地辅助能力（ct-base 1.3.5 家族同步）
+
+- **xlsx 输出全量 i18n（i18n.py / i18n_messages.json）**：FAERS 安全信号等 Excel
+  产出物的表头/横幅/KPI/工作表名全部走 `xlsx.signal.*` 键族，中英随 OS 语言切换。
+- **office_to_md.py 新增本地 xlsx→md 解析器**（`xlsx_to_md` / `check_upload` /
+  `UploadRejected` / shared-strings 解析）——上传转换不再依赖外部工具链。
+- **r_libs.py 新增 `run_r`**：本地 R 执行入口（默认 OFF，未确认时仅返回 safe-preview）。
+- **drug_name_resolver.py 新增 `resolve_for_dialog`**：对话内药物名解析入口。
+- **kw_lexicon.json / kw_localize.py / term_map.json 词典扩充**：关键词与术语映射
+  覆盖面扩大，与 ct-base 1.3.5 关键词翻译增强家族对齐。
+
+## v5.8.0 — 2026-09-29 · MCID 语义入口 + IRB/SAP 论证段落（ct-update upgrade J 落地）
 
 - **J1 `--mcid` / `--mcid-source`（samplesize_power.py）**：临床措辞的目标差值入口——
   MCID（原始终点单位）经既有 Δ/sd 通道折算 d = MCID/SD；需配合 --sd、与 --effect 互斥
@@ -26,7 +37,7 @@
   "监管感知"叙事 + calc-sample-size (Aperivue) 的 IRB-ready justification；
   J 评估结论（2026-09-29）：其余卖点均已被技能覆盖，仅 MCID 与论证叙事为真缺口。
 
-## [Unreleased] — 2026-09-29 · 假设质量审计（ct-update upgrade I 落地）
+## v5.8.0 — 2026-09-29 · 假设质量审计（ct-update upgrade I 落地）
 
 - **新增 `scripts/hypothesis_audit.py`（规划层审计，纯标准库零联网）**：
   - **四分级**：逐个设计假设评定 known / weak / unknown / missing（分级逻辑：
@@ -48,7 +59,7 @@
 - 对标来源：sample-size-and-power-planning-assistant（aipoch medical-research-skills，
   ct-update 2026-09-29 增量发现）；对应 ct-samplesize 升级项 I。
 
-## [Unreleased] — 2026-09-26 · 工作台应用升级「带后端版」（部署形态，技能代码零改动）
+## v5.8.0 — 2026-09-26 · 工作台应用升级「带后端版」（部署形态，技能代码零改动）
 
 - **背景**：2026-09-14 首发为最简静态壳（`python -m http.server`），页面依赖的
   `/api/*` 一律 404 → 线上红条「无法加载检验目录」。本次照 ct-literature 先例升级为
@@ -117,7 +128,7 @@
 - **安全注意**：云端实例无 CTSS_WB_TOKEN（POST 开放，与既有 coze 公开端点授权一致）；
   载荷内嵌公共 coze 凭据系 2026-08-18 用户授权的公共 token，非私密。
 
-## [Unreleased] — 2026-09-17 · 飞书版本字段落点统一：一律写 `resultstr`，`querystr` 不再存版本信息
+## v5.8.0 — 2026-09-17 · 飞书版本字段落点统一：一律写 `resultstr`，`querystr` 不再存版本信息
 
 - **依据**：ct-base `references/coze_io_contract.md` §2.1（2026-09-17 定）——版本类元数据
   （`skill_version` / `coze_version`）**一律写入飞书 `resultstr` 顶层键**，`querystr` 不再承载任何版本字段。
