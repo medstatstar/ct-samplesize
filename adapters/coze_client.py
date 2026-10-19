@@ -382,6 +382,13 @@ _CONTRACT_LOAD_FAILED = False
 # （飞书 querystr 噪声），故在 build_params 中剔除。
 _CONTINUOUS_EFFECT_KEYS = frozenset({"effect", "sd", "delta", "mean_diff"})
 
+# 例外：这些 test 的 `effect` 是【比值型】（OR / RR / 率比），不是 Cohen's d，
+# 故即使 required 含 `effect` 也不应发送 d_val（否则 d_val=OR/RR 属脏参数泄漏）。
+# 2026-10-12 补充：Tier 1 的 ci_or/ci_rr 与 Tier 2 的回归/率比测试均属此类。
+_D_VAL_EXCLUDED_TESTS = frozenset({
+    "ci_or", "ci_rr", "regression_logistic", "regression_poisson", "rates_ext",
+})
+
 
 def _test_consumes_d_val(test):
     """契约驱动判定：该 test 是否消费连续型效应量 d_val（Cohen's d）。
@@ -390,7 +397,11 @@ def _test_consumes_d_val(test):
     （effect/sd/delta/mean_diff）则视为均值类 test，需要 d_val；否则（比例/率/生存/
     诊断等）剔除。契约未登记（加载失败或该 test 缺失）时保守返回 True，保留旧行为，
     避免误伤真正需要 d_val 的 test（零回归风险）。
+
+    另见 _D_VAL_EXCLUDED_TESTS：`effect` 为比值型（OR/RR/率比）的 test 一律不发 d_val。
     """
+    if test in _D_VAL_EXCLUDED_TESTS:
+        return False
     required = _load_contract_required(test)
     if not required:
         # 契约缺失 → 保守发送（与旧行为一致）
@@ -839,8 +850,30 @@ def _urlopen_with_proxy_fallback(req, connect_timeout=15, read_timeout=None):
             raise urllib.error.URLError(reason=e)
 
 
+def attach_billing(env: dict, account_id: str | None = None,
+                   billing_token: str | None = None) -> dict:
+    """billing 标识仅透传（ct-base §20.12 范本，2026-10-13 落地，与 meta-analysis
+    attach_billing 同构）：account_id/billing_token 二选一注入信封顶层，与
+    query_origin（匿名机器指纹）完全独立。缺失 → 免费路径（node 出口对 B 类
+    高级方法拦截 R 代码）。billing_token 当前仅透存不验签（验签+计量+配额为
+    后续 coze 端 billing 中间件职责）。"""
+    if account_id:
+        env["account_id"] = account_id
+    if billing_token:
+        env["billing_token"] = billing_token
+    return env
+
+
+def _billing_from_env() -> tuple:
+    """从环境变量读取计费标记（调用方「直接发送变量」的本地接入口）：
+    CTSS_ACCOUNT_ID / CTSS_BILLING_TOKEN，任一非空即返回 (account_id, token)。
+    当前无发放渠道 → 通常返回 ('', '') → 全部按免费拦截（架构位先行）。"""
+    return (os.environ.get("CTSS_ACCOUNT_ID") or "",
+            os.environ.get("CTSS_BILLING_TOKEN") or "")
+
+
 def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
-         user_language=None):
+         user_language=None, account_id=None, billing_token=None):
     """调用 coze 服务，返回 R 引擎信封 dict（重构 v5 协议）。
 
     模式（优先级从高到低）：
@@ -886,6 +919,11 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
                 "test": test, "mode": mode, "params": sent_params
             },
         }
+        # 计费身份标识（ct-base §20.12）：显式参数优先，缺失回退 env（CTSS_ACCOUNT_ID /
+        # CTSS_BILLING_TOKEN）；均无 → 不带字段 → coze 端按免费路径处理。
+        if not (account_id or billing_token):
+            account_id, billing_token = _billing_from_env()
+        attach_billing(payload, account_id, billing_token)
         try:
             outer = _post(payload)
         except urllib.error.URLError as e:
@@ -897,7 +935,8 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
         "或 CTSS_COZE_MOCK=1（本地演示）。")
 
 
-def call_batch(specs, return_r_code=True, user_language=None):
+def call_batch(specs, return_r_code=True, user_language=None,
+               account_id=None, billing_token=None):
     """v5.7 批量计算：specs = [(test, args, ctx), ...]（与 build_batch 入参一致）。
 
     返回服务端聚合的**完整**结果 dict（agg_full，含每项 out 完整信封）；
@@ -933,6 +972,10 @@ def call_batch(specs, return_r_code=True, user_language=None):
         envelope["skill_version"] = _skill_version()
         # 入口标识（2026-10-07）：skill/workbench，透传飞书 entry_point 列
         envelope["entry_point"] = _ENTRY_POINT
+        # 计费身份标识（ct-base §20.12）：显式参数优先，缺失回退 env；均无 → 免费路径
+        if not (account_id or billing_token):
+            account_id, billing_token = _billing_from_env()
+        attach_billing(envelope, account_id, billing_token)
         # batch 内 params 同样脱敏（剥离 PII）
         envelope["batch"] = sanitize(envelope["batch"])
         try:
@@ -989,7 +1032,12 @@ class CozeBackend(ComputeBackend):
         # ct-base coze_io_contract §1.1：user_language 只进 params，与 call() 实际出站一致
         # （dry-run 预览必须逐字段反映真实请求体，否则预览与实发不一致会误导排查）
         sent_params = _with_user_language(sanitize(params), lang)
-        return json.dumps({
+        # 计费标记（ct-base §20.12）：与 call() 实发一致——ctx 显式优先、env 兜底
+        _acct = (ctx.get("account_id") or None)
+        _token = (ctx.get("billing_token") or None)
+        if not (_acct or _token):
+            _acct, _token = _billing_from_env()
+        preview_payload = {
             "endpoint": _resolve_endpoint() or "(mock)",
             "test": test,
             "mode": mode,
@@ -1001,17 +1049,23 @@ class CozeBackend(ComputeBackend):
             "entry_point": _ENTRY_POINT,
             "params": sent_params,
             "resolved_spec": {"test": test, "mode": mode, "params": sent_params},
-        }, ensure_ascii=False, indent=2)
+        }
+        attach_billing(preview_payload, _acct, _token)
+        return json.dumps(preview_payload, ensure_ascii=False, indent=2)
 
     def compute(self, test, args, ctx):
         params = build_params(test, args, ctx)
         mode = "power" if ctx.get("solve_for_power") else "n"
         # P3：resolved_spec 契约增强——本次完整语义快照，远端可选消费（补参/校验）。
         resolved_spec = {"test": test, "mode": mode, "params": sanitize(params)}
+        # 计费标记（ct-base §20.12）：ctx 显式优先，缺失由 call() 回退 env
+        account_id = ctx.get("account_id") or None
+        billing_token = ctx.get("billing_token") or None
         env = call(test, params, mode, ctx.get("return_r_code", False),
                    locale=ctx.get("user_language") or _current_locale(),
                    user_language=ctx.get("user_language") or _current_locale(),
-                   resolved_spec=resolved_spec)
+                   resolved_spec=resolved_spec,
+                   account_id=account_id, billing_token=billing_token)
         # AUTH-BLOCK：未授权不发送，提示用户（授权不阻断流程）
         if env is None:
             raise RuntimeError(

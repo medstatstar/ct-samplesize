@@ -2,15 +2,15 @@
 
 ## Overview
 
-`ct-samplesize`: An easy-to-use sample size & power tool for clinical trial practitioners. The **default authoritative engine is a remote coze R compute service** (rpact/TrialSize/PowerTOST etc., 20+ packages running server-side — no local R required); it performs all 49 test types via natural-language prompts (output in Chinese or English per OS language setting, prompt can force-switch). In the published skill **no R or shell runs locally and there is no local compute fallback**; only trial-design parameters are sent to coze, and full R code can be returned on request for verification, submission, or re-run.
+`ct-samplesize`: An easy-to-use sample size & power tool for clinical trial practitioners. The **default authoritative engine is a remote coze R compute service** (rpact/TrialSize/PowerTOST etc., 20+ packages running server-side — no local R required); it performs all 65 test types via natural-language prompts (output in Chinese or English per OS language setting, prompt can force-switch). In the published skill **no R or shell runs locally and there is no local compute fallback**; only trial-design parameters are sent to coze, and full R code can be returned on request for verification, submission, or re-run.
 
 ---
 
 ## Core Rules
 
 ### 1. Compute Backend Detection (coze only)
-- **Published skill:** the ONLY backend is the coze R service (`CTSS_COZE_ENDPOINT`, default pre-whitelisted `https://ct-samplesize.coze.site/run`); all 49 tests compute server-side, no local R and **no local compute fallback**. If the endpoint is unreachable, the skill reports the missing config — it never silently degrades.
-- **Dev-only (not shipped):** a legacy local-R backend exists in `adapters/coze/ct_r_lib/` (`CTSS_BACKEND=local-r` / `CTSS_FORCE_R=1`), used only for offline development/contribution; it is not routed by the v5 `select_backend` and is excluded from the published package.
+- **Published skill:** the ONLY backend is the coze R service (`CTSS_COZE_ENDPOINT`, default pre-whitelisted `https://ct-samplesize.coze.site/run`); all 65 tests compute server-side, no local R and **no local compute fallback**. If the endpoint is unreachable, the skill reports the missing config — it never silently degrades.
+- **Dev-only (not shipped):** a legacy local-R backend exists in `adapters/local-r/` (`CTSS_BACKEND=local-r` / `CTSS_FORCE_R=1`), used only for offline development/contribution; it is not routed by the v5 `select_backend` and is excluded from the published package.
 
 ### 2. Extended Tool Selection
 
@@ -43,7 +43,7 @@
 | Mediation | R: `powerMediation` |
 
 ### 3. Code Execution
-- **Published skill:** no local R/shell and no local compute fallback. The orchestration layer (`scripts/samplesize_power.py`) routes via `ComputeBackend` (`scripts/compute_backend.py`) to `CozeBackend` — the only backend in v5 (legacy local-R dev backend in `adapters/coze/ct_r_lib/` is dev-only, not shipped).
+- **Published skill:** no local R/shell and no local compute fallback. The orchestration layer (`scripts/samplesize_power.py`) routes via `ComputeBackend` (`scripts/compute_backend.py`) to `CozeBackend` — the only backend in v5 (legacy local-R dev backend in `adapters/local-r/` is dev-only, not shipped).
 - **Default: safe preview.** `--dry-run` prints the exact coze request envelope (no send); the natural-language trigger ("please compute" / 请直接计算) is what sends and computes — **`--yes` is not needed for coze** (stateless remote compute; the legacy `--yes` gate applies only to the optional local-R dev backend).
 - Python (orchestration + fallback) via the bundled interpreter; figures from coze are written to `CTSS_OUTPUT_DIR` (default `./outputs`).
 
@@ -55,8 +55,8 @@ Every analysis includes:
 - Dropout adjustment (if applicable)
 - Assumptions & limitations
 - **Default = SAFE PREVIEW (coze request envelope shown, NOT sent)**; the natural-language trigger ("please compute" / 请直接计算) sends to coze & computes — **no `--yes` needed for coze** (stateless remote compute; `--yes` applies only to the legacy local-R dev backend). `--show-code` displays the coze request JSON (no send), `--dry-run` previews only.
-- The optional local-R dev backend (adapters/coze/ct_r_lib) behaves like v3.x: R code is shown but NOT run unless `--yes` is given; `-y`/`--yes` explicitly executes locally.
-- **`--test adaptive_simulate`**: the authoritative engine is the inlined pure base-R function library `ADAPTIVE_SIM_R` (maintained in `adapters/coze/ct_r_lib/local_r_backend.py`, no extra packages) running **server-side on coze** in the published skill. A legacy pure-Python module `adapters/coze/ct_r_lib/legacy/adaptive_simulator.py` is retained for offline dev/testing. The CLI shows the coze request envelope in SAFE PREVIEW and computes via coze. See `references/adaptive_simulator.md`.
+- The optional local-R dev backend (adapters/local-r) behaves like v3.x: R code is shown but NOT run unless `--yes` is given; `-y`/`--yes` explicitly executes locally.
+- **`--test adaptive_simulate`**: the authoritative engine is the inlined pure base-R function library `ADAPTIVE_SIM_R` (maintained in `adapters/local-r/local_r_backend.py`, no extra packages) running **server-side on coze** in the published skill. A legacy pure-Python module `adapters/local-r/legacy/adaptive_simulator.py` is retained for offline dev/testing. The CLI shows the coze request envelope in SAFE PREVIEW and computes via coze. See `references/adaptive_simulator.md`.
 
 ### 5. Language Detection
 - **Follow OS language setting**: Output language (Chinese or English) follows the OS language setting — Chinese on a Chinese-OS, English otherwise.
@@ -74,7 +74,7 @@ Every analysis includes:
 
 ### 7. Menu Navigation Design — Non-Exclusive
 - The interactive "quick menu" that guides users to pick a test type MUST NOT be a mutually-exclusive tree. The same test can appear under multiple top-level entries, mirroring PASS's menu design.
-- Rationale: with 49 test types, classification dimensions intersect (design family × endpoint type). A strict tree would hide reachable paths. The menu is a *navigation aid*, not a taxonomy.
+- Rationale: with 65 test types, classification dimensions intersect (design family × endpoint type). A strict tree would hide reachable paths. The menu is a *navigation aid*, not a taxonomy.
 - Example: sequential survival analysis (`gsd_survival` = `group_sequential` + survival endpoint) must be reachable BOTH from a **Survival Analysis** top-level menu AND from a **Sequential Group-Sequential Design** top-level menu.
 - Rule of thumb for future extensions: any test classifiable along multiple axes (e.g. sequential/adaptive × means/proportion/survival/rate) must be listed under every relevant top-level entry — do NOT hang it on a single node.
 - **Menu structure is now formalized in `references/menu.md`** (primary tree by endpoint + design-family cross-index) and surfaced in SKILL.md `## Quick Menu`. When guiding a user to pick a test, read `references/menu.md` to stay consistent with the canonical classification.
@@ -85,7 +85,7 @@ Before any user interaction, triage first into **Simple / Middle / Complex / Vag
 
 |Class|Trigger|Action|
 |:---|:---|:---|
-|**Simple**|Direct t-test/ANOVA/proportion-style question with clear how/why|Answer directly; 1–2 turns; pick from the 49 test types; no menu|
+|**Simple**|Direct t-test/ANOVA/proportion-style question with clear how/why|Answer directly; 1–2 turns; pick from the 65 test types; no menu|
 |**Middle**|Single-point but deep (ICH guidance detail, statistical parameter, compliance gray zone; needs 3–4 points)|Still answer directly, **no menu** (same path as Simple); mark `difficulty = "middle"` for a richer multi-point answer. When Simple vs Middle is unclear, prefer **Middle**|
 |**Complex**|Multi-step or design-family question (sequential/adaptive/mixed/survival)|Consult `references/menu.md` → present the relevant menu; guide step-by-step|
 |**Vague**|Under-specified ask (missing endpoint, design, or effect size)|Use `grill-me` to ask 1–3 clarifying questions → then re-triage|
@@ -114,7 +114,7 @@ Before any user interaction, triage first into **Simple / Middle / Complex / Vag
 ## Dependencies
 
 ### R Packages (dev / coze-side — NOT in published skill)
-In the published skill, all R packages run **server-side on coze**; you never install them locally. This section applies only when running the optional local-R backend (`CTSS_BACKEND=local-r`, requires `adapters/coze/ct_r_lib/`):
+In the published skill, all R packages run **server-side on coze**; you never install them locally. This section applies only when running the optional local-R backend (`CTSS_BACKEND=local-r`, requires `adapters/local-r/`):
 R packages do NOT need to be pre-installed all at once. When the dev backend detects a missing package it prints the install command in output; the user runs it once.
 
 |Tier|Package|Used for|

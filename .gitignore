@@ -85,6 +85,7 @@ Thumbs.db
 workbench/
 workbench/publish-kit/
 workbench/publish-dist/
+workbench/_publish_trash/   # 发布构建旧版本暂存（fileserv 删除被 safe-delete 拦截，v5.12.0）
 
 # ── F20 周备份目录（2026-10-04 周检备份，本地回滚用，不进 VCS/发布包）──
 _bak_weekly_*/

@@ -2,7 +2,7 @@
 
 > 以下面向需要调试、复现或二次开发的用户。普通使用者无需阅读；日常使用请见 README_zh-CN.md 第一至四节。
 
-### 5.1 CLI 命令示例（完整 49 种）
+### 5.1 CLI 命令示例（完整 65 种）
 
 技能在底层通过 `scripts/samplesize_power.py` 生成并执行 R 代码。如果你要自己复现、调试或批量跑，可直接调用 CLI（普通对话使用者无需此步）：
 
@@ -96,7 +96,7 @@ python scripts/samplesize_power.py --test be_tost --nobs 20
 python scripts/samplesize_power.py --test mams --nobs 100
 ```
 
-**覆盖全部 49 种检验类型。** 反向求解策略：优先使用原生包反解（`pwr.*`、`PowerTOST::power.TOST`、`rpact::getPowerMeans/getPowerSurvival`）；自写检验采用解析逆公式（非中心参数逆推 `z_b` 后 `power = pnorm(z_b)`）；精度型检验（`bland_altman`）回报可达 CI 半宽而非效能。
+**覆盖全部 65 种检验类型。** 反向求解策略：优先使用原生包反解（`pwr.*`、`PowerTOST::power.TOST`、`rpact::getPowerMeans/getPowerSurvival`）；自写检验采用解析逆公式（非中心参数逆推 `z_b` 后 `power = pnorm(z_b)`）；精度型检验（`bland_altman`）回报可达 CI 半宽而非效能。
 
 ### 5.3 曲线模式：Power / 样本量曲线
 
@@ -146,20 +146,20 @@ python scripts/samplesize_power.py --test ttest_ind --power_seq "0.6:0.05:0.95" 
 
 | 组件 | 要求 |
 |:---|:---|
-| R | ≥ 4.1.0（推荐 ≥ 4.1.0） |
-| Python | ≥ 3.8 + statsmodels ≥ 0.14, numpy ≥ 1.24, scipy ≥ 1.11 |
+| Python | ≥ 3.8，**纯标准库**——无任何第三方运行时依赖 |
+| R | ≥ 4.1.0——**仅在 coze 服务端运行**；发布技能不需要本地 R（dev 后端 `adapters/local-r/` 除外） |
 | 操作系统 | Windows / macOS / Linux |
 
-R 包**不需要全部预装**，技能在用到某包时自动提示安装；也可一键安装全部：`python scripts/samplesize_power.py --install-all-packages`。
+R 包**不需要全部预装**——发布技能中全部 R 计算在 **coze 服务端**完成，本地无需安装任何 R 包。注意：一键安装旗标 `--install-all-packages` 已于 **v5.0.2 移除**。可选的本地 R 开发后端（`adapters/local-r/`，不随发布包分发）请按提示使用 `install.packages()` 代码片段安装。
 **无需 R 包的检测类型：** `poisson`, `cluster`, `bland_altman`, `vaccine_efficacy`, `bayesian`, `dose_escalation`, `survival`（仅 Schoenfeld）, `must_win`, `multiple_endpoints`, `assurance`, `dunnett`, `mediation`, `win_ratio`
 
 ### 5.6 常见错误
 
 | 错误 | 解决方案 |
 |:---|:---------|
-| "Rscript not found" | 安装 R 或指定路径 |
-| "package not found" | install.packages("xxx") |
-| ImportError: statsmodels | pip install statsmodels |
+| "Rscript not found" | 安装 R 或指定路径（仅 dev 后端需要） |
+| "package not found" | install.packages("xxx")（仅 dev 后端需要） |
+| coze 不可达 | 检查网络/代理后重试（serverless 冷启动可能 >15s） |
 | simr timeout | 减少 --nsim 或简化模型 |
 | BuyseTest convergence | 增加 n_sim，检查先验分布 |
 | rpact error | 更新 rpact 至最新版本 |
@@ -182,7 +182,7 @@ ct-samplesize/
 │   ├── icon_4x.png / icon_8x.png
 │   └── ct-samplesize_4x.png / ct-samplesize_8x.png
 ├── scripts/
-│   ├── samplesize_power.py   ← CLI：49 种检验计算（coze 后端；v5，纯标准库）
+│   ├── samplesize_power.py   ← CLI：65 种检验计算（coze 后端；v5，纯标准库）
 │   ├── compute_backend.py    ← 后端抽象：CozeBackend（唯一后端，无本地兜底）
 │   ├── i18n.py               ← 中英切换 helper（复制自 ct-base）
 │   └── office_to_md.py       ← 用户上传 docx/pptx → md（ct-base §6.7）
@@ -196,9 +196,9 @@ ct-samplesize/
     ├── report_template.md    ← 报告骨架（复制自 ct-base）
     ├── units.md              ← 原子任务单元索引（BASE.md §6）
     ├── menu.md               ← 权威分层检验菜单（终点主树 + 设计族索引）
-    ├── cli_examples.md       ← 完整 49 种检验 CLI 示例 + 双向求解
+    ├── cli_examples.md       ← 完整 65 种检验 CLI 示例 + 双向求解
     ├── operation_sop.md      ← 端到端操作 SOP + 故障排查
-    ├── data_format_guide.md  ← 49 种检验数据框架 + 示例
+    ├── data_format_guide.md  ← 65 种检验数据框架 + 示例
     ├── formulas.md        ← 公式推导
     ├── extended_functions.md ← 扩展函数清单
     ├── r_packages.md      ← R 包参考（20+ 包）

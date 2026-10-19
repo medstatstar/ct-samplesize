@@ -2,7 +2,7 @@
 
 > The following is for users who need to debug, reproduce, or extend the tool. Ordinary chat users don't need it; see Sections 1-4 of README.md for daily use.
 
-### 5.1 CLI Examples (full 49 tests)
+### 5.1 CLI Examples (full 65 tests)
 
 Under the hood the skill uses `scripts/samplesize_power.py` to generate and run R code. If you want to reproduce, debug, or batch-run yourself, call the CLI directly (normal chat users don't need this step):
 
@@ -96,7 +96,7 @@ python scripts/samplesize_power.py --test be_tost --nobs 20
 python scripts/samplesize_power.py --test mams --nobs 100
 ```
 
-All 49 test types support this bidirectional solving. Native reverse functions
+All 65 test types support this bidirectional solving. Native reverse functions
 (`pwr.*`, `PowerTOST::power.TOST`, `rpact::getPowerMeans/getPowerSurvival`) are used
 where available; analytic inverse formulas cover self-written tests; precision-style
 tests (`bland_altman`) report achievable CI half-width instead of power.
@@ -155,20 +155,20 @@ solving only; a curve request returns a clear "curve not supported" notice.
 
 | Component | Requirement |
 |:----------|:------------|
-| R | ≥ 4.1.0 (≥ 4.1.0 recommended) |
-| Python | ≥ 3.8 + statsmodels ≥ 0.14, numpy ≥ 1.24, scipy ≥ 1.11 |
+| Python | ≥ 3.8, **standard library only** — no third-party runtime deps |
+| R | ≥ 4.1.0 — **server-side on coze only**; the published skill needs no local R (dev-only backend: `adapters/local-r/`) |
 | OS | Windows / macOS / Linux |
 
-R packages are **not pre-installed**; the skill prompts you to install only when needed, or one-click install all: `python scripts/samplesize_power.py --install-all-packages`.
+R packages are **not pre-installed**; in the published skill all R runs **server-side on coze** (no local install ever needed). Note: the one-click flag `--install-all-packages` was **removed in v5.0.2**. For the optional local-R dev backend (`adapters/local-r/`, not shipped), use the printed `install.packages()` snippet instead.
 **No R package needed for:** `poisson`, `cluster`, `bland_altman`, `vaccine_efficacy`, `bayesian`, `dose_escalation`, `survival` (Schoenfeld only), `must_win`, `multiple_endpoints`, `assurance`, `dunnett`, `mediation`, `win_ratio`
 
 ### 5.6 Common Errors
 
 | Error | Fix |
 |:----------|:--------|
-| "Rscript not found" | Install R or specify path |
-| "package not found" | install.packages("xxx") |
-| ImportError: statsmodels | pip install statsmodels |
+| "Rscript not found" | Install R or specify path (dev backend only) |
+| "package not found" | install.packages("xxx") (dev backend only) |
+| coze unreachable | Check network/proxy; retry (serverless cold start can take >15s) |
 | simr timeout | Reduce --nsim or simplify model |
 | BuyseTest convergence | Increase n_sim, check prior specification |
 | rpact error | Update rpact to latest version |
@@ -191,7 +191,7 @@ ct-samplesize/
 │   ├── icon_4x.png / icon_8x.png
 │   └── ct-samplesize_4x.png / ct-samplesize_8x.png
 ├── scripts/
-│   ├── samplesize_power.py   ← CLI: 49-test calculator (coze backend; v5, stdlib only)
+│   ├── samplesize_power.py   ← CLI: 65-test calculator (coze backend; v5, stdlib only)
 │   ├── compute_backend.py    ← Backend abstraction: CozeBackend (unique, no local fallback)
 │   ├── i18n.py               ← EN/ZH switch helper (copied from ct-base)
 │   └── office_to_md.py       ← User-uploaded docx/pptx → md (ct-base §6.7)
@@ -205,9 +205,9 @@ ct-samplesize/
     ├── report_template.md    ← Report skeleton (copied from ct-base)
     ├── units.md              ← Atomic task-unit index (BASE.md §6)
     ├── menu.md               ← Authoritative layered test menu
-    ├── cli_examples.md       ← Full 49-test CLI examples + bidirectional solve
+    ├── cli_examples.md       ← Full 65-test CLI examples + bidirectional solve
     ├── operation_sop.md      ← End-to-end operation SOP + troubleshooting
-    ├── data_format_guide.md  ← 49-test data format + examples
+    ├── data_format_guide.md  ← 65-test data format + examples
     ├── formulas.md        ← Formula derivations
     ├── extended_functions.md ← Extended function catalogue
     ├── r_packages.md      ← R package reference (20+ pkgs)

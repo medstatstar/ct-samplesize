@@ -8,7 +8,7 @@ Architecture (v5):
 - v5 removed the local pure-Python fallback (LocalPythonBackend) and all
   third-party compute deps (statsmodels / numpy / scipy no longer required).
   select_backend() returns ONLY CozeBackend; coze unreachable → error, no fallback.
-- Local R backend (LocalRBackend, in adapters/coze/ct_r_lib/) is dev/transition only and is
+- Local R backend (LocalRBackend, in adapters/local-r/) is dev/transition only and is
   NOT shipped in the published package.
 - Safe by default: --dry-run previews the exact coze request envelope; coze is
   a stateless compute service, so no local code is ever executed. The legacy
@@ -17,7 +17,7 @@ Architecture (v5):
   allowlist, so it can NEVER break out of an R string literal.
 - Input args validated against strict allowlists regardless of backend.
 
-Test types (49 total):
+Test types (65 total):
   Core: ttest_ind, ttest_paired, anova, proportion_one, proportion_two,
         non_inferiority, equivalence, be_tost, mixed_model, roc, poisson,
         bland_altman, cluster, vaccine_efficacy, multiple_endpoints,
@@ -32,10 +32,16 @@ Test types (49 total):
         (upgraded to rpact exact two-sample means), gsd_proportion,
         gsd_survival, gsd_hazard, gsd_poisson; real spending functions
         (OF/Pocock/WT/HSD-gamma/Kim-DeMets) + non-binding futility bounds
+  New in v5.9.0 (Tier 1 PASS-coverage): correlation, variance_one,
+        variance_two, cv_one, ci_mean, ci_prop, ci_or, ci_rr, ci_cor,
+        ci_icc, regression_linear, meta_planning
+  New in v5.10.0 (Tier 2 PASS-coverage): regression_logistic,
+        regression_poisson, cluster_ext, rates_ext
 """
 import argparse, sys, os, io, tempfile, re, json, time
 from i18n import t, resolve_user_language
 from compute_backend import select_backend, Result, Figure
+from r_code_policy import r_code_unavailable, is_paid_env
 
 # P1-C: local Monte-Carlo verification of an analytic sample-size solution
 # (power ±2pp / TIE ±0.5pp). Independent implementation — does NOT reuse the
@@ -485,7 +491,11 @@ def build_parser():
                  "survival_equivalence","survival_superiority","cox_covariate",
                  "survival_one_sample","competing_risks","recurrent_events",
                  "survival_historical",
-                 "adaptive_simulate"])
+                 "adaptive_simulate",
+                 "correlation","variance_one","variance_two","cv_one",
+                 "ci_mean","ci_prop","ci_or","ci_rr","ci_cor","ci_icc",
+                 "regression_linear","meta_planning",
+                 "regression_logistic","regression_poisson","cluster_ext","rates_ext"])
     p.add_argument("--nl", default=None,
                    help="自然语言需求（零 LLM 本地确定性解析：自动识别 --test 并提取参数）。"
                         "例：'非劣效生存试验，NI界值1.25，期望HR=1.0，入组12月随访12月'。"
@@ -504,7 +514,16 @@ def build_parser():
     p.add_argument("--power", type=float, default=0.8, help="目标检验效能 (与 --nobs 互斥)")
     p.add_argument("--nobs", type=int, default=None, help="给定样本量求效能 (与 --power 互斥)")
     p.add_argument("--show-assumptions", action="store_true", default=False,
-                   help="打印本次计算的假设清单（显式输入 / 静默默认值 / 合理区间 / 解读风险）后退出，不做求解")
+                   help="打印本次计算的假设清单（显式输入 / 静默默认值 / 合理区间 / 解读风险 / 公开证据参考）后退出，不做求解")
+    # ── 公开证据效应量参考（路线 A，2026-10-14）──
+    p.add_argument("--effect-ref", dest="effect_ref", default=None,
+                   help="公开证据效应量参考 JSON（来自公开已发表荟萃，schema 见 effect_size_benchmarks/）。"
+                        "仅展示于假设清单；默认绝不代入。")
+    p.add_argument("--adopt-ref", dest="adopt_ref", default=None,
+                   help="显式采纳参考值代入计算：median|conservative|low|high|<来源序号>。"
+                        "须与 --effect-ref 同用；采纳来源会打印并计入假设清单（可审计）。")
+    p.add_argument("--ta", default=None, help="适应症（信息性，随假设清单输出）")
+    p.add_argument("--endpoint", default=None, help="终点（信息性，随假设清单输出）")
     # upgrade I (2026-09-29): 规划层假设质量审计（四分级 + 设计逻辑族 + fallback）
     p.add_argument("--audit", action="store_true", default=False,
                    help="假设质量审计（规划层）：known/weak/unknown/missing 四分级 + "
@@ -585,6 +604,50 @@ def build_parser():
     p.add_argument("--correlation", type=float, default=0.5)
     p.add_argument("--n_doses", type=int, default=5)
     p.add_argument("--target_dlt", type=float, default=0.33)
+    # ── Tier 1 新增（2026-10-12）：CI 精度 / 方差 / 回归 / Meta 规划 ──
+    p.add_argument("--half_width", type=float, default=None,
+                   help="置信区间半宽（ci_mean/ci_prop/ci_or/ci_rr/ci_cor/ci_icc：给定→求 n；配 --nobs→求达成半宽）")
+    p.add_argument("--rel_error", type=float, default=None,
+                   help="相对误差（cv_one：CV 估计 CI 的相对半宽目标）")
+    p.add_argument("--p0", type=float, default=None,
+                   help="基线比例（ci_or/ci_rr 对照组事件率；meta_planning or/rr 用）")
+    p.add_argument("--f2", type=float, default=None,
+                   help="Cohen's f²（regression_linear：R²/(1-R²)）")
+    p.add_argument("--u_pred", type=int, default=None,
+                   help="预测变量数 u（regression_linear）")
+    p.add_argument("--effect_type", type=str, default=None,
+                   choices=["smd","paired","or","rr","cor","cluster"],
+                   help="Meta 效应类型（meta_planning）")
+    p.add_argument("--n_per_study", type=float, default=None,
+                   help="每研究样本量（meta_planning，用于算研究内方差 vw）")
+    p.add_argument("--i2", type=float, default=None,
+                   help="异质性 I²（meta_planning；与 R=I²/(1-I²) 互为双参数）")
+    p.add_argument("--R", dest="R", type=float, default=None,
+                   help="异质性比 R=组间/组内（meta_planning；直输优先于 I² 映射，R=0 即固定效应）")
+    p.add_argument("--effect0", type=float, default=None,
+                   help="H0 效应量（meta_planning：效应量原尺度；缺省 or/rr=1、其余=0）")
+    p.add_argument("--cluster_cv", type=float, default=None,
+                   help="簇大小变异系数 COV（meta_planning cluster：DE=1+((COV²+1)M-1)ρ；缺省 0=等簇大小）")
+    p.add_argument("--k_studies", type=int, default=None,
+                   help="研究数 K（meta_planning：给定→求效能；缺省→求所需 K）")
+
+    # ── Tier 2 新增（2026-10-12）：回归 / 整群扩展 / 率扩展 ──
+    p.add_argument("--x_type", type=str, default=None,
+                   choices=["continuous", "binary"],
+                   help="逻辑回归协变量类型（regression_logistic：continuous 连续 / binary 二分类）")
+    p.add_argument("--q", type=float, default=None,
+                   help="P(X=1)（regression_logistic 二分类协变量患病比例）")
+    p.add_argument("--r2", type=float, default=None,
+                   help="协变量与其它变量的复相关平方 R²（regression_logistic / regression_poisson）")
+    p.add_argument("--mu_x", type=float, default=None,
+                   help="协变量均值 μ_X（regression_poisson 正态 X）")
+    p.add_argument("--phi", type=float, default=None,
+                   help="过离散参数 φ（regression_poisson / rates_ext；>1 为负二项型过离散）")
+    p.add_argument("--cv_cluster", type=float, default=None,
+                   help="簇大小变异系数 CV（cluster_ext 不等群设计效应）")
+    p.add_argument("--rate_mode", type=str, default=None,
+                   choices=["ratio", "single_ci", "ratio_ci"],
+                   help="率模式（rates_ext：ratio 率比检验 / single_ci 单率 CI / ratio_ci 率比 CI）")
 
     # ═══ NEW v3.3 arguments ═══
     # Win-Ratio
@@ -860,7 +923,12 @@ def _render_single_result(res, test, figure_mode=None, out_dir=None, idx=None,
                 {"format": f.format, "content": f.content, "caption": f.caption}
                 for f in _filter_alloc(res.figures, show_alloc)
             ],
-            "repro": {"r": res.r_code} if res.r_code else None,
+            # 高级方法（B 类名单）不把 R 代码写进 HTML 报告（2026-10-13 产品策略；
+            # 付费用户 is_paid_env() 放行——与 coze 端 node 出口判定一致）
+            "repro": ({"r": res.r_code}
+                      if (res.r_code
+                          and not r_code_unavailable(test, paid=is_paid_env()))
+                      else None),
             "warnings": [],
             # 契约漂移标记（ct-base §20.9）：透传自 compute 的 meta，供渲染横幅消费
             "_needs_upgrade": bool((res.meta or {}).get("_needs_upgrade", False)),
@@ -886,7 +954,15 @@ def _render_single_result(res, test, figure_mode=None, out_dir=None, idx=None,
 
     # ── R 源码 / R 数值（默认回传并展示，对齐 meta-analysis；2026-08-29 修订）──
     # 旧逻辑仅在 --show-code / CTSS_RETURN_R_CODE 时展示；现默认展示（coze 始终回传 repro.r）。
-    if res.r_code:
+    # 2026-10-13：B 类高级方法（r_code_policy.R_CODE_UNAVAILABLE_TESTS）对免费用户
+    # 不提供 R 代码，改提示联系作者；付费用户（CTSS_ACCOUNT_ID / CTSS_BILLING_TOKEN）
+    # 放行。coze 端 node 出口已按同标记判定；此处为展示层兜底（含 mock/本地路径）。
+    # R 数值结果（r_result）不受影响，照常展示。
+    if r_code_unavailable(test, paid=is_paid_env()):
+        print("=" * 60)
+        print(t("info.r_code_unavailable"))
+        print("=" * 60)
+    elif res.r_code:
         print("=" * 60)
         print(t("header.r_code"))
         print("=" * 60)
@@ -1080,6 +1156,68 @@ def main():
             print(f"  ✗ {e}")
         sys.exit(1)
 
+    # ── 公开证据参考采纳（路线 A，2026-10-14）──
+    # 插在数值范围校验之后、d_val 折算之前：--adopt-ref 显式指定才代入，
+    # 代入值覆盖对应 args 参数，来源打印到 stdout 并进入假设清单（可审计）。
+    # 尺度/终点不符（effect_ref.compatible）硬拒绝；文件校验失败即退出，不静默跳过。
+    if getattr(args, "adopt_ref", None) and not getattr(args, "effect_ref", None):
+        p.error("--adopt-ref 须与 --effect-ref 同用（采纳目标参考文件缺失）")
+    if getattr(args, "effect_ref", None) and getattr(args, "adopt_ref", None):
+        try:
+            import effect_ref as _er
+        except ImportError:
+            import scripts.effect_ref as _er
+        _ref_data, _err = _er.load_ref(args.effect_ref)
+        if _err:
+            print("[effect-ref] " + _err, file=sys.stderr)
+            sys.exit(1)
+        _refs, _errors, _warnings = _er.validate(_ref_data)
+        if _errors:
+            for _e in _errors:
+                print("[effect-ref] ✗ " + _e, file=sys.stderr)
+            sys.exit(1)
+        _adopted, _perr = _er.pick(_refs, args.adopt_ref)
+        if _perr:
+            print("[effect-ref] " + _perr, file=sys.stderr)
+            sys.exit(1)
+        _ok, _reason = _er.compatible(_adopted, args.test, args)
+        if not _ok:
+            print("[effect-ref] " + _reason, file=sys.stderr)
+            sys.exit(1)
+        # OR/RR 参考经 --effect 落地（ci_or/ci_rr/regression_*/rates_ext 引擎读 p$effect）；
+        # effect/hazard_ratio 同名落地。映射表见 effect_ref.TARGET_ARG。
+        _target_arg = _er.TARGET_ARG.get(_adopted["param"], _adopted["param"])
+        setattr(args, _target_arg, _adopted["value"])
+        print("[effect-ref] 已采纳公开参考：%s=%s（%s）→ 落地参数 --%s；来源: %s"
+              % (_adopted["param"], _adopted["value"], _adopted["basis"],
+                 _target_arg, _adopted["source"]))
+        print("[effect-ref] 声明: " + _er.DISCLAIMER)
+        args._effect_ref_ctx = {"ta": args.ta or _ref_data.get("ta"),
+                                "endpoint": args.endpoint or _ref_data.get("endpoint"),
+                                "summary": _er.summarize(_refs),
+                                "adopted": _adopted,
+                                "disclaimer": _er.DISCLAIMER}
+    elif getattr(args, "effect_ref", None):
+        # 仅展示不采纳：数据照样校验（错误即退出），但不改任何参数
+        try:
+            import effect_ref as _er
+        except ImportError:
+            import scripts.effect_ref as _er
+        _ref_data, _err = _er.load_ref(args.effect_ref)
+        if _err:
+            print("[effect-ref] " + _err, file=sys.stderr)
+            sys.exit(1)
+        _refs, _errors, _warnings = _er.validate(_ref_data)
+        if _errors:
+            for _e in _errors:
+                print("[effect-ref] ✗ " + _e, file=sys.stderr)
+            sys.exit(1)
+        args._effect_ref_ctx = {"ta": args.ta or _ref_data.get("ta"),
+                                "endpoint": args.endpoint or _ref_data.get("endpoint"),
+                                "summary": _er.summarize(_refs),
+                                "adopted": None,
+                                "disclaimer": _er.DISCLAIMER}
+
     # ── 效应量 / 检验方向统一处理 (--side / --sd) ──
     # alt: one-sided -> "greater" (预期处理组更优); two-sided -> "two.sided"
     alt = "greater" if args.side == "one" else "two.sided"
@@ -1120,11 +1258,19 @@ def main():
             import assumption_block as _ab
         except ImportError:
             import scripts.assumption_block as _ab  # 作为脚本子模块时
-        block = _ab.build_assumption_block(args, args.test, p)
+        _ectx = getattr(args, "_effect_ref_ctx", None)
+        block = _ab.build_assumption_block(args, args.test, p, effect_ref=_ectx)
         print("=" * 60)
         print("假设清单 / Assumption Block")
         print("=" * 60)
         print(_ab.json.dumps(block, ensure_ascii=False, indent=2))
+        if _ectx:
+            try:
+                import effect_ref as _er
+            except ImportError:
+                import scripts.effect_ref as _er
+            print(_er.render({"ta": _ectx.get("ta"), "endpoint": _ectx.get("endpoint")},
+                             _ectx["summary"], _ectx["adopted"], []))
         sys.exit(0)
 
     # ── 假设质量审计（ct-update 建议 ct-samplesize::I，规划层）──

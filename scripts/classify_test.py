@@ -181,7 +181,7 @@ def classify(nl, test_hint=None):
 
     notes = []
     missing = []
-    # 注：R 引擎 dispatch 的 49 个 test 均为具体设计（含 survival/logrank 等基础型），
+    # 注：R 引擎 dispatch 的 65 个 test 均为具体设计（含 survival/logrank 等基础型），
     # 不再对基础终点词误报「缺设计族」；design_family 仅留给真正抽象、需追问的场景。
 
     return {

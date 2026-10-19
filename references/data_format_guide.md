@@ -1,6 +1,6 @@
 # Data Format Guide
 
-> This guide takes the "what data do you need to prepare" angle and gives a friendly input framework for each of the 49 test types.
+> This guide takes the "what data do you need to prepare" angle and gives a friendly input framework for each of the 65 test types.
 > Each type includes: a **parameter table to fill in** + **a real example** + **data-source hints**.
 
 ---

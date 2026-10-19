@@ -8,11 +8,11 @@
 
 | Layer | What it produces | Where it runs | When |
 |:---|:---|:---|:---|
-| **coze R** (`coze_figure_layer.R`) | Exact default chart for **all 49** methods (native noncentral distributions) | coze workflow | primary — whenever coze computes the method |
+| **coze R** (`coze_figure_layer.R`) | Exact default chart for **all 65** methods (native noncentral distributions) | coze workflow | primary — whenever coze computes the method |
 | **coze-internal `figure_kit.py`** | Same default charts (Python, stdlib only) | coze workflow | fallback — only if R produced no SVG (svglite missing / R error) |
 | **coze R engine** | Authoritative curves for the 9 curve solvers | coze workflow | whenever coze returns `figures[]` for a curve solver |
 
-> **Deployment boundary:** the R + figure_kit layer lives in `adapters/coze/scripts/` (the canonical coze-side mirror, which must always be kept at the latest version); the **coze platform deployment step is manual (user-side)**. Full deploy + fallback-chain guide → `adapters/coze/DEPLOY.md`.
+> **Deployment boundary:** the R + figure_kit layer lives in `adapters/coze/scripts/`; since v5.12.0 `figure_kit.py` / `alloc_curve.py` are **synced from the skill-root `scripts/` at build time** (that root copy is the single source of truth — edit it there, then rebuild via `adapters/coze/_build_deploy_new.py`); the **coze platform deployment step is manual (user-side)**. Full deploy + fallback-chain guide → `adapters/coze/DEPLOY.md`.
 
 **Figure merge & dedup (2026-08-30):** coze-internal `samplesize.py::_run_figure_layer` appends default figures after engine figures. When an engine figure caption already contains "curve/曲线" (the default primary is redundant with the engine power-N curve), the default primary (`*_default_1.svg`) is **filtered out**. Result: engine-fig methods get engine figures only; engine-less methods get the default primary.
 
@@ -29,7 +29,7 @@ It never re-derives a sample-size formula. It takes the R-returned anchor `(n*, 
 | `F` | `λ(n) = λ*·(n/n*)` | noncentral F | ANOVA |
 | `X` | `λ(n) = λ*·(n/n*)` | noncentral χ² | Cox with covariate |
 
-The curve is **pinned through the R anchor exactly** (residual ≤ 1e-16, verified for all 49 methods at 3 anchors each). The Python `figure_kit.py` fallback uses the same family law with a self-implemented kernel (cross-checked against R 4.6.1); it is precise for large samples and approximate for n < 20 or methods with continuity correction. Every chart carries an **effect-size ±20 % sensitivity band**: the visible consequence of that assumption, drawn rather than hidden.
+The curve is **pinned through the R anchor exactly** (residual ≤ 1e-16, verified for all 65 methods at 3 anchors each). The Python `figure_kit.py` fallback uses the same family law with a self-implemented kernel (cross-checked against R 4.6.1); it is precise for large samples and approximate for n < 20 or methods with continuity correction. Every chart carries an **effect-size ±20 % sensitivity band**: the visible consequence of that assumption, drawn rather than hidden.
 
 > **Charts communicate; they do not compute.** Read trend and trade-offs off the figure; quote the R number (the red anchor dot) in the protocol.
 
@@ -75,4 +75,4 @@ Distribution kernels cross-validated against R 4.6.1 — central χ²/F and nonc
 
 ## Dependencies: zero new R packages (a deploy step is required)
 
-All figure generation runs on the coze side in v5.6, so the coze workflow must deploy the figure layer from `adapters/coze/scripts/` (4 files: `coze_figure_layer.R`, `figure_kit.py`, `alloc_curve.py`, `coze_fallback.py`) — but **no new R package is installed**: `svglite` is already in the tier1 list (`scripts/install_r_packages.R`) alongside `pwr`/`rpact`/`TrialSize`/`PowerTOST`/`powerSurvEpi`/`simr`/`lme4`/`survival`, which cover every statistic involved. The only two places a package *could* have helped (`clusterPower` for ICC, `bsurvival` for assurance) use closed-form approximations anchored to the R number instead, with the residual uncertainty drawn as the sensitivity band — cheaper than a new image build. Local side needs **no** figure dependencies at all (thin client).
+All figure generation runs on the coze side in v5.6, so the coze workflow must deploy the figure layer from `adapters/coze/scripts/` (4 files: `coze_figure_layer.R`, `figure_kit.py`, `alloc_curve.py`, `coze_fallback.py` — the latter two Python files are build-synced from the skill-root `scripts/` since v5.12.0, do not hand-edit the coze-side copies) — but **no new R package is installed**: `svglite` is already in the tier1 list (`scripts/install_r_packages.R`) alongside `pwr`/`rpact`/`TrialSize`/`PowerTOST`/`powerSurvEpi`/`simr`/`lme4`/`survival`, which cover every statistic involved. The only two places a package *could* have helped (`clusterPower` for ICC, `bsurvival` for assurance) use closed-form approximations anchored to the R number instead, with the residual uncertainty drawn as the sensitivity band — cheaper than a new image build. Local side needs **no** figure dependencies at all (thin client).

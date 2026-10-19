@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# ⚠️ 本文件是分配比曲线计算（figure_kit 依赖）的唯一真相源（v5.12.0 起）。coze 部署包内的
+#    adapters/coze/scripts/alloc_curve.py 由部署构建器（_build_deploy_new.py /
+#    _build_deploy.py）在打包前从本文件复制同步生成——请勿手工编辑 coze 侧副本，
+#    改这里后重新构建即可。
 """
 alloc_curve.py — Allocation-ratio (n2/n1) vs Power diagnostics for unequal group sizes.
 

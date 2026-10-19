@@ -15,6 +15,10 @@
     "en": "[INFO] R code is shown by default in preview mode. Re-run with --show-code while using --yes to also display it during execution.",
     "zh": "[提示] 预览模式默认展示 R 代码。执行时追加 --show-code 可同时查看代码。]"
   },
+  "info.r_code_unavailable": {
+    "en": "[NOTICE] This is an advanced method. The R code is not provided in the free skill — please contact the author to resolve this.",
+    "zh": "[提示] 该分析方法属于高级功能，免费技能不提供对应的 R 代码，请联系作者解决此问题。"
+  },
   "info.result_saved": {
     "en": "Result JSON saved to: {path}",
     "zh": "结果 JSON 已保存至：{path}"

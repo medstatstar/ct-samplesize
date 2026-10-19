@@ -103,8 +103,8 @@ RISKS = {
 }
 
 
-def build_assumption_block(args, test, parser):
-    """构造四段假设清单。
+def build_assumption_block(args, test, parser, effect_ref=None):
+    """构造假设清单（四段 + 可选公开证据参考段）。
 
     Parameters
     ----------
@@ -150,11 +150,25 @@ def build_assumption_block(args, test, parser):
 
     risks = RISKS.get(test, []) if test else []
 
+    # 公开证据效应量参考段（路线 A，2026-10-14）：仅展示，采纳状态显式标注。
+    # 参考 ≠ 代入：人群/终点/尺度可比性由使用人复核（effect_ref.compatible 已挡尺度硬冲突）。
+    references = None
+    if effect_ref:
+        references = {
+            "ta": effect_ref.get("ta"),
+            "endpoint": effect_ref.get("endpoint"),
+            "summary": effect_ref.get("summary"),
+            "adopted": effect_ref.get("adopted"),
+            "disclaimer": effect_ref.get("disclaimer"),
+        }
+        risks = risks + ["公开参考 ≠ 本试验假设：人群/终点/效应量尺度须可比"]
+
     return {
         "test": test,
         "inputs": inputs,
         "assumptions": assumptions,
         "bounds": bounds_out,
+        "references": references,
         "risks": risks,
         "flagged": flagged,
     }

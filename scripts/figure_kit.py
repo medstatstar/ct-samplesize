@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# ⚠️ 本文件是默认图形层（figure layer）的唯一真相源（v5.12.0 起）。coze 部署包内的
+#    adapters/coze/scripts/figure_kit.py 由部署构建器（_build_deploy_new.py /
+#    _build_deploy.py）在打包前从本文件复制同步生成——请勿手工编辑 coze 侧副本，
+#    改这里后重新构建即可。coze 端 samplesize.py 按路径子进程执行包内副本。
 """
 figure_kit.py — ct-samplesize v5.1 默认图形层（Default Figure Layer）
 
@@ -8,7 +12,7 @@ figure_kit.py — ct-samplesize v5.1 默认图形层（Default Figure Layer）
 v5.0.2 之前：只有 5 种检验（ttest_ind / ttest_paired / ttest_one /
 proportion_one / proportion_two）在契约里标了 `default_curve=true`，其余 44 种
 算完只回一个数字，没有任何图形。原因不是"画不了"，而是**曲线必须由 R 端算**——
-一旦要求 coze 为 49 种方法各画一张图，就要在云端 R 里塞进一大段绘图代码并
+一旦要求 coze 为 65 种方法各画一张图，就要在云端 R 里塞进一大段绘图代码并
 引入额外图形依赖。
 
 本模块的取舍：**数值锚点来自 R（真相源），曲线形状交给本地的族级解析结构**。
@@ -493,6 +497,23 @@ METHOD_FAMILY = {
     # ── 贝叶斯 ──
     "bayesian":         ("z", lambda n, g: 1.0, lambda n, g: 1e9),
     "assurance":        ("z", lambda n, g: 1.0, lambda n, g: 1e9),
+    # ── PASS-coverage extension (v5.9 / v5.10) ──
+    "correlation":        ("z", lambda n, g: 1.0, lambda n, g: 1e9),
+    "variance_one":       ("X", lambda n, g: 1.0, lambda n, g: max(1.0, n - 1.0)),
+    "variance_two":       ("F", lambda n, g: 1.0, lambda n, g: max(1.0, n - 1.0)),
+    "cv_one":             ("z", lambda n, g: 1.0, lambda n, g: 1e9),
+    "ci_mean":            ("z", lambda n, g: 1.0, lambda n, g: 1e9),
+    "ci_prop":            ("z", lambda n, g: 1.0, lambda n, g: 1e9),
+    "ci_or":              ("z", lambda n, g: 1.0, lambda n, g: 1e9),
+    "ci_rr":              ("z", lambda n, g: 1.0, lambda n, g: 1e9),
+    "ci_cor":             ("z", lambda n, g: 1.0, lambda n, g: 1e9),
+    "ci_icc":             ("z", lambda n, g: 1.0, lambda n, g: 1e9),
+    "regression_linear":  ("F", lambda n, g: 1.0, lambda n, g: max(1.0, n - 2.0)),
+    "meta_planning":      ("z", lambda n, g: 1.0, lambda n, g: 1e9),
+    "regression_logistic":("z", lambda n, g: 1.0, lambda n, g: 1e9),
+    "regression_poisson": ("z", lambda n, g: 1.0, lambda n, g: 1e9),
+    "cluster_ext":        ("t", lambda n, g: 1.0, lambda n, g: max(1.0, n - 1.0)),
+    "rates_ext":          ("z", lambda n, g: 1.0, lambda n, g: 1e9),
 }
 METHOD_FAMILY["_default"] = _DEFAULT_FAMILY
 
@@ -547,6 +568,23 @@ METHOD_N_UNIT = {
     "adaptive_simulate": "每组样本量 n per arm",
     "conditional_power": "每组样本量 n per arm",
     "assurance": "每组样本量 n per group",
+    # ── PASS-coverage extension (v5.9 / v5.10) ──
+    "correlation": "总样本量 N",
+    "variance_one": "总样本量 N",
+    "variance_two": "每组样本量 n per group",
+    "cv_one": "总样本量 N",
+    "ci_mean": "总样本量 N",
+    "ci_prop": "总样本量 N",
+    "ci_or": "每组样本量 n per group",
+    "ci_rr": "每组样本量 n per group",
+    "ci_cor": "总样本量 N",
+    "ci_icc": "总样本量 N",
+    "regression_linear": "总样本量 N",
+    "meta_planning": "总样本量 N",
+    "regression_logistic": "总样本量 N",
+    "regression_poisson": "总样本量 N",
+    "cluster_ext": "总样本量 N",
+    "rates_ext": "每组样本量 n per group",
 }
 
 #: test → (主图, 副图 or None)
@@ -590,6 +628,23 @@ METHOD_FIGURES = {
     "conditional_power": ("gs_boundary", None),
     "bayesian":         ("assurance_n", None),
     "assurance":        ("assurance_n", None),
+    # ── PASS-coverage extension (v5.9 / v5.10) ──
+    "correlation":        ("power_n", None),
+    "variance_one":       ("power_n", None),
+    "variance_two":       ("power_n", None),
+    "cv_one":             ("power_n", None),
+    "ci_mean":            ("power_n", None),
+    "ci_prop":            ("power_n", None),
+    "ci_or":              ("power_n", None),
+    "ci_rr":              ("power_n", None),
+    "ci_cor":             ("power_n", None),
+    "ci_icc":             ("power_n", None),
+    "regression_linear":  ("power_n", None),
+    "meta_planning":      ("meta_hetero", None),
+    "regression_logistic":("power_n", None),
+    "regression_poisson": ("power_n", None),
+    "cluster_ext":        ("icc_sens", "power_n"),
+    "rates_ext":          ("power_n", None),
 }
 
 #: 兜底：未登记的方法一律出 power_n
@@ -852,6 +907,102 @@ def fig_icc_sens(test, power_fn, n_star, power_star, alpha, sides,
                   "".join(extra) + "".join(body))
 
 
+# ── Meta 规划：不同异质性水平下所需研究数 K（PASS「Plots」栏目对标）─────────
+# 数学核心与 R 引擎 ss_meta_planning 一致（Hedges & Pigott 2001）：
+#   V_W 按效应族闭式；R = I²/(1−I²)；λ = (T−T0)/SE，SE = sqrt(V_W(1+R)/K)
+
+def _meta_vw(effect_type, effect, n, p0, m=20.0, icc=0.05, cv=0.0):
+    """研究内（族内）方差 V_W。cluster 需 m/icc/cv（设计效应放大）。"""
+    if effect_type in ("smd", "cluster"):
+        vw = (2.0 + effect ** 2 / 4.0) / n
+        if effect_type == "cluster":
+            vw *= 1.0 + (((cv or 0.0) ** 2 + 1.0) * m - 1.0) * icc
+        return vw
+    if effect_type == "paired":
+        return (2.0 + effect ** 2 / 2.0) / n
+    if effect_type == "or":
+        p1 = effect * p0 / ((1.0 - p0) + effect * p0)
+        return 1.0 / (n * p0) + 1.0 / (n * (1.0 - p0)) + 1.0 / (n * p1) + 1.0 / (n * (1.0 - p1))
+    if effect_type == "rr":
+        p1 = effect * p0
+        return (1.0 - p0) / (n * p0) + (1.0 - p1) / (n * p1)
+    if effect_type == "cor":
+        return 1.0 / (n - 3.0)
+    return None
+
+
+def _meta_K_required(effect_type, effect, n, i2, alpha, sides, p0,
+                     power, m=20.0, icc=0.05, cv=0.0):
+    """达到目标功效所需最少研究数 K（递增整数搜索，与 R 端一致）。"""
+    vw = _meta_vw(effect_type, effect, n, p0, m, icc, cv)
+    if not vw or vw <= 0:
+        return None
+    R = 1e6 if i2 >= 1 else i2 / (1.0 - i2)
+    if effect_type in ("or", "rr"):
+        core_eff, core0 = math.log(effect), math.log(1.0)
+    elif effect_type == "cor":
+        core_eff, core0 = math.atanh(effect), 0.0
+    else:
+        core_eff, core0 = float(effect), 0.0
+    for k in range(1, 200001):
+        lam = (core_eff - core0) / math.sqrt(vw * (1.0 + R) / k)
+        if power_normal(lam, alpha, sides) >= power:
+            return k
+    return None
+
+
+def fig_meta_hetero(test, alpha=0.05, sides=2, target_power=0.8,
+                    effect_type="smd", effect=0.3, n_per_study=100, p0=0.3,
+                    m=20, icc=0.05, cluster_cv=0.0, i2_given=None, **kw):
+    """meta_planning 主图：所需研究数 K 随异质性 I² 的变化曲线。"""
+    power = float(target_power or 0.8)
+    grid = [i / 40.0 for i in range(0, 39)]          # I² ∈ [0, 0.95]
+    ys = []
+    for x in grid:
+        k = _meta_K_required(effect_type, float(effect), float(n_per_study), x,
+                             alpha, sides, float(p0), power,
+                             float(m or 20), float(icc or 0.05),
+                             float(cluster_cv or 0.0))
+        ys.append(k if k else float("nan"))
+    ok = [(x, y) for x, y in zip(grid, ys) if y == y]
+    if not ok:
+        return ""
+    xs = [p[0] for p in ok]
+    yvs = [p[1] for p in ok]
+    ymin = max(1.0, min(yvs) - 0.5)
+    ymax = max(yvs) + 0.5
+    ax = Axes(0.0, 0.95, ymin, ymax)
+
+    body = [_polyline(ax, list(zip(xs, yvs)), C_BLUE)]
+    presets = [0.0, 0.25, 0.5, 0.75, 0.9]
+    for pv in presets:
+        k = _meta_K_required(effect_type, float(effect), float(n_per_study), pv,
+                             alpha, sides, float(p0), power,
+                             float(m or 20), float(icc or 0.05),
+                             float(cluster_cv or 0.0))
+        if k:
+            body.append(_dot(ax, pv, k, C_GREEN, 4.0))
+    if i2_given:
+        k0 = _meta_K_required(effect_type, float(effect), float(n_per_study),
+                              min(float(i2_given), 0.95), alpha, sides,
+                              float(p0), power, float(m or 20),
+                              float(icc or 0.05), float(cluster_cv or 0.0))
+        if k0:
+            body.append(_dot(ax, min(float(i2_given), 0.95), k0, C_RED, 5.0))
+            body.append(_label(ax, min(float(i2_given), 0.95), k0,
+                               "I2=%g → K=%d" % (float(i2_given), k0),
+                               C_RED, dy=-11, size=10.5, weight="600"))
+    body.append(_legend([("K required", C_BLUE, None),
+                         ("PASS 预设 I2", C_GREEN, None)], y0=PAD_T + 4))
+
+    xt = {i / 10.0: "%.1f" % (i / 10.0) for i in range(0, 10)}
+    yt = _nice_ticks(ymin, ymax, 6, "%d")
+    title = "%s  |  所需研究数 K vs 异质性 I2（power=%g）  |  alpha=%g (%s)" % (
+        test, power, alpha, "单侧" if sides == 1 else "双侧")
+    return _frame(ax, title, "I2（异质性）", "Studies needed (K)",
+                  xt, yt, "".join(body))
+
+
 # ── 序贯边界（Lan-DeMets 消耗函数，闭式，零依赖）─────────────────────────
 
 def _spend_obf(t, alpha):
@@ -1094,6 +1245,14 @@ def _render_default_figures(test, meta, args, out_dir, skip_primary=False):
             svg = fig_gs_boundary(K=K, **kw)
         elif primary == "assurance_n":
             svg = fig_assurance_n(**kw)
+        elif primary == "meta_hetero":
+            svg = fig_meta_hetero(
+                test=test, alpha=alpha, sides=sides,
+                target_power=(target if target is not None else 0.8),
+                effect_type=g("effect_type", "smd") or "smd",
+                effect=g("effect", 0.3), n_per_study=g("n_per_study", 100),
+                p0=g("p0", 0.3), m=g("m", 20), icc=g("icc", 0.05),
+                cluster_cv=g("cluster_cv", 0.0), i2_given=g("i2", None))
         else:
             svg = fig_power_n(test=test, power_fn=power_fn, n_star=n_star,
                               power_star=p_star, alpha=alpha, sides=sides,

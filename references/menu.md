@@ -1,6 +1,6 @@
 # ct-samplesize — Test Menu (Navigation Aid)
 
-> **What this file is:** the authoritative map of all 49 `--test` types. The agent reads it
+> **What this file is:** the authoritative map of all 65 `--test` types. The agent reads it
 > to help a user **pick the right test** when they need to choose. It is a *navigation aid*, not
 > a strict taxonomy — the same test may appear under several headings on purpose.
 >
@@ -12,7 +12,7 @@
 >
 > **③ Can't decide?** → say *"explain the differences between these choices in detail"*, and I'll clarify the clinical/statistical meaning before you choose. This entry is required on every Complex routing menu — **wording must match the family standard verbatim**: 中文 `③ 还拿不准？→ 说「详细解释这些选择之间的差异」，我先讲清临床与统计含义再让你决定`.
 
-**Total: 49 test types** — a primary tree of 6 endpoint categories, plus a design-family cross-index.
+**Total: 65 test types** — a primary tree of 7 endpoint categories, plus a design-family cross-index.
 
 ---
 
@@ -124,6 +124,26 @@ the right `--test` is on the right.
 - `mediation` — Mediation effects
 - `cluster` — Cluster-randomized
 
+### ⑦ Correlation / Dispersion / Precision / Regression / Meta planning
+> 常见参数：`--effect`（按测试：r / 方差比 / CV / OR / RR / SMD / 率比）· `--half_width`（CI 类目标半宽）· `--sd`·`--p0`·`--f2`·`--u_pred`·`--i2`·`--k_studies`·`--x_type`·`--q`·`--r2`·`--mu_x`·`--phi`·`--cv_cluster`·`--rate_mode`·`--alpha`·`--power`（或 `--nobs` 反向）
+
+- `correlation` — 相关检验 H0:ρ=0（Fisher-z 精确）
+- `variance_one` — 单样本方差 σ²=σ0² 检验（χ²）
+- `variance_two` — 两独立方差之比 F 检验
+- `cv_one` — 变异系数估计的相对误差精度
+- `ci_mean` — 均值置信区间精度（半宽→n）
+- `ci_prop` — 比例置信区间精度
+- `ci_or` — 优势比置信区间精度
+- `ci_rr` — 风险比置信区间精度
+- `ci_cor` — 相关系数置信区间精度
+- `ci_icc` — 组内相关系数置信区间精度
+- `regression_linear` — 多重线性回归 R² 检验（Cohen's f²）
+- `regression_logistic` — 逻辑回归样本量（Hsieh 1998/1989；`--x_type=continuous|binary`，`--r2` 校正）
+- `regression_poisson` — 泊松回归样本量（Signorini 1991 正态 X；`--phi` 过离散，`--t1` 暴露时间）
+- `cluster_ext` — 整群随机化**广义设计效应**（`--cv_cluster` 不等群；由个体 n 推簇数，或反向）
+- `rates_ext` — 率扩展（`--rate_mode=ratio` 过离散率比 / `single_ci` 单率 CI / `ratio_ci` 率比 CI）
+- `meta_planning` — Meta 分析前瞻效能/研究数规划（Hedges & Pigott 随机效应；smd/paired/or/rr/cor/cluster；异质性双参数 `--i2`/`--R`，cluster 支持 `--cluster_cv`；默认输出 I²∈{0,.25,.5,.75,.9} 扫描表 + K–I² 图，对标 PASS Plots）
+
 ---
 
 ## Part 2 — Design-Family Cross-Index
@@ -177,6 +197,27 @@ who think in design terms rather than endpoint type.
 ### Diagnostic / Method comparison
 `roc` · `bland_altman`
 
+### Correlation / Association
+`correlation` · `ci_cor`
+
+### Variance / Dispersion
+`variance_one` · `variance_two` · `cv_one`
+
+### Confidence-Interval Precision
+`ci_mean` · `ci_prop` · `ci_or` · `ci_rr` · `ci_cor` · `ci_icc`
+
+### Regression
+`regression_linear` · `regression_logistic` · `regression_poisson` · `cox_covariate`
+
+### Cluster-randomized
+`cluster` · `cluster_ext`
+
+### Rates / Counts
+`poisson` · `rates_ext`
+
+### Meta-analysis planning
+`meta_planning`
+
 ---
 
 ## How the agent should use this menu
@@ -220,7 +261,7 @@ who think in design terms rather than endpoint type.
 >
 > **② 还拿不准？** → 说「详细解释这些选择之间的差异」，我先讲清临床与统计含义再让你决定
 
-**📌 说明：** 已点名能力但卡在选型时，弹**能力路由菜单**逐步确认（(a)/(b) + rationale + 推荐默认 + ③ 解释差异入口），不替用户拍板、不甩全量 49 项菜单。
+**📌 说明：** 已点名能力但卡在选型时，弹**能力路由菜单**逐步确认（(a)/(b) + rationale + 推荐默认 + ③ 解释差异入口），不替用户拍板、不甩全量 65 项菜单。
 
 ### Example 3 · Vague：不确定用哪种检验 → grill-me 逐分支追问（不甩菜单）
 

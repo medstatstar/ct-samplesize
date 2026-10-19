@@ -2,6 +2,10 @@
 # v4.0 架构：R 相关的模板、运行时、参考文档全部迁往 coze 端，
 # 本地发布包只保留 Python 编排层 + 5 个基础检验的兜底实现。
 adapters/r-assets/
+
+# 本地 R 开发后端（dev-only，单一副本；v5.12.0 起 adapters/coze/ct_r_lib/ 双副本已废除，
+# local_r_backend.py + r_templates/ + legacy/ 迁至此处）——不随发布包分发
+adapters/local-r/
 dist/
 outputs/
 

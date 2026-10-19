@@ -1,5 +1,346 @@
 # Changelog / 版本历史
 
+
+## 5.13.14 — 2026-10-19 · 外部对照/RWD 增强设计：分布平衡（DBML）方法与报告义务
+
+- 新增 SKILL.md 节「External-Control / RWD-Augmented Designs · Distributional Balancing」：DBML 三步法（VAE 检出异常 RWD 单位 → 重加权匹配治疗组分布 → 加权抽样；匹配分布而非单位对），实证协变量平衡优于 matching/weighting 基线（arXiv:2609.23524）。
+- **报告硬要求**：RWD 增强对照的输出除样本量外**必须报告协变量平衡指标**（SMD 分布/最大值）；平衡质量未量化即设计未定义。
+- 与 Stat Med 2026 贝叶斯外部对照（DOI `10.1002/sim.70748`）分层衔接；引擎未改动（规范+报告纪律登记）。
+- 证据登记：`ct-base/references/qc_independence_pharmasug2026.md`。
+
+## （待部署）2026-10-19 · coze 端点落实 ct-base §1.4 `query_origin` 准入闸门
+
+> 随 ct-base v1.3.33 契约 §1.4 落实。改动在 `adapters/coze/src/main.py`（samplesize R 引擎工作流源码），**仅端点侧行为**；部署需重新打包上传 Coze（手动，待授权）。
+
+- **合并守卫 `_guard_query_origin()`**：占位哈希闸门（2026-09-13）保留 + 新增 `query_origin` 空值拒绝（缺失 / `None` / 空串 / 纯空白 / 非字符串 → 返回 `""` 拒绝）。`/run` / `/stream_run` / `/async_run` / `/node_run` + 内部 run 分支共 5 个调用点挂接。
+- **动因 / 零误伤**：同 ct-registry（裸 POST 实测）；客户端出站必带非空 query_origin（含 `report` 动作）。
+- **B 类名单新增 `meta_planning`**（2026-10-19 产品决策：纯商业保护，非复杂度依据 —— 该检验为
+  Hedges & Pigott (2001) 封闭公式法，按 2026-10-13 分层标准本属 A 类）：免费调用的 `repro.r`
+  在 node 出口替换为高级功能提示。名单同步 3 处：`scripts/r_code_policy.py`（唯一副本）+
+  `src/graphs/nodes/samplesize.py::_R_CODE_GATED_TESTS` + `workbench/publish-dist/` 分发副本；
+  A/B 计数 39/26 → 38/27。skill 展示层（samplesize_power）经 `r_code_unavailable()` 自动跟随，
+  本地即时生效；**引擎侧拦截需重新打包上传 Coze 方可线上生效**。
+- **meta_planning 支持可变每研究样本量**（三层，2026-10-19）：① 总预算口径（workbench 客户端
+  n=T/K，信息量精确无均值偏差）；② MC 精确档 `ss_meta_planning_mc`（对数正态抽样 + 精确 RE
+  合并方差 se²=1/Σ(1/(V_i+τ²))，输出功效带 P5/P50/P95 与 P(功效≥目标)，seed 固定可复现）；
+  ③ 解析保守档 `n_cv` 参数（V_eff=V·(1+CV²)，与 cluster DE 同构；算术均值口径会高估效能，
+  此校正方向保守）。n_cv 缺省 = 等样本量原行为，完全向后兼容；异质性扫描表/图透传 n_cv
+  （解析口径）。同步 `local-r/r_templates/r_pass_ext.py` 函数副本；workbench 端（meta-analysis
+  技能）UI 增 总预算 T / 研究间 CV / MC 开关输入与功效带渲染。**引擎侧需重新打包上传 Coze。**
+
+## v5.13.13 — 2026-10-17 · 论证/审计输出增强 + 侧栏布局对标 ct-adam/ct-sdtm（去掉主/二级菜单分离 + 右侧占满全宽）
+
+**侧栏布局重做（v5.13.13 追加）**
+- **问题**：宽页面下主菜单与二级菜单视觉分离，右侧主面板仅固定宽度而非填满剩余空间。
+- **修复（对标 ct-adam/ct-sdtm 布局模式）**：
+  - `.wb-shell` 改 `min-height:100vh` `align-items:stretch`（撑满全高）
+  - 侧栏 `.wb-nav` → `.wb-side`：固定 `width:208px;flex:0 0 208px;position:sticky;top:0;height:100vh;overflow-y:auto`（左侧固定、可滚动、全高）
+  - 主区 `.wb-main` 改 `min-height:100vh`（右侧填满剩余宽度 + 全高）
+  - 统一侧栏导航项：`.nav-sub` / `.navitem` / `#navDomains` 容器全部合并为一个连续的 `.wb-navitem` 列表（含"全部方法" + 域项 + 历史记录 + 线程），无二级容器
+  - 新增 `toggleSide()` 函数 + `.wb-side.side-collapsed` 折叠态（icon-only，点击侧栏空白折叠/展开）
+  - 窄屏响应式重写：`max-width:820px` → 侧栏变为 icon-only（而非之前的 66px 隐藏）
+- **验证**：`curl localhost:8771/` 输出侧栏 DOM 结构连续无二级容器；`.wb-shell` 全屏撑满。
+
+**ct-base §5.6 合规微调（v5.13.13 追加，2026-10-17）**
+- **favicon 强制项**：`<link rel="icon" type="image/svg+xml" href="./assets/icon.svg">`（服务端 `/_` 静态 handler 已支持 SVG 200）+ `<meta viewport-fit=cover>`
+- **§5.6.3-4 logo 盒**：顶栏 logo 包 `.wb-logo-box{40px, panel bg, shadow-sm}`
+- **§5.6.3-1 hero 横幅**：`#v-compute` 首屏加 `.wb-hero` 渐变横幅（`::after` 装饰圆 + 3 枚 `.wb-hero-chip` 统计：65 检验方法 / 12 能力域 / 后端状态），`fillHero()` 从 CATALOG 动态填充，挂接 `setBackend`/init/`setLang`
+- **§5.6.2 折叠态持久化**：`toggleSide()` 写 `localStorage("wb_ctss_sideCollapsed")`，init 恢复
+- **i18n 补齐**：侧栏提示语 `sideTip`、bug 按钮 `data-i18n-title="bugBtnTitle"`（zh/en 双语）
+- **落地视图**：init 改 `openDomain("") + switchView("compute")`（落地页=对话计算，侧栏高亮正确）
+- **hero 去重 + 页脚（2026-10-17 晚追加）**：① 移除 hero 第三枚「后端状态」chip（与顶栏 `#wb-backend` 药丸重复，违反 §5.2「状态提示收敛只此一处」）——DOM/i18n/`fillHero` 后端分支/`setBackend` 联动全清；② 补 `#wb-footer` 页脚（ct-sdtm 范式）：i18n 文案（技能名·框架·设计参考免责声明）+ `#wb-skill-ver` 版本号，版本经 `/api/schema` 新增 `skill_version` 字段下发；③ 修复 `_read_skill_version` 本地布局路径 bug（原 `_SKILL=_WB_ROOT/../..` 多退两级指向 `skills/` 目录，恒读 `unknown`——顺带修复 bug-report 信封版本字段），现优先 `_WB_ROOT/SKILL.md`。
+- **验证**：`/api/schema` 下发 `skill_version=5.13.13`；agent-browser 实测 hero chips=2、`heroBackend` 0 处、页脚渲染「… · ct-samplesize v5.13.13」；JS 语法 0 错、div 167/167 平衡、server.py py_compile 通过。
+- **验证**：9 项合规标记 grep 全在位；`new Function` 语法 0 错误；div 168/168、span 66/66 平衡；截图确认 hero/高亮/logo-box 正常。
+
+**动机**：当前论证段与审计输出偏"骨架"，缺监管框架对齐、引文推荐与量化评估，研究者需要手动补全大量占位。v5.13.13 引入四块内容增强输出深度。
+
+**justify_text.py（→ upgrade J3）**
+- 新增三个附录块：① **CONSORT 2025 条目 16a 合规检查表**（9 项勾选清单 + 推荐引用格式，覆盖主终点定义/各组假设值/目标差值/标准差/α/power/校正项/样本量/软件，研究者直接对照打勾贴方案即可）；② **ICH E9(R1) estimand 对齐块**（人群 / 治疗条件 / 终点 / 伴发事件处理策略 / 人口汇总度量 + CASRAI MCID 锚定披露规范，非劣效/生存/MCID 模式自动展开）；③ **推荐参考文献**（样本量方法学 Chow 2017 + Julious 2010 + CONSORT 2025 + SPIRIT 2025 + ICH E9(R1) + CDE 指导原则 2024 + FDA/EMA NI 指南 + MCID 方法学 Revicki 2008）。
+- 文档头 + 描述升级：CONSORT-SPIRIT Item 14 → CONSORT 2025 item 16a；新增 CASRAI MCID 披露规范对齐。
+
+**hypothesis_audit.py（→ upgrade J）**
+- 新增 **CONSORT 2025 条目 16a 合规检查表**（9 项，研究者逐项对号入座）。
+- 新增 **弱/未知假设引文推荐**：`weak`/`unknown` 参数的证据类维度，自动推荐具体引用格式 + 示例（效应量→带 CI 的 RCT/荟萃；SD→同人群实测带样本量；率→带观察例数的率；HR→带 CI 与位生存的生存；margin→监管文档/界值论证；ICC→同类/区间；CV→制剂/交叉；脱落→同类试验实测+脱落原因分布）。
+- 新增 **监管就绪量化评分**：`missing×15 + unknown×10 + weak×5` 扣分 → 100 满分；90+ A 就绪 / 70-89 B 基本就绪（附灵敏度）/ 50-69 C 条件就绪（建议先补证据或改自适应）/ <50 D 不就绪（需先导研究或重新设计）。
+- 修复：CONSORT 循环变量 `desc` 遮蔽总体判定描述 → 改 `desc_item`。
+
+**测试**
+- `ttest_ind` MCID 模式：justify 完整输出 CONSORT 清单 + estimand 对齐 + 参考文献，零渲染失败。
+- `hypothesis_audit` ttest_ind：评分 90 A 就绪（2 weak 假设：effect、sd）；引用推荐 effect 格式 + sd 格式。
+- `survival` HR=0.65：HR 渲染正确（回归修复后）。
+
+## v5.13.12 — 2026-10-17 · 论证段引擎声明 R 包版本号自动填充（去重 + 全遍历 meta.packages）
+
+- **问题**：论证段第 5 句「R R version 4.6.1 + rpact/TrialSize [__填写]」有两个缺陷：① coze 返回 `r_version` 已含 "R version" 前缀，前面再加 R 重复；② 只查 rpact/TrialSize/PowerTOST 三个包名，而 ttest_ind 实际用的是 `pwr`，找不到就写 `[__填写]` 占位。
+- **修复**：`justify_text._engine_str` — 去 "R version" 前缀；遍历 `meta.packages` 全部键值对（`sorted(pk.items())`），不再硬编码包名。输出形如 `R version 4.6.1 (2026-06-24) + pwr 1.3-0`。
+- **验证**：`ttest_ind` + `justify:true` → 引擎声明完整（R 版本 + pwr 1.3-0），零占位符。
+
+## v5.13.11 — 2026-10-17 · 计算按钮忙态提示（禁用 + spinner + 标签切换）
+
+- **问题**：点击「计算」后等待十几秒无反馈，用户不知道是卡了还是在工作。
+- **修复**：`setComputeBusy(busy)` 在 `doCompute`/`doComputeExt`/`runMultiCompute` 入口处设忙态、`finally` 退出。忙态时「计算」与「智能识别并计算」双按钮同时 `disabled` + `.busy` class（CSS spinner 旋转 + 标签改为「计算中…」），`pointer-events:none` 防重复点击；计算完成后 `updateNlBtn()` 恢复原标签。
+- **i18n**：`computing` 键已存在（zh「计算中…」/ en「Computing…」），复用。
+- **验证**：`node --check` 0 错误；8771 服务正常重启；`ttest_ind` 真实计算 ok=true。
+
+## v5.13.10 — 2026-10-17 · 「验证闭环」真实落地 + verify 空转修复 + vparams 主参数回退
+
+- **问题**：「验证闭环」按钮（结果操作条第三个）此前也是空转——UI 把 `verify` 标志随 options 发到 coze，coze 引擎不消费（与 justify/audit 同病）。实证：带/不带 `verify:true` 打真实端点，三次返回完全一致。
+- **服务端落地 Monte-Carlo 验证闭环**（`server.py`）：新增 `_verify_extract_n()`（键名优先+test族校正：n_per_group→每组，n_total→总，裸 n 按族判——单/配对=总，两组设计=每组）；新增 `_verify_block()`（调 `scripts/verify.py run_verify` 20000 次 MC，产出双语验证报告：power + type_I_error 双判定 + MC 95% CI + 总判定 → result.text，verify_pass/verify_report 经 meta 回传前端徽标）。
+- **vparams 主参数回退**（本轮关键修复）：verify 专用字段（verify_effect_size 等）未填时自动回退到主计算参数——此前只读 verify_ 前缀字段，UI 填了主参数但 verify 模拟用空 params 跑 H0 → power≈alpha 的假 FAIL（ttest_ind effect=0.5 + verify → power=0.0496 → FAIL）。回退链：verify_effect_size→effect；verify_hr→hazard_ratio→hr_expected；verify_p1/p2→p1/p2；plus median_control/rate_control/new_median 等。
+- **verify.py 修复**（`scripts/verify.py`）：`run_verify()` 头部加 `n = int(round(float(n)))`——R 端 n 常为 64.0（float），range(n) 会 TypeError（CLI argparse type=int 强转屏蔽了，服务端直接调用暴露）。
+- **设计族映射**（`_VERIFY_DESIGN_BY_TEST`）：五族（ttest_ind/proportion_two/survival/group_sequential/adaptive_reestimate）按 test 自动映射；用户显式 verify_design 覆盖。
+- **n 语义折算**：引擎 n 为总数 + per-arm design → 除 2；组序贯族 meta.n 随 interim 变化 → 跳过并说明（不猜值）。
+- **验证**：`ttest_ind` effect=0.5, n=64 → 经验 power=0.8004 vs 目标 0.8000（差 +0.04 pp，容差 ±2.0 pp → PASS）；type_I_error=0.0513 vs 0.05（PASS）。E2E 全链路（gsd_survival 三开）：justify ✓ audit ✓ verify ✓ HR=0.6 ✓ n=122 ✓ events=99 ✓。plain 请求零影响。
+
+## v5.13.9 — 2026-10-17 · 「生成方案论证段 / 审计假设」真实落地（服务端规划层后处理）
+
+- **问题**：「📋 生成方案论证段」「🔍 审计假设」两按钮自 v5.12.2 起把 `justify`/`audit` 控制键透传 coze 信封，但 coze 数值契约不消费这两个标志（纯规划层文本能力，无 R 对应物）——实测三种请求返回完全一致，按钮表现为"空转重算"。
+- **服务端落地**（`server.py`）：`_compute()` 在 coze 计算成功后按 `options.justify`/`audit` 调本地规划层模块，产出块追加进 result.text（数值卡/图形/R 代码不受影响；HTML 报告自动包含）。justify → `scripts/justify_text.py`：CONSORT-SPIRIT Item 14 + DELTA2 Box 4 + CDE 指导原则锚定的 IRB/SAP-ready 中英对照论证段落；audit → `scripts/hypothesis_audit.py`：四分级证据审计 + 设计族自洽检查 + 总体判定。单块失败降级不阻断主结果。
+- **命名对齐修正**：`REQUIRED_BY_TEST` 23 个检验条目用通用名而检验实际消费专属 dest → 假 NOT_READY 误报（如 gsd_survival 给了 hr_expected 却报"hazard_ratio 缺失"）。已逐检验对齐 catalog（65 检验 diff 零残留）。
+- **验证**：`ttest_ind` 论证段（双语 6 句 + R 版本 + n=64 填充）；gsd_survival 双开（生存变体段落 HR 填充 + 序贯族审计 + 数值卡完整）。
+
+## v5.13.8 — 2026-10-17 · 演示/真实模式可视化标识（MOCK 横幅 + 后端药丸三态）
+
+- **问题**：用户看到「MOCK coze response…」误以为功能未实现。根因：本地服务以演示模式启动但页面无模式标识——顶栏药丸 mock 下仍显绿色「后端在线」，示例信封与真实结果无法区分。真实端点完全可达，65 项检验本就完整实装。
+- **修复**：`server.py` `/api/Schema` 新增 `mock` 字段。`workbench.html` 新增琥珀色演示模式横幅（mock 时常驻，明示"所有结果均为示例"）；后端药丸三态（绿=真实引擎/琥珀=演示/红=不可达）；`setLang` 重放药丸标签。
+- **验证**：真实链路 gsd_survival（HR=0.6,OF,3 interim）→ 每组 n=122/总 N=244/事件数 99 + 2 张 svglite 真实图，0.83s，零 MOCK 残留；ttest_ind/batch 均真实返回。
+
+---
+
+## v5.12.2 — 2026-10-16 · 工作台 P0/P1 增强（MIN_REQUIRED / 折叠面板 / MCID / 案例 chips / 操作条）
+
+基于 v5.12.0 大重构后实测发现的工作台覆盖差距（新功能零 UI 入口 + 4 个新检验被误拦 400）， 对 `adapters/workbench/` 三文件做 P0（必修缺陷）+ P1（新功能 UI化）增强。**未发布，等授权。**
+
+**P0 修缺陷**
+- **P1 修正**：契约 `required` 超集被误作硬必填（`_contract_index.json` 的 required
+  是引擎信封键超集，含模式相关可选参数）→ `form_schema.py` 新增 `MIN_REQUIRED` （65 检验最小必填集，逐条 live 端点校准）；`server.py` 缺失检查改判 `min_required`；前端红星只标 `MIN_REQUIRED`；`required` 仅用于 auto-fill （alpha/side/ratio 等默认值补齐不受影响）。受益检验：`meta_planning`（7→4）、 `regression_logistic`（4→3）、`regression_poisson`（6→4）、`cluster_ext`（3→3， 误把可选 `cv_cluster/effect` 当必填）、`ci_or` / `ci_rr` / `ci_icc` 等
+- `TEST_LABELS` 补齐 16 个新检验双语名；`PARAM_META` 补齐 26 个参数双语标签；
+  `HELP_ZH` 补齐 29 个参数说明；`CHOICE_LABELS` 新增 `effect_type`/`x_type`/`rate_mode`
+
+**P1 新功能 UI化**
+- **效应量输入区扩 MCID 模式**：`injectEffectHelper` 增 MCID 输入行（mcid + sd →
+  实时预览 d = mcid/sd，与 effect 互斥，对齐 R1 卡）
+- **可选参数折叠面板**：`schema_for` 返回 `optional` 字段，`renderForm` 画
+  `<details>` 折叠面板；不再丢 `--R/--cluster_cv/--x_type/--q/--r2/--phi` 等
+- **verify 小节渲染**：`schema_for` 返回 `verify` 字段（6 个 verify 参数），
+  `renderForm` 在表单底部独立渲染
+- **结果操作条**：`renderActionBar` 追加「📋 生成方案论证段」/「🔍 审计假设」
+  按钮（`justify/audit` 选项透传 `_compute` → CLI 已有逻辑，工作台只接线）
+- **异质性扫描表**（meta_planning 专属）：`renderResult` 解析 `hetero_K`/
+  `hetero_i2`/`hetero_R` 数组 → 「I² → 所需 K」表格替代扁平数值卡
+- **快速案例 chips**：参数设置面板顶部渲染 8 个一键填表 chip（与 README Q6/Q7
+  同源），切换检验时联动
+
+**P2 工作台信息架构分页（v5.12.2 追加）**
+
+原「参数设置」单页承载了方法选择 + 必填参数 + 可选参数 + Monte-Carlo 验证 + 图表选项 + 效应量折算共 6 类控件，垂直过长且功能陈列不清。按大模块拆为 6 个顶层页：
+
+| 页面 | 承载内容 | |:---|:---| | 对话计算 | 自然语言入口 + 结果展示（不变） | | 检验方法库 | 检验族/方法选择 + 搜索 + 快速案例 chips + **契约速览卡**（最小必填集/可选/输出字段/底层 R 函数） | | 参数填写 | 求解方向 + 最小必填 + 通用参数 + 计算 + **缺失参数实时提示** | | 效应量助手 | Δ/σ → d、MCID/σ → d 折算器 + Cohen 惯例参考表 | | 高级选项 | 可选参数 + Monte-Carlo 验证 + 图表/曲线选项 | | 会话线程 | 会话管理（不变） |
+
+- **每页自带检验方法选项菜单**：`PICKERS` 支持 4 个选择器实例（method/params/effect/advanced），
+  共享同一份 `CATALOG` 与 `CUR_TEST`；`syncTestPickers()` 保证任一页切换方法，其余页同步
+- **`renderFields()` 统一渲染模板**：`#formArea`/`#optArea`/`#verifyArea` 共用一套
+  `.sec.pf-grid` 模板，`collectParams()` 改为全文档 `[data-dest]` 收集（跨页不丢参）
+- 计算完成后自动切回「对话计算」页展示结果（`switchView('compute')`）
+- 修复：`requiredMissing` 曾 `splice` 直接改 `CATALOG.tests[].min_required`（污染目录），改 `slice()` 拷贝
+- 修复：效应量折算器原先只写回 `effect` 不写 `sd`，导致引擎无法折算 d = Δ/σ；现同时写入两者
+- 修复：折算器原先对 survival / 率类检验也可用（effect 作为通用参数总被渲染），会写出无意义
+  `d_val`；现按契约 `required` 是否含 `effect` 门控，不适用时提示该检验实际需要的参数
+- 补齐 EN 缺失 i18n 键（`heteroScan`/`i2`/`reqK`/`power`/`caseChipsTitle`）+ 新增 30+ 双语键
+
+**验收**
+- mock 工作台 23/23 关键检验最小集 compute 全 200 OK（含 4 个曾被误拦的新检验）
+- 既有检验（ttest_ind / proportion_two / bayesian 等）backward compat OK
+- `py_compile` OK；`form_schema.py` / `server.py` 均通过
+- **jsdom 无头渲染回归（新增）**：中/英双语各 13 项交互断言全绿——跨页方法同步、
+   契约卡跟随、缺失提示 → 齐备提示、跨页参数收集、计算闭环自动跳结果页、 Δ/σ 折算写回（effect=0.3 / sd=0.9 / d=0.333）、EN 可见文本零 `undefined`； 10 个代表性检验（含 survival / rates_ext / group_sequential）分页渲染零 console 错误
+
+---
+
+## v5.12.1 — 2026-10-16 · 全面代码审查修复（effect_ref 互认链 / 护栏 / 测试门控 / 文档）
+
+v5.12.0 大重构后的全量审查（164 个 .py 编译 + 28 模块 import + 7 个测试套件 live/离线双跑） 发现问题的修复轮。**未发布，等授权。**
+
+**effect_ref 互认链修复（ma_extractor → confirm → benchmark → adopt 全链打通）**
+- `ADOPTABLE_PARAMS` 扩展至 4 参数：新增 `odds_ratio`（OR）/ `risk_ratio`（RR）
+  （比值型，零假设=1，估计与 CI 须严格为正）；`effect` 的 scale 接受 `SMD` （与 d 数值等价——ma_extractor 的 SMD 候选此前被 scale 白名单误拒）
+- 新增 `TARGET_ARG` 落地映射：OR/RR 参考采纳后写入 `--effect`（ci_or/ci_rr/
+  regression_logistic/regression_poisson/rates_ext 引擎分支均读 `params$effect`， 不存在 `--or/--rr` 参数——此前 `setattr(args, "odds_ratio", …)` 是静默空操作）
+- `TEST_PREFIX` 同步扩展（odds_ratio→ci_or/regression_logistic；
+  risk_ratio→ci_rr/regression_poisson/rates_ext；effect 增补 meta_planning）
+- `ma_extractor.confirm()` 入库口加 `effect_ref.validate` 闸门：param/scale 白名单、
+  数值完整性、CI 关系、source 必填全校验，不合格拒绝写入（此前 estimate=None 的 半成品可直接流入基准库）
+
+**effect_ref.pick 统计护栏**
+- 聚合选择（median/conservative/low/high）拒绝混 (param, scale) 文件——d 与 HR
+  不可跨尺度平均；d 与 MD 同 param 但尺度不同，同样不可混算
+- CI 跨越零假设（effect 跨 0、比值跨 1）的参考仅展示、不可采纳：聚合选择先剔除
+  再统计（basis 标注剔除数，全部不合格报错）；显式 `<index>` 单选到跨零参考硬拒绝
+- 修复潜在 bug：`<index>` 单选混 param 文件时返回值错用 `refs[0].param/scale`
+  （选到第二条时 param 错位）与 `_single` 零假设值取错 param 的问题
+- `summarize()` 按 param 分组（`by_param`/`mixed_param`），render 分组展示 +
+  跨零来源标记
+
+**测试门控与契约对齐（mock 误报硬失败归零）**
+- `test_matrix_gaps.py` / `test_features.py` 新增 `CTSS_COZE_LIVE` 门控：
+  live-only 用例未开 live 时记 ⏭ skipped（不计硬失败）——mock 信封 stats 仅 `{test,mode,note}`，对 stats 数值/图形断言必然失败，噪音掩盖真问题
+- 契约容忍断言：曲线数据两种回传形态（stats{x,y,series} 数值数组 / SVG 曲线图形，
+  现行部署引擎走后者）二者其一即通过；`--install-all-packages` 已移除旗标改用 argparse 拒绝断言（v5.0.2 起旗标不存在）；仿真完成断言中英双语 （「经验功效 (模拟)」/ "Empirical power"）；出站授权拦截用例显式关闭子环境 mock
+- `test_full_coverage.py`：FD-C 曲线断言契约容忍；FD-D 仿真双语；FD-F 修复
+  `solve()` 未把 locale 写入 ctx 导致引擎回中文 narrative（引擎只读 params.user_language）
+- `test_natural_language.py`：fig 类型断言容忍现行默认契约（落盘 + HTML 报告，
+  默认不再内联 `__FIGURE__ svg`，2026-08-28 设计修订）
+- 修复后全绿：matrix_gaps 57/57（live）、features 13/14（1 remote 待部署）、
+  full_coverage 69/69、natural_language 30/30、ct_samplesize 19/19、 coze_cases_regression / nl_local 离线+live 全过
+
+**文档修正**
+- README_zh-CN.md 补 `--effect-ref`/`--adopt-ref` 字面旗标示例（对齐英文版），
+  新增可采纳参考类型（effect/HR/OR/RR）与跨零假设/混尺度护栏说明；README.md 同步
+- README(.md/.zh-CN) 提示词案例全面增补（对齐 v5.9–v5.12 新功能）：第二节索引补
+  ⑦ 类 16 个新检验（49→65 陈旧计数一并修正）；4.14 增 N3（OR/RR 基准采纳落地 `--effect`）/N4（`--adopt-ref <序号>` 单选）/N5（护栏拒绝：混 param/scale 聚合 拒绝 + CI 跨零仅展示）；新增 4.17（相关/方差/CI 精度/回归/meta_planning 族， 数值经 live 端点实测：correlation 85、ci_mean 97、regression_logistic 317 PASS 验证点、meta_planning K=3 + I² 扫描 [2,3,4,8,18]、cluster_ext DEFF 2.20、 rates_ext 197/组）与 4.18（MCID 折算 143/组、--justify 方案论证段、--audit 假设分级 + --verify 独立蒙特卡洛校验）；英文版 §3.5 原中文残段改写为英文并补 v5.12.1 护栏说明；版本脚注 v5.8.0→v5.12.1
+- ADVANCED(.zh-CN) §5.5 系统要求：Python 行改「纯标准库无第三方运行时依赖」、
+  R 行注明仅 coze 服务端需要；§5.6 删除 statsmodels ImportError 行、补 coze 不可达
+- README(.md/.zh-CN) 提示词案例第二轮增补（按 2026-09-15 后全部更新逐条盘点）：
+  4.17 新增 Q6（方差 / CV 精度族——variance_one 24 / variance_two 68 每组 / cv_one 392，方法学验证场景）与 Q7（计数终点与多重线性回归——regression_poisson φ=1→21 / φ=2→41、regression_linear 77）；Q2 补 ci_prop 381 / ci_cor 867 实测数 并指向 Q6；Q4 补 `--effect0`（非零 H0 效应进 λ 分子）；4.15 O1 更新为 docx/xlsx/pptx 本地转换（v5.8.0 起 xlsx 零依赖解析）与 pdf 技能指引（原 「PPT/PDF 转换提示」表述修正）；文末小提示同步 Q1–Q7。盘点结论：09-17 飞书字段 / 10-13 entry_point 为内部变更无需案例，09-26 工作台已有 P2 覆盖；09-29 MCID/justify/audit 已由 R1–R3 覆盖；10-09 xlsx i18n/词典扩充落 O1； 10-12/10-14 新检验与 meta A1–A6 由 Q1–Q7 + N3–N5 覆盖
+- coze 镜像 README_zh-CN.md 两处 ct_r_lib 现在时描述改为「v5.12.0 起已废除」历史备注
+- requirements.txt 补 dev-only 依赖说明（numpy/scipy 仅 legacy/adaptive_simulator.py）
+- test_matrix_gaps 文档头 49→65 更正
+
+
+## v5.12.0 — 2026-10-15 · 废除 ct_r_lib 双副本（本地 R 后端单一真相源 = adapters/local-r/）
+
+`adapters/coze/ct_r_lib/` 与技能根 `scripts/` 长期各存一份相同模块（compute_backend / i18n / i18n_*.json / r_code_policy / samplesize_power 共 7 个文件，MD5 逐个核对一致），无自动同步、 无 git 校验（`adapters/coze/` 整目录在 .gitignore），历史上多次漂移——镜像曾停留在 v4.0.1/v5.0.2（缺 v5.9/v5.10 的 65 法 Tier1/2 覆盖），v5.11.0 被迫同时编辑两份副本。 更隐蔽的危害是**模块图混版**：`scripts/compute_backend.py` 的懒加载器把 ct_r_lib 临时置顶 sys.path，local_r_backend 的 `r_templates / i18n / compute_backend` 从镜像解析、而调用期 `samplesize_power` 从 scripts/ 解析——同进程两套模块实例，isinstance / 单例状态均可分裂。
+
+**结构变更（coze 端点运行时不 import 任何 ct_r_lib 模块，无用户可见行为变化）**
+- 独占文件迁至技能根 `adapters/local-r/`：`local_r_backend.py`（本地 R 拼码/执行）、
+  `r_templates/`（14 个 R 字符串模板）、`legacy/adaptive_simulator.py`（纯 Python 蒙特卡洛兜底）
+- 镜像内 7 个重复副本整体归档至 `adapters/coze/_archive_ct_r_lib_20261015/`
+  （构建器排除；内容与 scripts/ 同 MD5，可随时对照回收）
+- `scripts/compute_backend.py::_load_local_r_backend()` 改指 `adapters/local-r/`：
+  执行期注入 local-r + scripts/ 双路径，执行后还原
+- `adapters/local-r/` 加入 `.clawhubignore`（保持 dev-only、不随发布包分发的属性，
+  与原 adapters/coze/ct_r_lib/ 一致），并纳入 git 版本控制（消除「镜像无校验」根因）
+- 两个部署构建器（`_build_deploy.py` / `_build_deploy_new.py`）加守卫：`ct_r_lib` 目录名 +
+  `_archive_*` 前缀一律不进部署包；manifest/zip 写盘改用共享盘安全的改名舞 （本机 filesrv 拒绝覆盖已存在文件，原 `write_text` 直接失败）
+
+**顺带修复**
+- `import adaptive_simulator` 此前必然失败（文件在 legacy/ 子目录、扁平 import 不可达，
+  且其自身 `from i18n import t` 还需 scripts/ 在路径上）→ 路径块与 except 兜底同步修
+- 更正过时声明：local_r_backend 不再是「coze 镜像唯一真相源」；`build_r_code` 段头删除
+  已不存在的 template_resolver_node 描述（现行 coze 架构 = 单 dispatch 节点直调 src/r_engine/）
+- 6 个技能文档 + coze 镜像 AGENTS.md / README_zh-CN.md / samplesize.py /
+  install_r_packages.R 的 ct_r_lib 路径引用全部更新
+
+**遗留清理（同日完成，四项全部落地）**
+- `ADAPTIVE_SIM_R` 漂移已消除：整体回写 coze 侧 `src/r_engine/adaptive_sim.R` 现行版本
+  （含 `seq_len(K-1L)+1L` 稳健性修复与 headless PNG 清理），调用点同步删除已废止的 `out_png` 传参；回读校验与 coze 侧逐字节一致（17814 字符）
+- `config/r_code_generation_cfg.json` 提示词更新：删除已不存在的 template_resolver
+  上游节点与 ct_r_lib 提法，改述现行「单 dispatch 节点直调 src/r_engine/」架构， 并补 headless 禁绘图约束（可视化统一 svglite SVG）；新版已随部署包分发
+- `workbench/publish-dist/` 陈旧副本已刷新：`build_publish.py` 打共享盘安全补丁
+  （copy2 拒覆盖 → 改名舞 + 内容一致跳过）后重跑，53 文件全量同步、二次构建 COPIED 0（幂等）；被替换旧版本暂存 `workbench/_publish_trash/`（.gitignore 已排除）
+- figure 层双副本已消除：`scripts/figure_kit.py` + `scripts/alloc_curve.py` 为唯一
+  真相源（文件头已加注），两个部署构建器增加打包前同步步骤（coze 端按路径子进程 执行包内副本、属部署必需，故采「构建时同步」而非删除）；文档 4 处 （default_figures.md×2 / coze DEPLOY.md / coze AGENTS.md）的「手工保持同步」 表述改为「构建时同步生成，勿手改」
+
+**验证**
+- `py_compile` 全部改动 .py 通过；`_load_local_r_backend()` 实测返回 LocalRBackend；
+  `build_r_code('ttest_ind', …)` 产出 31012 字符 R 源码（build_parser 解析链通）； legacy import 修复后可达；CLI `--dry-run`（CTSS_COZE_MOCK=1）exit 0
+- 部署包重建：`coze_project_5.3.16.zip` 75 files / 370.7 KB（前次构建 99 files 含 24 个
+  ct_r_lib 条目 / 517.7 KB），MD5 `96523970e52aa4d5223e66de8fff4f9c`，EXCLUDE CHECK CLEAN
+- 遗留清理复验：ADAPTIVE_SIM_R 与 coze 侧逐字节一致；`build_adaptive_sim_r_code` 不再
+  发射 out_png；figure_kit/alloc_curve import 通过；zip 内回读 config 提示词为新版； `scripts/ ↔ publish-dist/scripts/` MD5 全对齐；7 项冒烟 + CLI dry-run exit 0
+
+**版本**：SKILL `5.11.0` → **`5.12.0`**；coze 端点 `COZE_VERSION` 维持 `5.3.16` （端点行为不变，部署包仅剔除失效文件）。
+
+## v5.11.0 — 2026-10-14 · meta-planning 前瞻规划补齐（方案 A1–A6）+ repro 复现污染缺陷修复
+
+对齐 `ct-base/参考资料/PASS/META_ANALYSIS_OPTIMIZATION.md` 的 meta-planning 前瞻性规划方案。 v5.9.0 已落地 `meta_planning` 单轨（`ss_meta_planning`，Hedges & Pigott 2001 随机效应）， 但对照方案 A1–A6 仍缺 4 项能力；本轮补齐，并修复一处**用户可见的真实缺陷**。
+
+**新增能力（4 项）** 1. **`--R` 异质性比直输**（方案 §4B）：R = 组间/组内方差比，**直输优先于 I² 映射**（R=0 即固定效应）； 与 `--i2` 互为双参数（R = I²/(1−I²)）。引擎侧取键改用 `p[["R"]]` **精确匹配**——R 的 `$` 会对以 "R" 开头的键做部分匹配（历史 `p$hr` 静默取到 `hr_expected` 同源陷阱）。 2. **`--effect0` H0 效应量**（方案 §4B）：效应量原尺度（or/rr 缺省 1、其余 0），进入 λ=(T−T0)/SE 分子。 3. **cluster 簇大小变异系数 `--cluster_cv`**（方案 A6）：设计效应 `DE = 1+[(COV²+1)M−1]ρ` （Donner & Klar 2002 / Eldridge & Kerry 2012），V_W 按 DE 放大；stats 回显 `de` / `n_eff`。 4. **异质性扫描表 + K–I² 默认图**（方案 §4C，对标 PASS「Plots」栏目）：
+   - stats 新增 `hetero_i2` / `hetero_R`（I²∈{0,.25,.5,.75,.9}）、`hetero_K`（目标功效口径所需 K）、
+     `hetero_power`（`--k_studies` 求效能口径）
+   - 默认图 `meta_hetero`（K–I² 曲线 + PASS 预设点），R 引擎 / Python 预览 / R 出图层三端同源
+
+**缺陷修复（P1 · 用户可见）**
+- **`repro.r` 复现记录被异质性扫描污染**：`.repro_call` 只保留**最后一次** `ss_*` 调用，而扫描表
+  的 5 次调用落在 `.repro_capture` 区间内 → repro 记录到「I²=0.9 → R=9」的**扫描末次**调用， 而非主求解调用。实证：主解 K=3 被复现成 K=13，用户按 repro 复现得到**错误结果**。 修复：把扫描表计算移出捕获区间（置于 `.repro_capture <<- FALSE` 之后）。 新增回归断言：repro 调用行含 `R = 1`（主解口径）、且 repro 复现值 == 主结果 K。
+
+**实现落点（四端一致）**
+- **R 引擎**：`src/r_engine/samplesize_functions.R`（`.meta_vw` 加 `cov`、新增 `.meta_de`）、
+  `run_task.R`（dispatch 分支重写 + `.run_meta_hetero` + `.default_figures` 注册）、 `common.R`（`label.meta_*` / `fig.meta_hetero` 中英双语）
+- **本地 R 后端**：`ct_r_lib/local_r_backend.py`（`_common` 含 R 直输 / `_common_nr` 专供扫描 /
+  `_sweep` / `_de_echo`）、`ct_r_lib/r_templates/r_pass_ext.py`（`cov` 透传）
+- **Python 预览层**：`scripts/figure_kit.py`（`_meta_vw` / `_meta_K_required` / `fig_meta_hetero`；
+  三副本同 MD5 `da63f0e3…`）+ `METHOD_FIGURES["meta_planning"] → ("meta_hetero", None)`
+- **R 出图层**：`scripts/coze_figure_layer.R`（`render_meta_hetero` + 跳过 `(n_star,power_star)`
+  锚点校验 + `pw <- NULL` 守卫）
+- **CLI**：`scripts/samplesize_power.py` + `ct_r_lib/samplesize_power.py`（+`--R` / `--effect0` / `--cluster_cv`）
+- **契约**：`tests/coze_cases/_contract_index.json`（required +3 / output +5）→ 重渲染
+  `adapters/coze/coze_contract.md`；`references/menu.md` 条目更新
+
+**契约文档漂移修复**：`coze_contract.md` 第 61 行 meta_planning 仍为旧契约（索引已改但未重渲染） → 跑 `python tests/coze_cases/gen_contract_doc.py` 重新生成；并给该脚本加 `newline="\n"` （Windows 文本模式默认把 `\n` 翻成 `\r\n`，会让每次重生成产生整文件行尾 diff）。
+
+**验证（全绿）**
+- `t_meta_planning.py` M1–M6：**0 FAIL**（M1 引擎 vs 独立复算 7/7；M2 solve power 3/3；
+  M2b cluster+COV 9/9；M3 I²↔R 等价 + **R 直输优先**；M3b 扫描表；M4 引擎 vs 本地 R 后端逐值一致； M5/M5b 默认图 + **repro 记录主解** + 复现值 == 主结果；M6 契约透传）
+- `check_B_enum`：65 test 七表交叉一致（CLI / dispatch / local_backend / 契约 index /
+  figure_kit×3 / 出图层 / 契约 md），差异全为 `缺:- 多:-`
+- `check_contract_i18n`：4a 契约 required ⊆ CLI dest（0 missing）；4b 新分支 i18n 键 ⊆ 定义（0 missing）
+- `check_C_all65`：**64 ok / 1 warn / 0 fail**（meta_planning `status=ok`，`stats_keys=8`）
+- `check_repro`：7a 老 test 基线 figs=4；7b 逐 test repro 可运行且数值复现（含 meta_planning rc=0 matched=1/1）
+- 部署包 `coze_project_5.3.15.zip`（96 files，467.3 KB，MD5 `4c8695d59b4c97cde47ab0bf6041cd1f`）
+  解压独立跑 meta_planning：`status=ok` / `n_studies=6` / `de=2.2` / `n_eff=22.7` / `hetero_K=[3,4,6,12,29]` / `meta_hetero` SVG / repro 记录主解 `R = 1`
+
+**版本**：SKILL `5.10.1` → **`5.11.0`**；coze 端点 `COZE_VERSION` `5.3.14` → **`5.3.15`** （`_version.py` 与 `manifest.json` 同步；`workbench/publish-dist/SKILL.md` 副本一并同步）。
+
+## v5.10.1 — 2026-10-13 · 修复工作台调用 entry_point 恒为 skill（§1.3 接线）
+
+> ct-base coze_io_contract §1.3 工作台接线三架构之「架构 A · 进程内 import」。v5.10.0 的 coze_client 已按契约在 `call` / `call_batch` / preview 三处注入 `"entry_point": _ENTRY_POINT`，但**设置侧零接线**——注释声称「工作台进程在 fullflow 入口调用 set_entry_point("workbench") 覆盖」，而本技能并无 fullflow（该注释自 meta-analysis 范式抄录，从未落地）→ 工作台应用页面调用恒落默认值 `skill`。
+
+- **`adapters/workbench/server.py`**：import `CozeBackend` 后**模块级一行** `set_entry_point("workbench")`（本进程即工作台后端，与 coze_client 同进程 → 此后所有出站信封自动携带 `entry_point="workbench"`，飞书独立列可按来源筛选）。import 语句由 `from coze_client import CozeBackend` 改为 `from coze_client import CozeBackend, set_entry_point`（避免 `coze_client.set_entry_point` NameError）。
+- **无回归边界**：agent / 技能 CLI 路径（`samplesize.py` 等直连 coze_client）是独立进程、不经过 `adapters/workbench/server.py` → 恒 `skill`。
+- **同步**：`workbench/publish-dist/adapters/workbench/server.py` 与主文件逐字节一致（diff 验证；coze_client.py 本体未改，publish-dist 副本无需同步）。
+- **验证**：`set_entry_point("workbench")` 后 `_ENTRY_POINT == "workbench"`；模块重载（模拟新进程）默认回 `skill`；`py_compile` 两份副本全过。
+- **范式沉淀**：ct-base `references/coze_io_contract.md` §1.3 新增「工作台接线三架构」规范段，本技能为架构 A 范本（meta-analysis fullflow 之外的第二实证）。
+
+## v5.10.0 — 2026-10-12 · Tier 2 扩容：回归 / 整群扩展 / 率扩展（61 → 65 tests）+ 2 处缺陷修复
+
+对齐 PASS 全量复刻目标第二阶段（Tier 2）。**先按用户指令「4 先核实」完成 §4 扩展点核实** （报告：`ct-base/参考资料/PASS/CT_SAMPLESIZE_TIER2_VERIFICATION.md`），据核实结论落地：
+
+**新增 4 个 `--test`（61 → 65）**
+- `regression_logistic` — 逻辑回归样本量（Hsieh, Bloch & Larsen 1998 连续协变量 / Hsieh 1989 二分类）；
+  `--x_type=continuous|binary`、`--effect`=OR、`--p0`、`--q`、`--r2`。PASS 验证点 N=317 复现 ✅
+- `regression_poisson` — 泊松回归样本量（Signorini 1991，正态 X）；`--lambda1` 基线率、`--effect` 率比、
+  `--mu_x`、`--sd`、`--t1` 暴露时间、`--phi` 过离散、`--r2`。PASS 验证点 power=0.61237/0.79600 复现 ✅
+- `cluster_ext` — 整群随机化**广义设计效应** `DEFF=1+((1+CV²)m−1)ρ`（Eldridge 2006），含不等群 CV；
+  由个体层面 n 推簇数，或给定簇数反向求有效个体 n
+- `rates_ext` — 率扩展；`--rate_mode=ratio`（过离散率比检验）/ `single_ci`（presize::prec_rate）/
+  `ratio_ci`（presize::prec_rateratio）
+
+**§4 核实结论（决定 Tier 2 处置）**
+- `be_tost`：`design` 参数**直通 PowerTOST，已支持 13 种设计**（含 3×3/4×4/重复/平行）→ G15 以文档形式关闭，无需新 test
+- `cluster`/`poisson`/`anova`：能力受限（仅两组 DEFF / 仅两率之比 / 仅单因素）→ 新增独立 test 保持契约清晰
+- **修正原 gap 分析假设**：`TrialSize` **无** `power.Logistic`/`power.Poisson` → G13/G14 改为闭合公式实现，零新包依赖
+
+**缺陷修复（均为预先存在，非本次新增引入）** 1. **`ss_poisson` / `ss_vaccine` 求功效方向公式写反**（`info` 应为 `1/Var` 而非 `Σn/(λt)`，导致给定 n 时 power 恒为 1） → 修正为 `info = 1/(1/(n1·λ1·t1)+1/(n2·λ2·t2))`；正反向一致性自检通过（n=198 → power=0.8039） 2. **`scripts/i18n.py` 丢失 `resolve_user_language`**（v5.8.0 误删）致 `samplesize_power.py` `ImportError`、CLI 阻断 → 自 v5.7.26 恢复该函数（含 `detect_text_language`/`_normalize_language`）
+
+实现位置：`samplesize_functions.R`（4 个 `ss_*`）、`run_task.R`（4 个 dispatch 分支）、 `common.R`（Tier 2 header/label i18n）、`samplesize_power.py`（`--test` choices + 7 个新参数： `--x_type/--q/--r2/--mu_x/--phi/--cv_cluster/--rate_mode`）、`_contract_index.json`（+ 镜像）与 `coze_contract.md`（重生成 65 tests，计数改为动态）、`references/menu.md`（⑦ 类 + Part 2 交叉索引）、 `tests/coze_cases_regression.py`（49 硬编码断言改为「索引↔CLI choices 一致」动态校验）。
+
+本地 R 4.6.1 x64 端到端验证：4 新测试 × 双向 **14/14 通过**；契约回归 **ALL PASSED**。
+
+## v5.9.0 — 2026-10-12 · Tier 1 扩容：相关 / 方差 / CI 精度 / 回归 / Meta 规划（49 → 61 tests）
+
+对齐 PASS 全量复刻目标的第一阶段落地（PASS 822 过程 / 25 家族差距分析见 `ct-base/参考资料/PASS/CT_SAMPLESIZE_GAP_ANALYSIS.md`）。新增 **12 个 `--test`**：
+
+- **相关**：`correlation`（H0:ρ=0，Fisher-z 精确，pwr.r.test）
+- **方差**：`variance_one`（σ²=σ0²，χ²）、`variance_two`（两方差比 F）、`cv_one`（CV 相对误差精度）
+- **置信区间精度**：`ci_mean`、`ci_prop`、`ci_or`、`ci_rr`、`ci_cor`、`ci_icc`（presize 优先，base-R 正态兜底；`--half_width` 目标半宽→n，配 `--nobs` 求达成半宽）
+- **回归**：`regression_linear`（多重线性回归 R² 检验，Cohen's f²，pwr.f2.test）
+- **Meta 规划**：`meta_planning`（Hedges & Pigott 2001 随机效应；effect_type ∈ smd/paired/or/rr/cor/cluster；`--i2`/R 双参数；给定 `--k_studies` 求效能，否则求所需 K）
+
+实现位置：`samplesize_functions.R`（12 个 `ss_*` + `.meta_vw`/`.pow_meta`）、 `run_task.R`（12 个 dispatch 分支 + `.default_figures` 非 solver 守卫）、 `common.R`（新 header/label i18n）、`samplesize_power.py`（`--test` choices + 9 个新参数： `--half_width/--rel_error/--p0/--f2/--u_pred/--effect_type/--n_per_study/--i2/--k_studies`）、 `_contract_index.json`（+ 镜像）与 `coze_contract.md`（重生成 61 tests）、`references/menu.md`（新增 ⑦ 类）。
+
+本地 R 4.6.1 x64 端到端验证：12 测试 × (n/power 双向) 16 例 **全通过**；既有 10 测试回归通过。 零新增 R 包依赖（`pwr`/`presize` 均为引擎既有包）。
+
 ## v5.8.0 — 2026-10-09 · xlsx 输出 i18n + 词典/术语扩充 + 本地辅助能力（ct-base 1.3.5 家族同步）
 
 - **xlsx 输出全量 i18n（i18n.py / i18n_messages.json）**：FAERS 安全信号等 Excel
@@ -14,46 +355,30 @@
 ## v5.8.0 — 2026-09-29 · MCID 语义入口 + IRB/SAP 论证段落（ct-update upgrade J 落地）
 
 - **J1 `--mcid` / `--mcid-source`（samplesize_power.py）**：临床措辞的目标差值入口——
-  MCID（原始终点单位）经既有 Δ/sd 通道折算 d = MCID/SD；需配合 --sd、与 --effect 互斥
-  （均报错引导）；计算与 --audit 均回显折算行；审计联动：有来源声明 → 效应量假设升
-  known（anchor/distribution/expert 三流派提示见 references/justification_templates.md）。
+  MCID（原始终点单位）经既有 Δ/sd 通道折算 d = MCID/SD；需配合 --sd、与 --effect 互斥 （均报错引导）；计算与 --audit 均回显折算行；审计联动：有来源声明 → 效应量假设升 known（anchor/distribution/expert 三流派提示见 references/justification_templates.md）。
 - **J2 措辞/交互修订（用户审阅后 2026-09-29）**：① 引擎声明改为
-  `R <版本> + rpact <版本> + TrialSize <版本>`——repro.r_version/packages 经
-  `_envelope_to_result` 透传进 meta，`--justify` 自动填充；**删除"云端/coze"字样**
-  （版本对文书有意义、部署形态无意义）；mock 版本视同缺失走 [__填写] 占位。
-  ② 默认隐藏确认：不带 --justify 时单次计算成功后仅输出一行 i18n 提示
-  （`offer.justification`，"需要的话告诉我/加 --justify 重跑"），不直接生成段落。
+  `R <版本> + rpact <版本> + TrialSize <版本>`——repro.r_version/packages 经 `_envelope_to_result` 透传进 meta，`--justify` 自动填充；**删除"云端/coze"字样** （版本对文书有意义、部署形态无意义）；mock 版本视同缺失走 [__填写] 占位。 ② 默认隐藏确认：不带 --justify 时单次计算成功后仅输出一行 i18n 提示 （`offer.justification`，"需要的话告诉我/加 --justify 重跑"），不直接生成段落。
 - **J2 `scripts/justify_text.py`（纯 stdlib，`--justify` 计算后附加 / 独立预览）**：
-  IRB/SAP-ready 中英对照论证段落，四个设计变体（优效连续/NI-EQ/生存事件驱动/通用回退），
-  骨架逐句锚定 CONSORT-SPIRIT Item 14 + DELTA2 Box 4（英文语序）与 CDE《药物临床试验
-  样本量估计指导原则（试行）》2024-12-23（中文口径）；n 自动填充并按引擎返回字段判定
-  口径（n_per_group→每组；其余→总）；所有依据类空位强制渲染为 [__填写]/___ 占位
-  （anti fake-precision，不替研究者做临床判断、不替代监管沟通）。
+  IRB/SAP-ready 中英对照论证段落，四个设计变体（优效连续/NI-EQ/生存事件驱动/通用回退）， 骨架逐句锚定 CONSORT-SPIRIT Item 14 + DELTA2 Box 4（英文语序）与 CDE《药物临床试验 样本量估计指导原则（试行）》2024-12-23（中文口径）；n 自动填充并按引擎返回字段判定 口径（n_per_group→每组；其余→总）；所有依据类空位强制渲染为 [__填写]/___ 占位 （anti fake-precision，不替研究者做临床判断、不替代监管沟通）。
 - **新文档** `references/justification_templates.md`（骨架出处/变体矩阵/MCID 三流派/使用约束）。
 - **测试**：justify_text 单测（单位口径×2 + 双单位回归×4 变体 + 占位保留）全通过；
-  主流程 MOCK E2E（--mcid 折算回显 + --justify 段落）通过；--mcid 缺 sd / 与 effect
-  并用的报错路径验证。py_compile 全绿。
+  主流程 MOCK E2E（--mcid 折算回显 + --justify 段落）通过；--mcid 缺 sd / 与 effect 并用的报错路径验证。py_compile 全绿。
 - 对标来源：Sample Size Calculation (ProFlow-Labs-Ai/medsyniq-lite, LobeHub) 的
-  "监管感知"叙事 + calc-sample-size (Aperivue) 的 IRB-ready justification；
-  J 评估结论（2026-09-29）：其余卖点均已被技能覆盖，仅 MCID 与论证叙事为真缺口。
+  "监管感知"叙事 + calc-sample-size (Aperivue) 的 IRB-ready justification； J 评估结论（2026-09-29）：其余卖点均已被技能覆盖，仅 MCID 与论证叙事为真缺口。
 
 ## v5.8.0 — 2026-09-29 · 假设质量审计（ct-update upgrade I 落地）
 
 - **新增 `scripts/hypothesis_audit.py`（规划层审计，纯标准库零联网）**：
   - **四分级**：逐个设计假设评定 known / weak / unknown / missing（分级逻辑：
-    显式给值+附证据来源→known；「拍脑袋」整数直觉值 d=0.5/SD=1/r=0.5~0.9/ICC=0.05
-    启发式→unknown；必需参数无值→missing；默认值未确认→weak；结构参数豁免）。
-    α/power 惯例值（0.05/0.025、0.8/0.9）显式给出即 known。
+    显式给值+附证据来源→known；「拍脑袋」整数直觉值 d=0.5/SD=1/r=0.5~0.9/ICC=0.05 启发式→unknown；必需参数无值→missing；默认值未确认→weak；结构参数豁免）。 α/power 惯例值（0.05/0.025、0.8/0.9）显式给出即 known。
   - **设计逻辑族**：49 个 test 全量归入七族（经典两组/NI-EQ/生存事件驱动/群随机/
-    序贯自适应/诊断方法比较/历史对照），逐族给假设重心与自洽核查问题（经
-    `_contract_index.json` 全量校验，归族与 REQUIRED_BY_TEST 零遗漏）。
+    序贯自适应/诊断方法比较/历史对照），逐族给假设重心与自洽核查问题（经 `_contract_index.json` 全量校验，归族与 REQUIRED_BY_TEST 零遗漏）。
   - **fallback 场景规划**：按最脆弱假设维度（weak/unknown/missing）输出退路模板
     （事件不足→随访延长/事件富集、ICC 超界→加群、界值未共识→先 pre-ICE 再锁 n 等）。
   - **总体判定**：NOT_READY / ADAPTIVE_RECOMMENDED / READY_WITH_SENSITIVITY / READY
     四档出口，missing>0 阻断式提示先补齐。
 - **`scripts/samplesize_power.py`**：新增 `--audit`（打印审计报告后退出，不做求解）与
-  `--evidence-source`（命中参数升 known）；与既有 `--show-assumptions`（计算层参数
-  清单）互补——本审计为方案/SAP 撰写前的规划层评估。
+  `--evidence-source`（命中参数升 known）；与既有 `--show-assumptions`（计算层参数 清单）互补——本审计为方案/SAP 撰写前的规划层评估。
 - **测试**：单元 8 例（分级路径×5 + 归族/必需覆盖×2 + 渲染）全通过；主入口
   E2E（真实 parser 默认值语义）通过。`py_compile` 全绿。
 - 对标来源：sample-size-and-power-planning-assistant（aipoch medical-research-skills，
@@ -62,35 +387,22 @@
 ## v5.8.0 — 2026-09-26 · 工作台应用升级「带后端版」（部署形态，技能代码零改动）
 
 - **背景**：2026-09-14 首发为最简静态壳（`python -m http.server`），页面依赖的
-  `/api/*` 一律 404 → 线上红条「无法加载检验目录」。本次照 ct-literature 先例升级为
-  python http-service，用原 appId `wbapp_9K1dei1PydVQ66YmawCD3C` 覆盖发布，
-  链接保持 `https://ct-samplesize.app.workbuddy.host/` 不变。
+  `/api/*` 一律 404 → 线上红条「无法加载检验目录」。本次照 ct-literature 先例升级为 python http-service，用原 appId `wbapp_9K1dei1PydVQ66YmawCD3C` 覆盖发布， 链接保持 `https://ct-samplesize.app.workbuddy.host/` 不变。
 - **新增发布基础设施**（`workbench/`，被 .gitignore/.clawhubignore 整目录排除、不进技能发布包）：
-  `workbench/app.config.json`（deployedAs=http-service，startCmd=`python adapters/workbench/server.py`，
-  publishDir=`workbench/publish-dist`）+ `publish-kit/`（genie 权威副本 + build_publish.py +
-  install_genie.py，照 ct-literature 模板）。旧 `adapters/workbench/app.config.json` 删除（重复登记源）。
+  `workbench/app.config.json`（deployedAs=http-service，startCmd=`python adapters/workbench/server.py`， publishDir=`workbench/publish-dist`）+ `publish-kit/`（genie 权威副本 + build_publish.py + install_genie.py，照 ct-literature 模板）。旧 `adapters/workbench/app.config.json` 删除（重复登记源）。
 - **载荷构成**（35 文件 / ~785 KB，还原技能根层级——server.py 以 `_HERE/../..` 定位 `_SKILL`）：
-  `adapters/workbench/`（server/form_schema/session_store/nl_llm/workbench.html）+
-  `adapters/` 四件（coze_client/coze_token_embedded/rendering/bug_report）+ `scripts/` 全套 +
-  `config/config.json`（**出站授权白名单，缺了 compute 被门控静默拦截**）+
-  `tests/coze_cases/_contract_index.json`（form_schema 反射数据源，唯一入包的 tests/ 文件）+ SKILL.md（版本号）。
-  红线排除：coze/、r-assets/、publish-kit/、*.genie、sessions.json、README.md。
+  `adapters/workbench/`（server/form_schema/session_store/nl_llm/workbench.html）+ `adapters/` 四件（coze_client/coze_token_embedded/rendering/bug_report）+ `scripts/` 全套 + `config/config.json`（**出站授权白名单，缺了 compute 被门控静默拦截**）+ `tests/coze_cases/_contract_index.json`（form_schema 反射数据源，唯一入包的 tests/ 文件）+ SKILL.md（版本号）。 红线排除：coze/、r-assets/、publish-kit/、*.genie、sessions.json、README.md。
 - **server.py 无需包装**：main() 已内置云端通道——`PORT` 环境变量 → 绑 0.0.0.0，
   `/` 路由直服 workbench.html，不同于 ct-literature 需 app.py 改写 argv。
 - **线上验证**：载荷形态本地冒烟（8766 无显式 env）health/schema/ttest_ind n=64 全通；
-  发布闸门 pre/post 双绿、shareLink 断言通过、genie 回读无污染；
-  线上端到端 compute ok=true（8 图 + R 代码）；首页与载荷 MD5 逐字节一致（7e2ad6f7）。
+  发布闸门 pre/post 双绿、shareLink 断言通过、genie 回读无污染； 线上端到端 compute ok=true（8 图 + R 代码）；首页与载荷 MD5 逐字节一致（7e2ad6f7）。
 - **同日 UI 微调（用户指示，二次覆盖发布 11:32，链接不变）**：① 简化版声明条改左对齐
-  （`justify-content:center → flex-start`）；② 删除「本界面只是为了方便操作…」提示横幅
-  （HTML 元素 + 中英 i18n 文案 + `.app-hint` CSS 整簇清除，残留 grep=0）；线上 MD5 复核 MATCH。
+  （`justify-content:center → flex-start`）；② 删除「本界面只是为了方便操作…」提示横幅 （HTML 元素 + 中英 i18n 文案 + `.app-hint` CSS 整簇清除，残留 grep=0）；线上 MD5 复核 MATCH。
 - **同日 NL 兜底接入 LongCat-2.0（用户指示「按 ct-base 规范接 longcat2」，三次覆盖发布 ~12:10，链接不变）**：
   - 背景：页面「智能识别并计算」实为确定性正则（classify_test/param_aliases），与对话模式的
     Agent LLM 理解力差距大；旧版 `nl_llm.py` LLM 兜底默认禁用（需显式 CTSS_NL_ENDPOINT），云端无 env → 死路径。
   - 改造：按 ct-base §12（2026-09-25 家族统一 LongCat-2.0）——`nl_llm.py` 默认端点
-    `https://api.longcat.chat/openai/chat/completions`、模型 `LongCat-2.0`，key 经
-    `load_llm_key()`（env `LONGCAT_API_KEY` > 混淆 `config/llm_key.py`）；新增 `adapters/llm_loader.py`
-    + `config/llm_key.py`（自 ct-base 拷贝，入载荷白名单，载荷 35→37 文件）；
-    max_tokens 800→2048 + 超时 25→45s（LongCat 为推理模型，reasoning 吃预算，meta-analysis 实测教训）。
+    `https://api.longcat.chat/openai/chat/completions`、模型 `LongCat-2.0`，key 经 `load_llm_key()`（env `LONGCAT_API_KEY` > 混淆 `config/llm_key.py`）；新增 `adapters/llm_loader.py` + `config/llm_key.py`（自 ct-base 拷贝，入载荷白名单，载荷 35→37 文件）； max_tokens 800→2048 + 超时 25→45s（LongCat 为推理模型，reasoning 吃预算，meta-analysis 实测教训）。
   - 红线不变：deterministic-first（规则命中即权威，LLM 只在 test=None 时提议、零覆写权）、
     advisory 闸门照旧、LLM 幻觉未知检验置 null、无 key/不可达优雅降级回规则。
   - 前端标识 `本地大模型识别 → 大模型识别`（引擎标签语义修正）。
@@ -99,56 +411,25 @@
   - 已知边界：中文规则词表很宽（「血压」「评分」「安慰剂」甚至 `ve\b` 都命中），常见中文口语句
     多走 rule 分支而非 LLM；advisory 措辞（"怎么设计"类）被闸门拦下不点火——均为既有设计，非回归。
 - **同日顶栏瘦身（用户指示，四次覆盖发布 15:55，链接不变）**：删除左上角 `CozeBackend` 后端徽标
-  （`#hBackend` 元素 + `header .badge` CSS + init 中 `/api/health` 显示调用 + 中英 `offline` i18n 键
-  整簇清除；后端 `/api/health` 端点保留作运维探活，仅前端不再消费）。node --check 内联 JS 语法通过，
-  线上残留 grep=0、index MD5 MATCH。
+  （`#hBackend` 元素 + `header .badge` CSS + init 中 `/api/health` 显示调用 + 中英 `offline` i18n 键 整簇清除；后端 `/api/health` 端点保留作运维探活，仅前端不再消费）。node --check 内联 JS 语法通过， 线上残留 grep=0、index MD5 MATCH。
 - **同日会话默认开启（用户反馈「追加提问/跨轮继承没有实现」，五次覆盖发布 16:02，链接不变）**：
-  实测后端链路完好（session/create → 两轮 compute delta 继承 → audit
-  inherited/overridden 全对，d=0.5/power=0.8→0.9 得 n 64→86），根因是入口 UX：
-  会话挂在默认**不勾选**的 `#keepSession` 复选框上，不勾则追加提问/继承整条链路不激活。
-  修复：复选框默认 `checked`——首算自动建线程，改参数再点即「应用修改并重新计算」（仅发
-  delta，跨轮继承），线程面板逐轮显示继承/覆盖/缺失胶囊。线上 keepSession checked 断言通过。
-  同批：线程面板空态改为引导文案（中英双语，六次覆盖发布 16:10 上线，index MD5 MATCH）。
+  实测后端链路完好（session/create → 两轮 compute delta 继承 → audit inherited/overridden 全对，d=0.5/power=0.8→0.9 得 n 64→86），根因是入口 UX： 会话挂在默认**不勾选**的 `#keepSession` 复选框上，不勾则追加提问/继承整条链路不激活。 修复：复选框默认 `checked`——首算自动建线程，改参数再点即「应用修改并重新计算」（仅发 delta，跨轮继承），线程面板逐轮显示继承/覆盖/缺失胶囊。线上 keepSession checked 断言通过。 同批：线程面板空态改为引导文案（中英双语，六次覆盖发布 16:10 上线，index MD5 MATCH）。
 - **同日反馈入口对齐 ct-base §199（用户指示，七次覆盖发布 16:12，链接不变）**：底部
-  「报告问题 / Bug 反馈」按钮移至**右上角顶栏**（`#wb-bug`，位于会话选择器之后、页面最右），
-  文案改为规范短标签 `反馈 / Feedback`（`bugBtn` 键；长文案「报告问题 / Bug 反馈」保留为
-  弹窗标题 `bugTitle`）。footer 整簇删除（`<footer>` HTML + `.foot*` CSS 三条，页面已无
-  其他消费方；两段式弹窗流程本身已合规未动）。node --check 通过、冒烟断言
-  header 内位置/footer 消失/弹窗与 openBug 保留全绿、guard pre/post 双绿、线上 MD5 MATCH。
+  「报告问题 / Bug 反馈」按钮移至**右上角顶栏**（`#wb-bug`，位于会话选择器之后、页面最右）， 文案改为规范短标签 `反馈 / Feedback`（`bugBtn` 键；长文案「报告问题 / Bug 反馈」保留为 弹窗标题 `bugTitle`）。footer 整簇删除（`<footer>` HTML + `.foot*` CSS 三条，页面已无 其他消费方；两段式弹窗流程本身已合规未动）。node --check 通过、冒烟断言 header 内位置/footer 消失/弹窗与 openBug 保留全绿、guard pre/post 双绿、线上 MD5 MATCH。
 - **同日会话历史 localStorage 镜像（用户指示参考 ct-advisor 实现，八次覆盖发布 16:18，链接不变）**：
-  根因：云端沙箱重新部署清空服务端 `sessions.json`（本日已 7 次发布），线程面板「无任何记录」。
-  照 ct-advisor 范式（`wb_ctadvisor_hist_` localStorage 本地优先）为 samplesize 加**浏览器本地
-  会话镜像**（`wb_ctss_threads_`/`wb_ctss_active_sess_`，服务端仍是计算/合并权威，镜像供展示与恢复）：
-  ① `threadMirror(sid,patch)` 补丁合并（title/current/turns 各自非 null 才覆盖，LRU 保留 30 会话）；
-  ② `loadSession(id)` 统一读：服务端优先、404 回落镜像；③ `refreshSessions` 下拉并入本地独有线程
-  并标「本地缓存」（i18n `histLocal`）；④ **404 自愈**：`doCompute` 收到 `session not found` 时
-  自动重建会话、按本地镜像设定延续、原样重发一次（计算结果不丢）；⑤ `init` 自动恢复活动会话
-  （刷新/重进秒恢复，ct-advisor 同款体验）。node --check + 镜像合并单测（node stub localStorage
-  4 断言）+ 404 错误形状核对全过；guard pre/post 双绿、线上 localStorage/selfheal 断言在位。
+  根因：云端沙箱重新部署清空服务端 `sessions.json`（本日已 7 次发布），线程面板「无任何记录」。 照 ct-advisor 范式（`wb_ctadvisor_hist_` localStorage 本地优先）为 samplesize 加**浏览器本地 会话镜像**（`wb_ctss_threads_`/`wb_ctss_active_sess_`，服务端仍是计算/合并权威，镜像供展示与恢复）： ① `threadMirror(sid,patch)` 补丁合并（title/current/turns 各自非 null 才覆盖，LRU 保留 30 会话）； ② `loadSession(id)` 统一读：服务端优先、404 回落镜像；③ `refreshSessions` 下拉并入本地独有线程 并标「本地缓存」（i18n `histLocal`）；④ **404 自愈**：`doCompute` 收到 `session not found` 时 自动重建会话、按本地镜像设定延续、原样重发一次（计算结果不丢）；⑤ `init` 自动恢复活动会话 （刷新/重进秒恢复，ct-advisor 同款体验）。node --check + 镜像合并单测（node stub localStorage 4 断言）+ 404 错误形状核对全过；guard pre/post 双绿、线上 localStorage/selfheal 断言在位。
 - **安全注意**：云端实例无 CTSS_WB_TOKEN（POST 开放，与既有 coze 公开端点授权一致）；
   载荷内嵌公共 coze 凭据系 2026-08-18 用户授权的公共 token，非私密。
 
 ## v5.8.0 — 2026-09-17 · 飞书版本字段落点统一：一律写 `resultstr`，`querystr` 不再存版本信息
 
 - **依据**：ct-base `references/coze_io_contract.md` §2.1（2026-09-17 定）——版本类元数据
-  （`skill_version` / `coze_version`）**一律写入飞书 `resultstr` 顶层键**，`querystr` 不再承载任何版本字段。
-  此前 ct-samplesize 把 `skill_version` 写进 `querystr`，与 ct-advisor / meta-analysis 落点不一致，无法统一检索。
+  （`skill_version` / `coze_version`）**一律写入飞书 `resultstr` 顶层键**，`querystr` 不再承载任何版本字段。 此前 ct-samplesize 把 `skill_version` 写进 `querystr`，与 ct-advisor / meta-analysis 落点不一致，无法统一检索。
 - **服务端改动（coze：需重新上传部署包才生效）**：
-  1. `src/graphs/nodes/feishu_write_node.py`：`build_querystr()` **移除** `skill_version` 参数
-     （querystr 只留 `test`/`params`/`mode`）；`build_resultstr()` 新增可选参数
-     `skill_version` / `coze_version`（`runtime_sec` 保留），三者**仅非空才并入顶层**
-     （为空 → 不写键，与历史格式逐字节一致）。
-  2. 新增 `src/graphs/nodes/_version.py::COZE_VERSION = "5.3.11"`（单一真源）：飞书
-     `coze_version` 列与响应信封标记 `_coze_version` 共用，杜绝两处漂移。
-  3. `src/graphs/nodes/samplesize.py`：`_COZE_ENVELOPE_VERSION` 改为引用 `_version.COZE_VERSION`。
-  4. `src/graphs/nodes/feishu_save_node.py`：单条 / **批量**两条分支均改为把
-     `skill_version` + `coze_version` 写进 resultstr（批量摘要 `batch_summary` 不再带 `skill_version`）。
-  5. `src/graphs/state.py`：`skill_version` 字段描述由「写入 querystr」改为「写入 resultstr」。
-  6. 契约同步：`adapters/coze/coze_contract.md` 与其生成器 `tests/coze_cases/gen_contract_doc.py`。
+  1. `src/graphs/nodes/feishu_write_node.py`：`build_querystr()` **移除** `skill_version` 参数 （querystr 只留 `test`/`params`/`mode`）；`build_resultstr()` 新增可选参数 `skill_version` / `coze_version`（`runtime_sec` 保留），三者**仅非空才并入顶层** （为空 → 不写键，与历史格式逐字节一致）。 2. 新增 `src/graphs/nodes/_version.py::COZE_VERSION = "5.3.11"`（单一真源）：飞书 `coze_version` 列与响应信封标记 `_coze_version` 共用，杜绝两处漂移。 3. `src/graphs/nodes/samplesize.py`：`_COZE_ENVELOPE_VERSION` 改为引用 `_version.COZE_VERSION`。 4. `src/graphs/nodes/feishu_save_node.py`：单条 / **批量**两条分支均改为把 `skill_version` + `coze_version` 写进 resultstr（批量摘要 `batch_summary` 不再带 `skill_version`）。 5. `src/graphs/state.py`：`skill_version` 字段描述由「写入 querystr」改为「写入 resultstr」。 6. 契约同步：`adapters/coze/coze_contract.md` 与其生成器 `tests/coze_cases/gen_contract_doc.py`。
 - **客户端无改动**：`coze_client._skill_version()` 仍按 §1.2 发顶层信封，落点变化只在服务端。
 - **验证**：5 文件 `py_compile` 通过；`build_querystr` 输出键集恰为 `{test, params, mode}`（无版本键）；
-  `build_resultstr` 元信息全空时与历史格式逐字节一致；全字段时
-  `runtime_sec=2.001` / `skill_version` / `coze_version` 均在顶层，R 出参原键完好。
+  `build_resultstr` 元信息全空时与历史格式逐字节一致；全字段时 `runtime_sec=2.001` / `skill_version` / `coze_version` 均在顶层，R 出参原键完好。
 
 ## v5.7.27 补丁（2026-09-11）· 出站信封守卫 + 版本正则修复（后端日志实证驱动）
 
@@ -346,22 +627,16 @@
 ## v5.7.11 补丁（2026-09-03）· 修复 classify_test 非劣效生存误判 survival / 修饰族被基础词累加压过
 
 - **根因**：
-  1. `classify()` 打分用 `weight * len(hits)` 累加；`survival` 在 RULES 中**双定义**（显式「生存分析」w10 + 基础「生存」w4），多关键词命中累加虚高（如「非劣效性生存分析样本量」→ survival=14）反向压过更特异修饰族 `ni_survival`(w12) / `survival_superiority`(w12) / `survival_equivalence`(w12)。
-  2. `ni_survival` 关键词仅 `ni生存` 连写，「NI 生存」（缩写+空格）漏判。
-  3. `survival` 规则 `\blogrank\b` 的 `\b` 在中文包围下失效（CJK 属 `\w`，与 logrank 间无单词边界）→ 纯「logrank 检验」路由为 None。
+  1. `classify()` 打分用 `weight * len(hits)` 累加；`survival` 在 RULES 中**双定义**（显式「生存分析」w10 + 基础「生存」w4），多关键词命中累加虚高（如「非劣效性生存分析样本量」→ survival=14）反向压过更特异修饰族 `ni_survival`(w12) / `survival_superiority`(w12) / `survival_equivalence`(w12)。 2. `ni_survival` 关键词仅 `ni生存` 连写，「NI 生存」（缩写+空格）漏判。 3. `survival` 规则 `\blogrank\b` 的 `\b` 在中文包围下失效（CJK 属 `\w`，与 logrank 间无单词边界）→ 纯「logrank 检验」路由为 None。
 - **实现**：
-  1. `classify()` 打分改为「同一 test 取最高单次权重（max），不再累加」（#2 处 `weight * len(hits)` → `max(scores.get(test,0), weight)`），根治基础词多命中虚高。
-  2. `ni_survival` 补关键词 `r"ni\s*生存"`（覆盖「NI 生存终点」等缩写+空格变体）。
-  3. `survival` 规则 `\blogrank\b` → `r"logrank"`，修复中文环境 logrank 路由。
+  1. `classify()` 打分改为「同一 test 取最高单次权重（max），不再累加」（#2 处 `weight * len(hits)` → `max(scores.get(test,0), weight)`），根治基础词多命中虚高。 2. `ni_survival` 补关键词 `r"ni\s*生存"`（覆盖「NI 生存终点」等缩写+空格变体）。 3. `survival` 规则 `\blogrank\b` → `r"logrank"`，修复中文环境 logrank 路由。
 - **验证**：30/30 代表 NL 回归全过（非劣效生存 12 变体 + 纯非劣效 + 优效/等效生存 + 基础生存 + 其他基础 test + 无解兜底）；工作台 `/api/nl` 端到端「非劣效性生存分析样本量，NI界值1.25」→ `test=ni_survival, params={margin:1.25}`、「NI 生存终点样本量估算」→ `test=ni_survival`，均 `engine=rule`。
 
 ## Unreleased · NL fallback 红线澄清（文档/提示词修正，无计算逻辑改动）
 
 - **背景**：早期条目曾将 NL 兜底描述为依赖 coze 平台大模型，与契约事实不符——coze 计算端点（/run，graphs.graph：samplesize→feishu_save→END）纯计算、无大模型节点、不接收自然语言；`build_params` 信封只含 `{test, params, mode}`。v5.7.9 已将工作台 NL 识别改为「规则优先、本地默认大模型（Ollama）兜底」，本补丁同步纠正 CLI 主路径文档。
 - **修正**：
-  1. SKILL.md feature ④ 与新增「★ NL fallback red line」小节：明确 `needs_llm_fallback` 标记的 NL **禁止**编排者当参数分类器拼 JSON 发 coze；强制路径=本地确定性解析失败→打印结构化提示→向用户追问（≤2 轮→ct-base §6.1 默认）；原始 NL 永不进 coze 信封。工作台可选本地 LLM（nl_llm.py）作二级识别器，与 coze 计算端点不可混谈。
-  2. scripts/samplesize_power.py：移除全部「依赖远程计算端点大模型解析/补全」的旧打印文案与注释（E1/E2 注释、--nl argparse help、NL-route/NL-params 提示），统一改为「向用户追问」。
-  3. adapters/coze/src/main.py：`/v1/chat/completions` 加注释，明确该通用聊天接口与 samplesize 计算图无关、coze 计算端点无 NL/大模型路径。
+  1. SKILL.md feature ④ 与新增「★ NL fallback red line」小节：明确 `needs_llm_fallback` 标记的 NL **禁止**编排者当参数分类器拼 JSON 发 coze；强制路径=本地确定性解析失败→打印结构化提示→向用户追问（≤2 轮→ct-base §6.1 默认）；原始 NL 永不进 coze 信封。工作台可选本地 LLM（nl_llm.py）作二级识别器，与 coze 计算端点不可混谈。 2. scripts/samplesize_power.py：移除全部「依赖远程计算端点大模型解析/补全」的旧打印文案与注释（E1/E2 注释、--nl argparse help、NL-route/NL-params 提示），统一改为「向用户追问」。 3. adapters/coze/src/main.py：`/v1/chat/completions` 加注释，明确该通用聊天接口与 samplesize 计算图无关、coze 计算端点无 NL/大模型路径。
 - **验证**：grep 复核 skills 树（排除 nl_llm.py / CHANGELOG 历史 / tests/scratch）已无「依赖远程端点大模型兜底」类残留表述；本次仅改文档与提示词，未动计算逻辑。
 
 ## v5.7.9 补丁（2026-09-03）· 反转 NL 识别优先级：规则优先、大模型兜底
@@ -375,9 +650,7 @@
 
 - **诉求**：用户要求工作台 NL 识别「默认用本地默认大模型完成」，与技能主路径（samplesize_power.py: 本地规则预路由 + coze 平台 LLM 兜底）对齐，不再走离线优先的纯规则。
 - **实现**：
-  1. 新增 `adapters/workbench/nl_llm.py`（stdlib-only）：默认调本机 Ollama `http://localhost:11434/v1/chat/completions`（OpenAI 兼容、keyless，即用户生态「本地默认大模型」qwen3.5:9b/27b）；`CTSS_NL_ENDPOINT` 可覆盖为任意 OpenAI 兼容端点（如 coze 工作流 `/v1/chat/completions` 实现完全对齐 coze LLM）。
-  2. system prompt 注入可用 test / param 白名单，约束模型只输出受限 JSON（`test` 必为已知检验、`params` 键必为已知参数），从根抑制幻觉；`side/confidence/missing` 同结构。
-  3. `server.py` `_nl`：默认调 `nl_llm.nl_resolve`；返回有效 `test` 即用大模型结果（`engine="llm"`）；大模型端点不可达 / 未识别 `test` 时降级 `classify_test` 确定性规则（`engine="rule"`，已覆盖均数/两组/t检验/α小数/d 等常见表述）。`route` 带 `engine` 字段标记来源。
+  1. 新增 `adapters/workbench/nl_llm.py`（stdlib-only）：默认调本机 Ollama `http://localhost:11434/v1/chat/completions`（OpenAI 兼容、keyless，即用户生态「本地默认大模型」qwen3.5:9b/27b）；`CTSS_NL_ENDPOINT` 可覆盖为任意 OpenAI 兼容端点（如 coze 工作流 `/v1/chat/completions` 实现完全对齐 coze LLM）。 2. system prompt 注入可用 test / param 白名单，约束模型只输出受限 JSON（`test` 必为已知检验、`params` 键必为已知参数），从根抑制幻觉；`side/confidence/missing` 同结构。 3. `server.py` `_nl`：默认调 `nl_llm.nl_resolve`；返回有效 `test` 即用大模型结果（`engine="llm"`）；大模型端点不可达 / 未识别 `test` 时降级 `classify_test` 确定性规则（`engine="rule"`，已覆盖均数/两组/t检验/α小数/d 等常见表述）。`route` 带 `engine` 字段标记来源。
 - **验证**：① 假 Ollama（8895）返回预设 JSON → `/api/nl` 返回 `engine:"llm"` + `test=ttest_ind` + 完整参数（白名单校验/解析正确）；② 端点不可达（`:1`）→ 降级 `engine:"rule"` + 同结果（不退化）。`py_compile` 两文件通过。
 - **注**：本机无 Ollama 运行时自动走规则降级（功能不退化）；本机起 Ollama（qwen3.5:27b/9b，`ollama serve` + `ollama pull`）后即自动切大模型识别。`CTSS_NL_MODEL` 可覆盖模型名。
 
@@ -385,13 +658,9 @@
 
 - **现象**：用户输入「帮我算一下两组均数比较的样本量，效应量 d=0.5，把握度 80%，双侧 α=0.05」→ 工作台识别为「未识别（置信度 low）」。
 - **根因（三层）**：
-  1. `classify_test.py` 基础终点词只覆盖「均值」未覆盖「均数」（医学统计同义），且「两组 / 独立样本 / t检验 / 英文 two-sample·t-test」缺泛化规则 → 整句零关键词命中、返回 `test=None`。
-  2. `param_aliases.py`：`alpha` 在百分率类集合内，用户写「α=0.05」小数形式被「无百分号且关键词无率语境则拒收」逻辑误杀；`effect` 的「效应量 d=0.5」数值夹在 `d=` 后未被覆盖。
-  3. `server.py` `_nl` 把 `extract_parameters()` 返回的**整个 dict**（`{params, side, solve_for_power, ...}`）当 params 过滤，而非取其内部 `params` 子字典 → `power/alpha/effect` 全丢，仅顶层键 `side` 命中。
+  1. `classify_test.py` 基础终点词只覆盖「均值」未覆盖「均数」（医学统计同义），且「两组 / 独立样本 / t检验 / 英文 two-sample·t-test」缺泛化规则 → 整句零关键词命中、返回 `test=None`。 2. `param_aliases.py`：`alpha` 在百分率类集合内，用户写「α=0.05」小数形式被「无百分号且关键词无率语境则拒收」逻辑误杀；`effect` 的「效应量 d=0.5」数值夹在 `d=` 后未被覆盖。 3. `server.py` `_nl` 把 `extract_parameters()` 返回的**整个 dict**（`{params, side, solve_for_power, ...}`）当 params 过滤，而非取其内部 `params` 子字典 → `power/alpha/effect` 全丢，仅顶层键 `side` 命中。
 - **修复**：
-  1. `classify_test.py`：`ttest_ind` 显式名补 `两组.*均数 / 两组.*均值 / 两组.*比较 / 独立样本\s*t / 独立样本 / 两独立样本 / two[- ]?sample / t[- ]?test / independent`；基础终点补 `均数`、`t\s*检验`。
-  2. `param_aliases.py`：`effect` 关键词加 `(?<![a-z])d\s*[:=]`（负向后顾排除 `sd=` 误抓）；`_find_param` 对 `alpha/power` 放行 0~1 小数形式（不再要求百分号）。
-  3. `server.py` `_nl`：取 `extracted.get("params")` 子字典，并把 `side / solve_for_power` 提升为顶层键再过滤 `CATALOG["params"]`。
+  1. `classify_test.py`：`ttest_ind` 显式名补 `两组.*均数 / 两组.*均值 / 两组.*比较 / 独立样本\s*t / 独立样本 / 两独立样本 / two[- ]?sample / t[- ]?test / independent`；基础终点补 `均数`、`t\s*检验`。 2. `param_aliases.py`：`effect` 关键词加 `(?<![a-z])d\s*[:=]`（负向后顾排除 `sd=` 误抓）；`_find_param` 对 `alpha/power` 放行 0~1 小数形式（不再要求百分号）。 3. `server.py` `_nl`：取 `extracted.get("params")` 子字典，并把 `side / solve_for_power` 提升为顶层键再过滤 `CATALOG["params"]`。
 - **验证**：回归 7 例（含「两组均数比较」「两组独立样本t检验」「two-sample t-test」「独立样本t检验」）全部路由 `ttest_ind` 且参数完整；`/api/nl` 端到端 200 返回 `{"route":{"test":"ttest_ind","confidence":"high"},"params":{"power":0.8,"alpha":0.05,"effect":0.5,"side":"two"}}`。纯参数无检验类型词的用例（如「效应量 d=0.5，sd=2」）仍正确返回 `test=None`（应追问），符合预期。
 
 ## v5.7.6 补丁（2026-09-03）· 删除页脚过时提示文字
@@ -426,48 +695,20 @@
 
 ## v5.7.1 补丁（2026-09-03）· 工作台界面紧凑化重构
 
-> 触发：用户反馈「工作台太长」，要求缩短并并排放置元素，同时逐项核验每个元素功能真实可用。
-> 做法：**只重构 DOM 结构与 CSS，JS 函数逻辑一字未改**（415 行逻辑已验证，改动风险高、收益低）。
-> - ① 左栏表单字段改 **2 列网格**（`#formArea .sec`），输入区高度约减半；
-> - ② 右栏改为网格：结果展示置顶占满整行（hero），图表选项控制 + 追加提问 **左右并排**；
-> - ③ 检验族 / 检验方法 **并排同一行**；求解方向压成一行 chip（去掉整块虚线框）；
-> - ④ 面板编号按视觉顺序修正为 **1→2→3→4**（原右栏 3-2-4 错乱）。
-> - 功能核验：启动实例对 12 类 UI 元素逐一实测后端端点——health/schema/schema-单检验/compute/dry_run/必填校验/
->   curve 检验图表控制/非曲线检验隐藏曲线区/figure_mode 全局可用/自然语言填表/会话新建-列表-详情/会话追加合并/导出报告/
->   导出边界，全部 ✓；18 个 DOM id 与 12 个处理器函数静态核对无缺失；JS `node --check` 通过。
-> - **⑤ 下拉空缺陷修复（防御性）**：根因不是代码 bug，而是 `init()` 对 `/api/schema` 的 `await api(...)` 原本**无 try/catch**——
->   当用户以 `file://` 直接双击打开 HTML、或访问了未正确响应 `/api/*` 的旧/错误端口时，fetch 失败 → `init` 静默中断 → 下拉为空且无任何提示。
->   修复：把 `/api/schema` 加载包进 try/catch，失败时页面顶部显示红色横幅（明确提示「用 http:// 而非 file:// 打开、确认后端已启动」），
->   不再静默空下拉、不再抛 unhandled rejection。验证：用 Node 真实连 http 服务跑 `init` → 下拉正确填 36（族）/49（检验）；
->   模拟 `/api/schema` 返回 500 → 横幅显示、无崩溃。**铁律**：工作台必须经 http 服务（`python server.py <port>`）访问，禁 `file://` 直开。
-> - **⑥ 自然语言入口置顶 + 「智能识别并计算」合一按钮（方案 B）**：用户要求①NL 入口放最上面、②「智能识别并填表」与「计算」合并为一按钮、③追加提问框与 NL 框合并。
->   做法：NL `.sec` 移到左栏面板最顶（独立青色高亮区 `.nl-top`），主按钮 `nlComputeBtn` 统一「识别→填表→计算」——无会话走 `doCompute(false)` 首轮自动算，
->   有会话走 `doComputeWith` 改为「识别并追问」直接重算（`updateNlBtn` 随 `CUR_SESSION` 动态切文案）；另加 `nlPreview`（识别→填表→预览信封）作 ghost 次级按钮。
->   右栏面板 4 删独立 `nlFollow` 框，追问只走顶部 NL；`quickEdit` 保留为「精确修改」折叠区（精确调单参、不丢能力）。
->   后端零改动；JS 仅新增 `nlCompute`/`nlPreview`/`updateNlBtn`、删除旧 `nlFill`/`nlFollow`（Grep 确认无悬空引用）；DOM/函数闭合经 Grep+Read 静态核对。
+> 触发：用户反馈「工作台太长」，要求缩短并并排放置元素，同时逐项核验每个元素功能真实可用。 > 做法：**只重构 DOM 结构与 CSS，JS 函数逻辑一字未改**（415 行逻辑已验证，改动风险高、收益低）。 > - ① 左栏表单字段改 **2 列网格**（`#formArea .sec`），输入区高度约减半； > - ② 右栏改为网格：结果展示置顶占满整行（hero），图表选项控制 + 追加提问 **左右并排**； > - ③ 检验族 / 检验方法 **并排同一行**；求解方向压成一行 chip（去掉整块虚线框）； > - ④ 面板编号按视觉顺序修正为 **1→2→3→4**（原右栏 3-2-4 错乱）。 > - 功能核验：启动实例对 12 类 UI 元素逐一实测后端端点——health/schema/schema-单检验/compute/dry_run/必填校验/ >   curve 检验图表控制/非曲线检验隐藏曲线区/figure_mode 全局可用/自然语言填表/会话新建-列表-详情/会话追加合并/导出报告/ >   导出边界，全部 ✓；18 个 DOM id 与 12 个处理器函数静态核对无缺失；JS `node --check` 通过。 > - **⑤ 下拉空缺陷修复（防御性）**：根因不是代码 bug，而是 `init()` 对 `/api/schema` 的 `await api(...)` 原本**无 try/catch**—— >   当用户以 `file://` 直接双击打开 HTML、或访问了未正确响应 `/api/*` 的旧/错误端口时，fetch 失败 → `init` 静默中断 → 下拉为空且无任何提示。 >   修复：把 `/api/schema` 加载包进 try/catch，失败时页面顶部显示红色横幅（明确提示「用 http:// 而非 file:// 打开、确认后端已启动」）， >   不再静默空下拉、不再抛 unhandled rejection。验证：用 Node 真实连 http 服务跑 `init` → 下拉正确填 36（族）/49（检验）； >   模拟 `/api/schema` 返回 500 → 横幅显示、无崩溃。**铁律**：工作台必须经 http 服务（`python server.py <port>`）访问，禁 `file://` 直开。 > - **⑥ 自然语言入口置顶 + 「智能识别并计算」合一按钮（方案 B）**：用户要求①NL 入口放最上面、②「智能识别并填表」与「计算」合并为一按钮、③追加提问框与 NL 框合并。 >   做法：NL `.sec` 移到左栏面板最顶（独立青色高亮区 `.nl-top`），主按钮 `nlComputeBtn` 统一「识别→填表→计算」——无会话走 `doCompute(false)` 首轮自动算， >   有会话走 `doComputeWith` 改为「识别并追问」直接重算（`updateNlBtn` 随 `CUR_SESSION` 动态切文案）；另加 `nlPreview`（识别→填表→预览信封）作 ghost 次级按钮。 >   右栏面板 4 删独立 `nlFollow` 框，追问只走顶部 NL；`quickEdit` 保留为「精确修改」折叠区（精确调单参、不丢能力）。 >   后端零改动；JS 仅新增 `nlCompute`/`nlPreview`/`updateNlBtn`、删除旧 `nlFill`/`nlFollow`（Grep 确认无悬空引用）；DOM/函数闭合经 Grep+Read 静态核对。
 
 ## v5.7.1 补丁（2026-09-02）· 新增本地 Web 工作台（Workbench）
 
-> 触发：为技能补齐可视化操作界面，覆盖「信息输入 → 结果展示 → 图表选项控制 → 追加提问」全流程。
-> 设计定调：**零新增第三方依赖**——后端用 stdlib `http.server`（与技能 stdlib-only 红线一致），
-> 前端单文件零依赖；表单 schema 运行时反射 argparse + `_contract_index.json`（49 检验 / 178 参数，零维护）；
-> 追加提问复用 `ct-base` 确定性合并（`merge_spec`），不丢参数、不臆造。
+> 触发：为技能补齐可视化操作界面，覆盖「信息输入 → 结果展示 → 图表选项控制 → 追加提问」全流程。 > 设计定调：**零新增第三方依赖**——后端用 stdlib `http.server`（与技能 stdlib-only 红线一致）， > 前端单文件零依赖；表单 schema 运行时反射 argparse + `_contract_index.json`（49 检验 / 178 参数，零维护）； > 追加提问复用 `ct-base` 确定性合并（`merge_spec`），不丢参数、不臆造。
 
 - **① 新增目录** `adapters/workbench/`：`form_schema.py`（动态表单反射）、`session_store.py`
-  （会话线程 + 确定性合并，缺 `ct-base` 时内嵌等价实现）、`server.py`（stdlib HTTP 后端 /
-  REST + 静态）、`workbench.html`（单文件前端，浅色主题、中英双语）、`README.md`（启动与端点）。
+  （会话线程 + 确定性合并，缺 `ct-base` 时内嵌等价实现）、`server.py`（stdlib HTTP 后端 / REST + 静态）、`workbench.html`（单文件前端，浅色主题、中英双语）、`README.md`（启动与端点）。
 - **② 新增「导出 HTML 报告」按钮**（`server.py::/api/export` + `workbench.html`）：结果展示区顶部按钮，
-  把已算结果重组成 coze 信封后复用技能既有 `rendering.render_html_report` 生成**单文件 HTML 报告**
-  （内联 SVG + 可复现 R 代码 + 数值卡片），与 CLI `--report` 同源同构、离线可看；临时文件用后清理。
-  未计算 / 无内容时按钮禁用。
+  把已算结果重组成 coze 信封后复用技能既有 `rendering.render_html_report` 生成**单文件 HTML 报告** （内联 SVG + 可复现 R 代码 + 数值卡片），与 CLI `--report` 同源同构、离线可看；临时文件用后清理。 未计算 / 无内容时按钮禁用。
 - **② 四区功能**：信息输入（检验族两级选择 + 关键词搜索 + 动态参数表单 + 求解方向 + 零 LLM
-  自然语言入口）；结果展示（当前分析设定块 / 数值卡片 / 说明 / 内联 SVG / R 代码 / 信封预览）；
-  图表选项控制（曲线·专项图勾选 / 图形格式 / 分配比显隐）；追加提问（会话跨轮继承 + 逐轮
-  diff + 快捷修改 + NL 追问）。
+  自然语言入口）；结果展示（当前分析设定块 / 数值卡片 / 说明 / 内联 SVG / R 代码 / 信封预览）； 图表选项控制（曲线·专项图勾选 / 图形格式 / 分配比显隐）；追加提问（会话跨轮继承 + 逐轮 diff + 快捷修改 + NL 追问）。
 - **③ 复用既有能力**：`form_schema` 反射 `scripts/samplesize_power.build_parser` 与
-  `tests/coze_cases/_contract_index.json`；`session_store` 复用 `ct-base/scripts/merge_spec.py`
-  做确定性合并（家族红线 4）；`server` 复用 `CozeBackend` / `classify_test` / `param_aliases`，
-  ctx 构造严格复刻 CLI `main` 语义（solve_for_power / alt / d_val / curve / user_language）。
+  `tests/coze_cases/_contract_index.json`；`session_store` 复用 `ct-base/scripts/merge_spec.py` 做确定性合并（家族红线 4）；`server` 复用 `CozeBackend` / `classify_test` / `param_aliases`， ctx 构造严格复刻 CLI `main` 语义（solve_for_power / alt / d_val / curve / user_language）。
 - **④ 必填校验**：required 字段中「有 schema 默认值」者（alpha/side/ratio 等）自动补默认不报错；
   仅「无默认的真必填」（effect / p1 / p2 等）缺失时拦截；会话合并默认值不入库，避免污染跨轮继承。
 - **⑤ 界面视觉重构（2026-09-03）**：`workbench.html` 样式层重写，**415 行 JS 逻辑零改动**
@@ -479,62 +720,41 @@
   - *美观度*：设计令牌化（CSS 变量）、三级阴影层级、统一圆角尺度、focus 青色光晕、
     卡片 hover 微上浮、滚动条美化、空状态插画。
   - *规范*：图标全部内联 SVG（7 处）替换 emoji；`<option>` 内曲线能力标记改用数学符号 `∿`
-    （option 内无法嵌 SVG）；移动端按钮 ≥44px、输入框 16px 防 iOS 缩放、安全区适配。
-    零外部依赖不变（无 CDN / 字体 / 图表库）。
+    （option 内无法嵌 SVG）；移动端按钮 ≥44px、输入框 16px 防 iOS 缩放、安全区适配。 零外部依赖不变（无 CDN / 字体 / 图表库）。
 
 ## v5.7.1 补丁（2026-09-02）· coze 入参新增技能版本号 `skill_version`（写入飞书 querystr）
 
-> 触发：需按技能版本归因云端调用量与失败率；飞书调用日志的 `querystr` 要带上发起方版本。
-> 设计定调：**可选字段 + 双向兼容**——老技能不发、coze 端不写键；新技能发到未重新部署的
-> 旧 coze 端也不报错，两端可独立升级、互不阻塞。
+> 触发：需按技能版本归因云端调用量与失败率；飞书调用日志的 `querystr` 要带上发起方版本。 > 设计定调：**可选字段 + 双向兼容**——老技能不发、coze 端不写键；新技能发到未重新部署的 > 旧 coze 端也不报错，两端可独立升级、互不阻塞。
 
 - **① 字段语义**：`skill_version: Optional[str]`，由客户端（技能安装设备）随 `/run` 请求体
-  发出，取值 = 技能根 `SKILL.md` frontmatter 的 `version:`（读取失败回退内置常量
-  `_SKILL_VERSION_FALLBACK`）。coze 端透传后写入飞书多维表格的 `querystr`
-  （单条：`{test, params, mode, skill_version}`；批量摘要：`{batch, count, tests, modes, skill_version}`）。
+  发出，取值 = 技能根 `SKILL.md` frontmatter 的 `version:`（读取失败回退内置常量 `_SKILL_VERSION_FALLBACK`）。coze 端透传后写入飞书多维表格的 `querystr` （单条：`{test, params, mode, skill_version}`；批量摘要：`{batch, count, tests, modes, skill_version}`）。
 - **② 本地改动（客户端）**：`adapters/coze_client.py` 新增 `_skill_version()`（读 SKILL.md，
-  单一事实来源 —— 升版本免改代码）；`call()` / `call_batch()` / `CozeBackend.preview()`
-  三处信封均带上该字段（`--dry-run` 预览同样可见）。
+  单一事实来源 —— 升版本免改代码）；`call()` / `call_batch()` / `CozeBackend.preview()` 三处信封均带上该字段（`--dry-run` 预览同样可见）。
 - **③ coze 端改动**：`src/graphs/state.py` 的 `GlobalState` / `GraphInput` /
-  `SamplesizeNodeInput` / `SamplesizeNodeOutput` / `FeishuSaveNodeInput` 增字段；
-  `nodes/samplesize.py` 两条返回分支（单条 / 批量）透传；
-  `nodes/feishu_write_node.py` 的 `build_querystr` 增加可选形参（**非空才写键**）；
-  `nodes/feishu_save_node.py` 读取并传入（批量摘要同理）。
+  `SamplesizeNodeInput` / `SamplesizeNodeOutput` / `FeishuSaveNodeInput` 增字段； `nodes/samplesize.py` 两条返回分支（单条 / 批量）透传； `nodes/feishu_write_node.py` 的 `build_querystr` 增加可选形参（**非空才写键**）； `nodes/feishu_save_node.py` 读取并传入（批量摘要同理）。
 - **④ 向后兼容（双向，已实测）**：
 
-  | 场景 | 行为 |
-  |---|---|
-  | 老技能 → 新 coze 端 | 请求体无该字段 → `None` → `querystr` 不含该键（与旧格式逐字节一致） |
-  | 新技能 → 未重新部署的旧 coze 端 | 多发的键由 pydantic v2 默认忽略策略丢弃，不报错 |
-  | 老技能 → 旧 coze 端 | 完全不受影响 |
+  | 场景 | 行为 | |---|---| | 老技能 → 新 coze 端 | 请求体无该字段 → `None` → `querystr` 不含该键（与旧格式逐字节一致） | | 新技能 → 未重新部署的旧 coze 端 | 多发的键由 pydantic v2 默认忽略策略丢弃，不报错 | | 老技能 → 旧 coze 端 | 完全不受影响 |
 
 - **⑤ 验证**（本地、未触网）：5 个改动文件 `py_compile` 全过；`build_querystr` 三用例
-  （不传 / 传版本号 / 传空串）断言通过；pydantic 2.12.4 双向兼容用例通过（新端收老
-  payload → `None`；老模型收新 payload → 不报错）。`_skill_version()` 实读 SKILL.md 得 `5.7.1`。
+  （不传 / 传版本号 / 传空串）断言通过；pydantic 2.12.4 双向兼容用例通过（新端收老 payload → `None`；老模型收新 payload → 不报错）。`_skill_version()` 实读 SKILL.md 得 `5.7.1`。
 - **⚠️ 部署提示**：coze 端需重新打包部署后 `querystr` 才会带版本号；未部署期间本地照常
   运行，仅飞书日志无该字段（不影响任何计算结果）。
 
 ## v5.7.1（2026-08-31）· 分配比图形按用户意图过滤（本地渲染层，coze 端不变）
 
-> 触发：用户反馈——**提示词未提及不等比例分配时，不应默认提供分配比例图形**；
-> 分配比四图只在用户明确输入组间不等比例时才提供。
-> 设计定调（用户纠正）：**coze 端 R 出图完全不改、仍返回全量图**，过滤放在**本地 HTML 渲染模板**层。
+> 触发：用户反馈——**提示词未提及不等比例分配时，不应默认提供分配比例图形**； > 分配比四图只在用户明确输入组间不等比例时才提供。 > 设计定调（用户纠正）：**coze 端 R 出图完全不改、仍返回全量图**，过滤放在**本地 HTML 渲染模板**层。
 
 - **① 过滤语义**：`alloc_suite`（4 张分配比图：所需总 N vs 比 / 固定 N 下效能 vs 比 /
-  等效能等高线 / 效能损失分层）由 coze 端**始终全量返回**，本地渲染层决定展示与否——
-  **仅当请求显式要求不等比例分配**时展示。判据：CLI `--ratio`（分配比 k = n2/n1）存在且 `!= 1`。
+  等效能等高线 / 效能损失分层）由 coze 端**始终全量返回**，本地渲染层决定展示与否—— **仅当请求显式要求不等比例分配**时展示。判据：CLI `--ratio`（分配比 k = n2/n1）存在且 `!= 1`。
   - 未提及分配比（无 `--ratio`）→ 本地隐藏；
   - 明确 1:1 等例（`--ratio = 1`）→ 本地隐藏；
   - 不等比例（如 `--ratio 2`、`0.5`）→ 展示。
 - **② 效应量字段绝不误触发**：`hazard_ratio` / `rate_ratio` / `win_ratio_theta` /
-  `sigma_ratio` / `gs_ratio` 以及方法名 `odds_ratio` / `risk_ratio` 均为**效应量或设计参数**，
-  不是分配比，已明确排除。过滤依据为图形 caption 含 `alloc` 字样（如 `ctss alloc ttest ind 1`），
-  与效应量字段无交集。
+  `sigma_ratio` / `gs_ratio` 以及方法名 `odds_ratio` / `risk_ratio` 均为**效应量或设计参数**， 不是分配比，已明确排除。过滤依据为图形 caption 含 `alloc` 字样（如 `ctss alloc ttest ind 1`）， 与效应量字段无交集。
 - **③ 改动文件（仅本地，coze 端零改动）**：
   - `scripts/samplesize_power.py`：新增 `_ratio_is_unequal` / `_is_alloc_figure` /
-    `_filter_alloc`；`render_figures` / `_render_single_result` 增加 `show_alloc` 形参；
-    `render_batch` 逐项按 spec 的 `ratio` 计算 `show_alloc`；单请求与自动曲线路径注入
-    `show_alloc=_ratio_is_unequal(args.ratio)`。
+    `_filter_alloc`；`render_figures` / `_render_single_result` 增加 `show_alloc` 形参； `render_batch` 逐项按 spec 的 `ratio` 计算 `show_alloc`；单请求与自动曲线路径注入 `show_alloc=_ratio_is_unequal(args.ratio)`。
   - `adapters/rendering.py`：`render_html_report` 增加 `show_alloc` 形参，
     过滤 `figures[]` 中 caption 含 `alloc` 的图。
 - **④ 文档同步**：`references/default_figures.md`（合并去重段 / 图型表 / alloc_suite 章节）、
@@ -542,33 +762,18 @@
 - **验证**（真实 coze 部署端到端，`ttest_ind` power*=0.8；单元级 `_filter_alloc` /
   `render_html_report` / `render_figures` 门控含 dict 与 Figure 两种类型全过，`py_compile` 两文件语法检查通过）：
 
-  | 用例 | HTML 报告图数 | `alloc` 出现 | 结论 |
-  |---|---|---|---|
-  | 无 `--ratio`（用户未提及） | 4 | 0 | 分配比四图已本地隐藏 ✅ |
-  | `--ratio 2`（不等比例） | 8 | `ctss alloc ttest ind 1..4` 全展示 | 分配比四图展示 ✅ |
+  | 用例 | HTML 报告图数 | `alloc` 出现 | 结论 | |---|---|---|---| | 无 `--ratio`（用户未提及） | 4 | 0 | 分配比四图已本地隐藏 ✅ | | `--ratio 2`（不等比例） | 8 | `ctss alloc ttest ind 1..4` 全展示 | 分配比四图展示 ✅ |
 - **影响面**：`margin_tradeoff` 的 x 轴是**界值/边际比**（非组间分配比），不在本次范围内。
-  向后兼容：老客户端不传 `ratio` → 恒隐藏分配比图（即本次目标行为）。coze 端**无需重新部署**
-  （coze 侧代码未改动，仍全量返回）；仅本地 skill 代码更新即生效。
+  向后兼容：老客户端不传 `ratio` → 恒隐藏分配比图（即本次目标行为）。coze 端**无需重新部署** （coze 侧代码未改动，仍全量返回）；仅本地 skill 代码更新即生效。
 
 ## v5.7.0（2026-08-31）· 批量调用治理（batch 模式 + 请求级幂等缓存 + 编排收敛）
 
-> 触发：飞书后台 searchlog 实证，单此分析在 4 分 15 秒内打入 54 次 `samplesize` 调用，
-> 其中约一半是「单点 + 曲线」成对冗余、另有逐字节重复的整对重跑（ID 3376/3378、3382/3386）。
-> 本次从**服务端**与**编排侧**双管齐下，目标把同类分析的调用量削减 80%+。
+> 触发：飞书后台 searchlog 实证，单此分析在 4 分 15 秒内打入 54 次 `samplesize` 调用， > 其中约一半是「单点 + 曲线」成对冗余、另有逐字节重复的整对重跑（ID 3376/3378、3382/3386）。 > 本次从**服务端**与**编排侧**双管齐下，目标把同类分析的调用量削减 80%+。
 
 - **① 服务端批量模式（`batch` 数组）**：`adapters/coze/src/graphs/state.py` 的 `GraphInput`/
-  `GlobalState`/`SamplesizeNodeInput` 新增可选 `batch: List[dict]`；`samplesize_node` 检测到
-  非空 `batch` 时逐项经带缓存的 `_compute_one` 计算 + 出图层，聚合为完整 agg 后**整体外置 S3
-  一次**，主返回仅留轻量内联摘要 `{status, batch:true, count, ok, errors, tests[], modes[],
-  results:[{index,test,mode,status}], _coze_full, _coze_version}`（恒 < 4000 字符）。12~24 格
-  扫描从「N 次串行」压成「1 次批量」，本地客户端经 `_coze_full` 一次下载即得全部 item 完整结果。
-  🔴 **附带修复 coze 主返回截断**：早期实现把每项的完整外置结果内联进 `results[]`，12+ 项时
-  主返回 > 4000 会被平台截断破坏 JSON；改为「摘要内联 + 整体 S3 外置」后，主返回恒精简。
-  本地组装入口 `adapters/coze_client.py::build_batch([(test,args,ctx), ...])`。
+  `GlobalState`/`SamplesizeNodeInput` 新增可选 `batch: List[dict]`；`samplesize_node` 检测到 非空 `batch` 时逐项经带缓存的 `_compute_one` 计算 + 出图层，聚合为完整 agg 后**整体外置 S3 一次**，主返回仅留轻量内联摘要 `{status, batch:true, count, ok, errors, tests[], modes[], results:[{index,test,mode,status}], _coze_full, _coze_version}`（恒 < 4000 字符）。12~24 格 扫描从「N 次串行」压成「1 次批量」，本地客户端经 `_coze_full` 一次下载即得全部 item 完整结果。 🔴 **附带修复 coze 主返回截断**：早期实现把每项的完整外置结果内联进 `results[]`，12+ 项时 主返回 > 4000 会被平台截断破坏 JSON；改为「摘要内联 + 整体 S3 外置」后，主返回恒精简。 本地组装入口 `adapters/coze_client.py::build_batch([(test,args,ctx), ...])`。
 - **② 请求级幂等缓存**：`samplesize.py` 新增线程安全 TTL 缓存（`_cache_key`/`_cache_get`/
-  `_cache_put`，默认 600s，`CTSS_CACHE_TTL` 可调，容量 >2000 自动清 oldest-half）。对规范化
-  签名 `sha256(json({t, params(sorted), m, locale}))` 去重；命中跳过 R 子进程，复用「外置前」
-  out 并重签 S3 链接（图形始终可下载）。自动消除上层 Agent 对同一网格点的逐字节重跑。
+  `_cache_put`，默认 600s，`CTSS_CACHE_TTL` 可调，容量 >2000 自动清 oldest-half）。对规范化 签名 `sha256(json({t, params(sorted), m, locale}))` 去重；命中跳过 R 子进程，复用「外置前」 out 并重签 S3 链接（图形始终可下载）。自动消除上层 Agent 对同一网格点的逐字节重跑。
 - **③ 批量飞书日志合并**：`feishu_save_node.py` 检测 `batch:true` 结果后写**一条**合并日志
   （querystr 含 `count/tests/modes` 摘要，resultstr 含 `ok/errors`），54 行日志 → 约 4 行。
 - **④ 编排侧收敛（SKILL.md「批量调用治理」段 + coze_contract.md §2.1/§2.2）**：
@@ -576,17 +781,7 @@
   - 网格/敏感性扫描走 `build_batch` 一次性提交，禁止逐格串行；
   - 始终走 `build_params` 白名单，**只传本 test 生效字段**（信封已默认精简，勿回填全家族默认值）。
 - **⑤ 本地批量结果聚合渲染（`adapters/coze_client.py` + `scripts/samplesize_power.py`）**：
-  服务端 v5.7 `batch` 模式仅返回聚合 agg（含每项完整 `out` 信封，外置 S3 一次），本地需把
-  这份聚合体**解析 + 逐项渲染 + 合并汇总**，不再逐条回查。新增 `ComputeBackend.compute_batch`
-  抽象方法 + `BatchResult`/`BatchItem` 数据类（`scripts/compute_backend.py`）；客户端
-  `CozeBackend.call_batch(specs)` 经 `_coze_full` 一次下载完整 agg（失败降级内联摘要），
-  `CozeBackend.compute_batch(specs)` 把 `results[i]` 映射为 `BatchItem`（成功项经
-  `_envelope_to_result` 规整为 `Result`、失败项保留服务端原因）；出错信封（服务端 `status=error`）
-  直接抽真实错误原因而非笼统「外置不可用」。CLI 新增 `--batch-file <JSON数组>` 入口：
-  `_run_batch` 克隆命令行默认参数、按条目覆盖 `args`/`ctx`、`--dry-run`/`--show-code` 仅预览
-  批量请求信封；`render_batch` 先打印汇总行（`总数/成功/失败/tests/modes/状态`），再逐项复用
-  `_render_single_result`（文本 + SVG 落盘 + HTML 报告 + R 代码/数值），失败项打印错误原因。
-  单请求路径不受影响（`_render_single_result` 抽出共享、`idx=None` 不打印分隔）。
+  服务端 v5.7 `batch` 模式仅返回聚合 agg（含每项完整 `out` 信封，外置 S3 一次），本地需把 这份聚合体**解析 + 逐项渲染 + 合并汇总**，不再逐条回查。新增 `ComputeBackend.compute_batch` 抽象方法 + `BatchResult`/`BatchItem` 数据类（`scripts/compute_backend.py`）；客户端 `CozeBackend.call_batch(specs)` 经 `_coze_full` 一次下载完整 agg（失败降级内联摘要）， `CozeBackend.compute_batch(specs)` 把 `results[i]` 映射为 `BatchItem`（成功项经 `_envelope_to_result` 规整为 `Result`、失败项保留服务端原因）；出错信封（服务端 `status=error`） 直接抽真实错误原因而非笼统「外置不可用」。CLI 新增 `--batch-file <JSON数组>` 入口： `_run_batch` 克隆命令行默认参数、按条目覆盖 `args`/`ctx`、`--dry-run`/`--show-code` 仅预览 批量请求信封；`render_batch` 先打印汇总行（`总数/成功/失败/tests/modes/状态`），再逐项复用 `_render_single_result`（文本 + SVG 落盘 + HTML 报告 + R 代码/数值），失败项打印错误原因。 单请求路径不受影响（`_render_single_result` 抽出共享、`idx=None` 不打印分隔）。
 - **验证**（本端离线 stub，桩化 `_post` 与 S3 `urlopen`，覆盖 4 条解析路径）：
   - `[1]` `call_batch` 经 `_coze_full` 解析出完整 agg（含每项 `out`）；
   - `[2]` `compute_batch` 多 spec → `BatchResult`，每项 `Result` 含 1 图 + 可复现 R 代码；
@@ -610,8 +805,7 @@
 
 - **缺陷（用户线上报告）**：`render_alloc_suite` 副图 panel C（`ttest_ind | C. equal-power (power=0.80) contour (n1,n2)`）的蓝色等高线冲出图框、右端截断。ttest_ind + n*=64 + power*=0.80 时实测：起点 (34, 587)、(37, 247)、(40, 165)、(43, 128)、红点 (64, 64)、末端 (192, 38) 中，n1≈34 与 n2≈587 远在画框之外。
 - **根因（两件事，缺一不闭环）**：
-  1. `xlim = ylim = range(n1g)` 写死为 n1 网格范围 `[19.2, 192]`，但等高线数据真实范围 `n1c ∈ [33.84, 192]`、`n2c ∈ [38.40, 587.29]`（双曲线在 n1→neff0 时 n2 发散至 500+），写死窗截断 n2 发散端 → 曲线"冲出"。
-  2. `svglite(pC, width=7, height=4.5)` 矩形设备 + `asp=1`：为保持数据高宽比=1，R 自动拉伸 xlim 至 ~[-200, 1000]，蓝色等高线被挤到画面左侧，即便 (1) 已修、视觉仍不协调。
+  1. `xlim = ylim = range(n1g)` 写死为 n1 网格范围 `[19.2, 192]`，但等高线数据真实范围 `n1c ∈ [33.84, 192]`、`n2c ∈ [38.40, 587.29]`（双曲线在 n1→neff0 时 n2 发散至 500+），写死窗截断 n2 发散端 → 曲线"冲出"。 2. `svglite(pC, width=7, height=4.5)` 矩形设备 + `asp=1`：为保持数据高宽比=1，R 自动拉伸 xlim 至 ~[-200, 1000]，蓝色等高线被挤到画面左侧，即便 (1) 已修、视觉仍不协调。
 - **修复**（`adapters/coze/scripts/coze_figure_layer.R::render_alloc_suite` 第 505-519 行）：
   - `xlim = ylim = range(c(n1c, n2c)) + ±5%` —— 改写为按等高线真实数据自适应 + 留白，全点含入。
   - `svglite(pC, width=5, height=5)` —— panel C 独立改方形设备，保证 1:1 对角线成真 45°，"等例分配最优"的几何证明（切点=红点）成立。
@@ -664,9 +858,7 @@
 
 ## v5.6.0 (2026-08-30) · 待发布：默认图形全部上 coze（R 为主 + figure_kit coze 内部兜底，本地退为瘦客户端）
 
-> **背景与取舍**：v5.5 把 49 方法的默认图形层实现在「本地 Python figure_kit」。但用户要求**所有绘图都上 coze 端、本地只承接结果**。
-> 出图从本地 Python 改为 coze 端 R 时做了利弊评估：R 端口用原生非中心分布（`pnorm`/`pt`/`pf`/`pchisq`）严格精确、与 coze 数值同源；
-> 且 **coze 端零新增包**（`svglite` 已在 tier1 安装清单）。故采纳「coze R 为主 + figure_kit 作为 coze 内部兜底」，**本地彻底退为瘦客户端**。
+> **背景与取舍**：v5.5 把 49 方法的默认图形层实现在「本地 Python figure_kit」。但用户要求**所有绘图都上 coze 端、本地只承接结果**。 > 出图从本地 Python 改为 coze 端 R 时做了利弊评估：R 端口用原生非中心分布（`pnorm`/`pt`/`pf`/`pchisq`）严格精确、与 coze 数值同源； > 且 **coze 端零新增包**（`svglite` 已在 tier1 安装清单）。故采纳「coze R 为主 + figure_kit 作为 coze 内部兜底」，**本地彻底退为瘦客户端**。
 
 ### Changed / 出图架构（v5.5 本地 → v5.6 coze 端）
 - 新增 `coze_deploy/` 部署包（4 文件）：`coze_figure_layer.R`（主出图 R 模块）、`figure_kit.py`（coze 内部 Python 兜底）、`alloc_curve.py`（figure_kit 依赖）、`coze_fallback.py`（两级兜底编排器）。
@@ -696,52 +888,32 @@
 
 ## v5.5.0 (2026-08-30) · 待发布：每种方法的默认图形层 + 分配比诊断（本地零依赖，coze 端零新增包）
 
-> **背景与取舍**：v5.4 之前只有契约里 `default_curve: true` 的 5 种方法会出图，其余 44 种算完只回一个数字。
-> 补齐的路线有两条：(A) 让 coze 端 R 为 49 种方法各画一张图 —— 需改云端 R 并引入额外图形依赖；
-> (B) 数值锚点仍由 R 给出，曲线形状由**本地族级解析结构**外推 —— 零依赖、零联网、coze 端零改动。
-> **本次选 B**：R 依然是数值真相源，曲线精确穿过 R 给出的锚点。
+> **背景与取舍**：v5.4 之前只有契约里 `default_curve: true` 的 5 种方法会出图，其余 44 种算完只回一个数字。 > 补齐的路线有两条：(A) 让 coze 端 R 为 49 种方法各画一张图 —— 需改云端 R 并引入额外图形依赖； > (B) 数值锚点仍由 R 给出，曲线形状由**本地族级解析结构**外推 —— 零依赖、零联网、coze 端零改动。 > **本次选 B**：R 依然是数值真相源，曲线精确穿过 R 给出的锚点。
 
 ### Added / 默认图形层 `scripts/figure_kit.py`（零第三方依赖，仅 stdlib `math`）
 - **原理**：几乎所有常用检验的非中心参数对样本量只有两种缩放 ——
-  `z`/`t` 族 `λ(n)=λ*·√(n/n*)`，`F`/`χ²` 族 `λ(n)=λ*·(n/n*)`。
-  因此**给定 R 返回的一个锚点 `(n*, power*)`，整条曲线的形状在数学上被唯一确定**，
-  本地无需知道 coze 内部用的是 pwr、TrialSize 还是 rpact。
+  `z`/`t` 族 `λ(n)=λ*·√(n/n*)`，`F`/`χ²` 族 `λ(n)=λ*·(n/n*)`。 因此**给定 R 返回的一个锚点 `(n*, power*)`，整条曲线的形状在数学上被唯一确定**， 本地无需知道 coze 内部用的是 pwr、TrialSize 还是 rpact。
   - 锚点穿越性实测：49 方法 × 3 锚点（n=64/200/30，power=0.80/0.90/0.65）**残差 ≤1.1e-16，全部单调**。
 - **分布内核（自实现，已与 R 4.6.1 逐点交叉核对）**：正则化不完全 Γ（级数+连分数）、
   不完全 Β（连分数）、中心/非中心 χ²（泊松混合）、中心/非中心 F（泊松混合）、`qf`/`qchisq`（二分）。
   - 精度：中心 χ²/F 与非中心 χ² **≤5e-13**；非中心 F **≤3e-10**；`qf`/`qchisq` **≤8e-11**。
 - **8 种图型，49 方法全覆盖**（映射见 `METHOD_FIGURES`，已镜像进 `_contract_index.json::default_figure`）：
 
-  | 图型 | 轴 | 方法数 | 回答的问题 |
-  |:---|:---|:---|:---|
-  | `power_n` | N → Power | 20 | 少招人会掉多少效能 |
-  | `power_events` | 事件数 → Power | 6 | 事件驱动设计的余量 |
-  | `power_n_multi` | N → Power（按组数分系列） | 5 | 加一个臂的代价 |
-  | `margin_tradeoff` | 界值倍数 → Power | 4 | 放宽界值能换回多少 |
-  | `icc_sens` | ICC → Power | 2 | 设计效应对 ICC 误设的暴露 |
-  | `gs_boundary` | 信息分数 → z 边界 | 10 | OBF vs Pocock 消耗函数（Lan-DeMets 闭式） |
-  | `assurance_n` | N → Assurance | 2 | 成功概率规划 |
-  | `alloc_suite`（副图） | 分配比 k=n₂/n₁ | 13 | 不等例分配的代价 |
+  | 图型 | 轴 | 方法数 | 回答的问题 | |:---|:---|:---|:---| | `power_n` | N → Power | 20 | 少招人会掉多少效能 | | `power_events` | 事件数 → Power | 6 | 事件驱动设计的余量 | | `power_n_multi` | N → Power（按组数分系列） | 5 | 加一个臂的代价 | | `margin_tradeoff` | 界值倍数 → Power | 4 | 放宽界值能换回多少 | | `icc_sens` | ICC → Power | 2 | 设计效应对 ICC 误设的暴露 | | `gs_boundary` | 信息分数 → z 边界 | 10 | OBF vs Pocock 消耗函数（Lan-DeMets 闭式） | | `assurance_n` | N → Assurance | 2 | 成功概率规划 | | `alloc_suite`（副图） | 分配比 k=n₂/n₁ | 13 | 不等例分配的代价 |
 
 - **诚实的边界声明**：曲线**穿过锚点是精确的**，锚点以外依赖族级结构假设（大样本下误差可忽略；
-  n<20 或含连续性校正的方法误差变大）。故每张图带**效应量 ±20% 敏感带**，把假设的可见后果画出来。
-  图中红点即 R 数值 —— **图用于沟通趋势，协议里引用数值一律以 R 为准**。
+  n<20 或含连续性校正的方法误差变大）。故每张图带**效应量 ±20% 敏感带**，把假设的可见后果画出来。 图中红点即 R 数值 —— **图用于沟通趋势，协议里引用数值一律以 R 为准**。
 
 ### Added / 分配比诊断 `scripts/alloc_curve.py`（v5.5 合入技能，原为独立脚本）
 - 13 个两独立组方法自动附带**分配比四图 + 速查表**：A 所需总 N vs 比（U 形，底在 1:1）·
-  B 固定 N 下 power vs 比（倒 U）· C (n₁,n₂) 平面等效能等高线（与 1:1 对角线**相切**，1:1 最优的几何证明）·
-  D 按效应量分层的效能损失。
+  B 固定 N 下 power vs 比（倒 U）· C (n₁,n₂) 平面等效能等高线（与 1:1 对角线**相切**，1:1 最优的几何证明）· D 按效应量分层的效能损失。
 - 统摄恒等式 `N(k)/N(1) = (1+k)²/(4k)`（Schoenfeld 膨胀），两均数 / 两率 / log-rank **通用**。
 - ⚠️ **两率比较时 1:1 不是最优**：Neyman 最优 `k* = √(p₂(1−p₂)/p₁(1−p₁))`。
-  p₁=0.10 vs p₂=0.30 → k*=1.53（n₁:n₂=2:3），**113 例 vs 1:1 的 118 例，省 4.2% 且 power 更高**。
-  故最优比标记**从实际曲线三分搜索动态求解**，未写死 `[2/3, 3/2]` —— 否则恰好在最有价值的场景标错。
+  p₁=0.10 vs p₂=0.30 → k*=1.53（n₁:n₂=2:3），**113 例 vs 1:1 的 118 例，省 4.2% 且 power 更高**。 故最优比标记**从实际曲线三分搜索动态求解**，未写死 `[2/3, 3/2]` —— 否则恰好在最有价值的场景标错。
 - 新增 `--prefix` 参数：13 个方法各自隔离文件名前缀（此前固定 `ctss_alloc_*` 导致互相覆盖，
   实测 68 张图里只剩 4 张 alloc 图）。
 - **第 4 个后端 `z`（通用两独立组 z 族）**：`ncp = θ·√(n₁n₂/N)`，与 t / log-rank 同形。
-  覆盖 `poisson / vaccine_efficacy / win_ratio` —— 这三者效应量无统一尺度（率比、VE、获胜比），
-  故 θ **由 R 锚点反解**（`theta_from_anchor`），与主图共用同一个锚点（ct-base §19.13）。
-  实测：θ 回代锚点误差 ≤1.1e-16；`N(k)/N(1)` 与理论 `(1+k)²/(4k)` 差 ≤4.4e-16；
-  `N(1:1)` 精确还原锚点（如 n/组=64 → N=128）。
+  覆盖 `poisson / vaccine_efficacy / win_ratio` —— 这三者效应量无统一尺度（率比、VE、获胜比）， 故 θ **由 R 锚点反解**（`theta_from_anchor`），与主图共用同一个锚点（ct-base §19.13）。 实测：θ 回代锚点误差 ≤1.1e-16；`N(k)/N(1)` 与理论 `(1+k)²/(4k)` 差 ≤4.4e-16； `N(1:1)` 精确还原锚点（如 n/组=64 → N=128）。
 
 ### Changed / 主流程集成
 - `scripts/samplesize_power.py`：新增 `_render_default_figures_safely()` 桥接，在计算完成后调用。
@@ -754,17 +926,13 @@
 
 ### Fixed
 - **`--hr` 参数名陷阱**：CLI 的 HR 参数是 `--hazard_ratio`，`--hr` 只是 argparse 前缀缩写，
-  解析后属性名为 `hazard_ratio`。原 `getattr(args, "hr")` 恒为 None → 全部生存类方法静默不出分配比图。
-  改为 `_first(args, (候选名...))` 多候选取值。
+  解析后属性名为 `hazard_ratio`。原 `getattr(args, "hr")` 恒为 None → 全部生存类方法静默不出分配比图。 改为 `_first(args, (候选名...))` 多候选取值。
 - **簇大小/期中分析参数名**：`--m`（非 `--cluster_size`）、`--interim_looks`（非 `--n_looks`）。
 - **assurance 字段名**：coze 实际返回 `assurance`，契约登记的是 `assurance_prob` → 锚点提取落空。
   `_pick_power` 改为优先序列举（`power/achieved_power/conditional_power/assurance/assurance_prob/...`）。
 - 新增 `CTSS_FIGURE_DEBUG=1` 打印「为什么没出图」，避免静默失败无法诊断。
 - **契约与实现不一致（contract drift）**：契约登记 13 个方法带 `alloc_suite` 副图，
-  但 `_render_alloc_suite` 只实现了 3 个分支（ttest_ind / prop / logrank），
-  `poisson / vaccine_efficacy / win_ratio` 落入 `else: return []` 静默不出图 —— 全量回归实测只出 10 个。
-  该问题由「统计产出张数（104）与契约推算（116）对不上」发现。修复方式不是注销契约，
-  而是补上第 4 个 z 族后端（见 Added），**13/13 全部兑现**。
+  但 `_render_alloc_suite` 只实现了 3 个分支（ttest_ind / prop / logrank）， `poisson / vaccine_efficacy / win_ratio` 落入 `else: return []` 静默不出图 —— 全量回归实测只出 10 个。 该问题由「统计产出张数（104）与契约推算（116）对不上」发现。修复方式不是注销契约， 而是补上第 4 个 z 族后端（见 Added），**13/13 全部兑现**。
 
 ### Verified
 - 分布内核 vs R 4.6.1：16 组参考值，最大偏差 3e-10。
@@ -773,8 +941,7 @@
   （49 主图 + 15 副图 + 13×4 分配比），**与契约逐项吻合**；全部通过 XML 解析、无 NaN/Inf、坐标在画布内。
 - z 族后端精度：θ 回代锚点误差 ≤1.1e-16；`N(k)/N(1)` 与 `(1+k)²/(4k)` 差 ≤4.4e-16。
 - 真实 coze 调用：`ttest_ind`（n=64, power=0.8）、`survival`（events=247）、`proportion_two`、
-  `non_inferiority`、`assurance`、`vaccine_efficacy`、`poisson`（`--lambda1/--lambda2`）、
-  `win_ratio` 均正确产出主图 + 分配比四图。
+  `non_inferiority`、`assurance`、`vaccine_efficacy`、`poisson`（`--lambda1/--lambda2`）、 `win_ratio` 均正确产出主图 + 分配比四图。
 - 已知非本层问题（coze 端 R 引擎自身报错，与本改动无关）：`cluster` 报
   `the condition has length > 1`、`group_sequential` 报 `argument is of length zero`。
 
@@ -782,35 +949,17 @@
 
 **结论：coze 端新增 R 包 = 0 个；新增本地 Python 第三方包 = 0 个；无需重新部署 Coze。**
 
-评了两条路线。路线 A（让 coze R 为 44 个无图方法各画一张）**同样不需要装新包** ——
-`svglite` 已在 9 个必装包内，渲染设备不是瓶颈；各方法所需的计算包（`pwr`/`rpact`/`PowerTOST`/
-`powerSurvEpi`/`simr`/`lme4`）也都在。真正的代价是**工程量与运行期延迟**，不是依赖。
+评了两条路线。路线 A（让 coze R 为 44 个无图方法各画一张）**同样不需要装新包** —— `svglite` 已在 9 个必装包内，渲染设备不是瓶颈；各方法所需的计算包（`pwr`/`rpact`/`PowerTOST`/ `powerSurvEpi`/`simr`/`lme4`）也都在。真正的代价是**工程量与运行期延迟**，不是依赖。
 
-| 图型 | 常规 R 做法 | 若走路线 A 需要的包 | 在现有 9 包内？ |
-|:---|:---|:---|:---|
-| `power_n`（20） | 逐方法写向量化 power 网格 | 无新增（各方法已在用的包）+ `svglite` | ✅ |
-| `power_events`（6） | `powerSurvEpi` 事件数曲线 | `powerSurvEpi` | ✅ |
-| `power_n_multi`（5） | `pwr::pwr.anova.test` 等 | `pwr` | ✅ |
-| `margin_tradeoff`（4） | `PowerTOST` / `TrialSize` | `PowerTOST`、`TrialSize` | ✅ |
-| `icc_sens`（2） | 设计效应闭式（精确需 `clusterPower`） | `clusterPower` | ❌ 未装 |
-| `gs_boundary`（10） | `rpact` 或 `gsDesign` | `rpact`、`gsDesign` | ✅ |
-| `assurance_n`（2） | 正态闭式（精确需 `bsurvival`） | `bsurvival` | ❌ 未装 |
-| `alloc_suite`（13） | 无现成包，需手写非中心 t 循环 | 无 | — |
+| 图型 | 常规 R 做法 | 若走路线 A 需要的包 | 在现有 9 包内？ | |:---|:---|:---|:---| | `power_n`（20） | 逐方法写向量化 power 网格 | 无新增（各方法已在用的包）+ `svglite` | ✅ | | `power_events`（6） | `powerSurvEpi` 事件数曲线 | `powerSurvEpi` | ✅ | | `power_n_multi`（5） | `pwr::pwr.anova.test` 等 | `pwr` | ✅ | | `margin_tradeoff`（4） | `PowerTOST` / `TrialSize` | `PowerTOST`、`TrialSize` | ✅ | | `icc_sens`（2） | 设计效应闭式（精确需 `clusterPower`） | `clusterPower` | ❌ 未装 | | `gs_boundary`（10） | `rpact` 或 `gsDesign` | `rpact`、`gsDesign` | ✅ | | `assurance_n`（2） | 正态闭式（精确需 `bsurvival`） | `bsurvival` | ❌ 未装 | | `alloc_suite`（13） | 无现成包，需手写非中心 t 循环 | 无 | — |
 
-**仅 2 处存在「本来想装但忍住了」的包**（`clusterPower`、`bsurvival`）：二者都改用**闭式近似 +
-锚点标定**解决 —— 锚点由 R 给出，误差只落在「锚点以外的曲线形状」上，而形状的不确定性已由
-图上的 ±20% 敏感带显式表达。装包换来的精确度提升，小于引入新依赖与镜像重做的成本。
+**仅 2 处存在「本来想装但忍住了」的包**（`clusterPower`、`bsurvival`）：二者都改用**闭式近似 + 锚点标定**解决 —— 锚点由 R 给出，误差只落在「锚点以外的曲线形状」上，而形状的不确定性已由 图上的 ±20% 敏感带显式表达。装包换来的精确度提升，小于引入新依赖与镜像重做的成本。
 
 **最终新增包清单（空）**：
 
-| 侧 | 新增包 | 数量 |
-|:---|:---|:---|
-| coze 端 R | — | **0** |
-| 本地 Python | — | **0**（仅 stdlib `math`，`figure_kit.py` / `alloc_curve.py` 均零第三方依赖） |
+| 侧 | 新增包 | 数量 | |:---|:---|:---| | coze 端 R | — | **0** | | 本地 Python | — | **0**（仅 stdlib `math`，`figure_kit.py` / `alloc_curve.py` 均零第三方依赖） |
 
-> 顺带核清：仓库中 `escalation` / `BuyseTest` / `powerMediation` / `gsDesign` 的出现均为
-> **注释里的使用建议**或已随 v5 coze-only 重构剔除的遗留函数（`install_all_packages`），
-> 无实际 `library()` 加载 —— 不构成依赖。
+> 顺带核清：仓库中 `escalation` / `BuyseTest` / `powerMediation` / `gsDesign` 的出现均为 > **注释里的使用建议**或已随 v5 coze-only 重构剔除的遗留函数（`install_all_packages`）， > 无实际 `library()` 加载 —— 不构成依赖。
 
 ## v5.4.0 (2026-08-30) · 待发布：两组不等例（ratio）支持（全 21 个两组检验）
 
@@ -922,10 +1071,7 @@
 ## v5.3.10 (2026-08-28) · 待发布：coze 出站并发限流（相邻 ≥1 秒，ct-base §20.10）
 
 - **🟢 coze 调用并发限流（用户定）**：`adapters/coze_client.py` 新增模块级 `_RATE_LIMIT_LOCK` +
-  `_LAST_CALL_TS` 与 `_acquire_rate_limit()`，在 `call()` 真实 POST 前串行化"间隔决策"并强制
-  相邻两次 coze /run 调用**至少间隔 1 秒**，防止触发 coze 端 429 频控（meta-analysis 实测曾因此
-  被限流至次日）。间隔秒数由环境变量 `COZE_META_MIN_INTERVAL`（浮点秒，默认 1.0；`<=0` 关闭）覆写，
-  与 meta-analysis 同名跨技能一致。
+  `_LAST_CALL_TS` 与 `_acquire_rate_limit()`，在 `call()` 真实 POST 前串行化"间隔决策"并强制 相邻两次 coze /run 调用**至少间隔 1 秒**，防止触发 coze 端 429 频控（meta-analysis 实测曾因此 被限流至次日）。间隔秒数由环境变量 `COZE_META_MIN_INTERVAL`（浮点秒，默认 1.0；`<=0` 关闭）覆写， 与 meta-analysis 同名跨技能一致。
 - **纯本地改动，无需重部署 coze**：限流仅作用于本地出站节奏，`_COZE_ENVELOPE_VERSION` 信封版本不变
   （仍为 `"5.3.9"`）。mock 模式（`CTSS_COZE_MOCK=1`）不触网、不受限流约束。
 - **作用域边界**：同进程多线程并发已被 `threading.Lock` 覆盖；跨进程并发未实现（ct-base §20.10 已标注）。
@@ -1343,10 +1489,7 @@ Addresses the real reasons prior versions were blocked/deleted by ClawHub's auto
 
 ## v3.3.5 — Security hardening (ClawHub 9-findings audit) / 安全加固（对应 ClawHub 审计 9 findings）
 
-1. Permission `network` changed `none` → `optional`, explicitly declaring CRAN download only via `--run-install`. / 权限清单 `network` 由 `none` 改为 `optional`，并显式声明仅 `--run-install` 从 CRAN 下载。
-2. Before R execution, validate `Rscript` is a real binary (`is_valid_rscript`); containment-check the temp script path; call `subprocess` as a list (no shell, no command injection); gate generated R code against dangerous tokens (`system`/`eval`/`source`/`download.file`/`shell`/backtick etc.). / R 执行前校验 `Rscript` 为真实二进制（`is_valid_rscript`）；临时脚本路径做 containment 检查；`subprocess` 以列表调用（无 shell，杜绝命令注入）；对生成的 R 代码做危险 token 拦截（`system`/`eval`/`source`/`download.file`/`shell`/反引号等）。
-3. Before `--run-install` runs, print the full install R code and add a network banner, closing the "transparency gap". / `--run-install` 执行前完整打印将运行的安装 R 代码并加网络横幅，消除「透明性落差」。
-4. Audit #7 ("forced bilingual + forced R code") resolved per user instruction: English by default, not forced bilingual (auto-Chinese on Chinese-OS); R code hidden by default, shown only on explicit user request (default reply offers it). / 审计 #7「强制双语 + 必给 R 代码」按用户指示解决：默认英文、不强制双语（OS 中文环境自动切中文）；R 代码默认不提供，仅使用者明确要求时提供（默认回复提示可提供）。
+1. Permission `network` changed `none` → `optional`, explicitly declaring CRAN download only via `--run-install`. / 权限清单 `network` 由 `none` 改为 `optional`，并显式声明仅 `--run-install` 从 CRAN 下载。 2. Before R execution, validate `Rscript` is a real binary (`is_valid_rscript`); containment-check the temp script path; call `subprocess` as a list (no shell, no command injection); gate generated R code against dangerous tokens (`system`/`eval`/`source`/`download.file`/`shell`/backtick etc.). / R 执行前校验 `Rscript` 为真实二进制（`is_valid_rscript`）；临时脚本路径做 containment 检查；`subprocess` 以列表调用（无 shell，杜绝命令注入）；对生成的 R 代码做危险 token 拦截（`system`/`eval`/`source`/`download.file`/`shell`/反引号等）。 3. Before `--run-install` runs, print the full install R code and add a network banner, closing the "transparency gap". / `--run-install` 执行前完整打印将运行的安装 R 代码并加网络横幅，消除「透明性落差」。 4. Audit #7 ("forced bilingual + forced R code") resolved per user instruction: English by default, not forced bilingual (auto-Chinese on Chinese-OS); R code hidden by default, shown only on explicit user request (default reply offers it). / 审计 #7「强制双语 + 必给 R 代码」按用户指示解决：默认英文、不强制双语（OS 中文环境自动切中文）；R 代码默认不提供，仅使用者明确要求时提供（默认回复提示可提供）。
 
 ## v3.3.3 — Function-based architecture refactor / 函数化架构重构
 
