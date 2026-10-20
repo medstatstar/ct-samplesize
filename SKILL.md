@@ -46,7 +46,7 @@ permissions:
 
 > **Re-publish rule**: always overwrite with the existing `appId` — the link must stay
 > `https://ct-samplesize.app.workbuddy.host/`. Never `createNewApp`. After deploy, assert the returned
-> `shareLink` equals the expected URL (see ct-base §13.5 dirty-binding red line). Last republished
+> `shareLink` equals the expected URL (see ct-base `references/workbench_ui.md` §13.0 dirty-binding red line). Last republished
 > 2026-09-26 (feedback two-stage fix).
 
 ## Language
@@ -195,12 +195,25 @@ Agent behavior only; implementation → `adapters/bug_report.py`, protocol → `
 
 ## External-Control / RWD-Augmented Designs · Distributional Balancing (2026-10-19)
 
-> 对应 2026-10-19 情报轮 P2 改进（证据：Zern Ke, Cui M, Moran G, Cabrera J. *Distributional Balancing with Machine Learning for Clinical Trial Augmentation Using Real-World Data*. arXiv:2609.23524, 2026-09-20，见 `ct-base/references/qc_independence_pharmasug2026.md` 体系）。
+> Maps to the 2026-10-19 intelligence round (P2 improvement; evidence: Zern Ke, Cui M, Moran G, Cabrera J. *Distributional Balancing with Machine Learning for Clinical Trial Augmentation Using Real-World Data*. arXiv:2609.23524, 2026-09-20 — see the `ct-base/references/qc_independence_pharmasug2026.md` family).
 
-- **适用场景**：随机分组的协变量平衡因招募成本 / 脱落难以达成，需从外部真实世界数据库（RWD）借用对照患者时（外部对照单臂试验、混合对照、RWD 增强对照）。
-- **DBML 三步法**：① 变分自编码器（VAE）检出**相对治疗组分布的异常 RWD 单位**；② 对剩余单位**重加权**使对照候选分布匹配治疗组分布（匹配的是分布而非单位对）；③ 按权重抽样构成对照组。实证协变量平衡优于匹配类（matching）与加权类（weighting）基线。
-- **报告义务（对 ct-samplesize 输出的硬要求）**：采用 RWD 增强对照时，样本量陈述之外**必须报告协变量平衡指标**（如标准化均值差 SMD 分布/最大值），禁止只报"借用了 N 例 RWD 对照 = 名义样本量"——平衡质量未量化即视为设计未定义。
-- **与既有能力的关系**：贝叶斯外部对照单臂推断（运输性违背下的可靠性，Stat Med 2026 DOI `10.1002/sim.70748`）可作 DBML 抽样后的推断层；本项仅登记方法与报告纪律，引擎未改动。
+- **When to use**: covariate balance from randomized assignment is hard to achieve due to recruitment cost / dropout, and control patients must be borrowed from an external real-world database (RWD) — external control-arm trials, mixed control, RWD-augmented control.
+- **DBML three-step method**: ① a variational autoencoder (VAE) flags **RWD units that are outliers relative to the treated-arm distribution**; ② the remaining units are **reweighted** so the candidate-control distribution matches the treated-arm distribution (matching distributions, not unit pairs); ③ sample the control arm by weight. Empirically covariate balance beats matching- and weighting-class baselines.
+- **Reporting obligation (hard requirement on ct-samplesize output)**: when an RWD-augmented control is used, besides the sample-size statement you **must report covariate-balance metrics** (e.g. the SMD distribution / max standardized mean difference). Reporting only "borrowed N RWD controls = nominal sample size" is forbidden — unquantified balance means the design is undefined.
+- **Relation to existing capability**: Bayesian external-control single-arm inference (reliability under transportability violation, Stat Med 2026, DOI `10.1002/sim.70748`) can serve as the inference layer after DBML sampling; this item only registers the method and reporting discipline — the engine is unchanged.
+
+---
+
+## ct-base §22 Alignment — AI-Generated Asset Governance (2026-10-19 intelligence round)
+
+ct-samplesize's AI-generated assets = **SVG statistical figures** (coze `coze_figure_layer.R`) + **reproducible R code** returned on every analysis. Applicable ct-base §22 obligations and current status:
+
+- **§22.1 P0·a "ambiguity → stop" HITL gate**: enforced — the deterministic NL pre-route (`classify_test` + `param_aliases`) never silently mis-params; low-confidence paths ask the user (≤2 rounds), raw NL text is never sent to coze (see Capability ④).
+- **§22.2 P0·b deterministic generation + fixed seed**: planned — coze R plotting should pin a fixed seed for byte-identical SVG across runs; not yet enforced at the engine layer.
+- **§22.3 P1·a three-layer compliance + LINEAGE + reproducibility**: partially met — every analysis returns full reproducible R code (LINEAGE by construction); output-figure lineage not yet separately logged.
+- **§22.18 P1·i spec AI-readiness Gate**: planned — no formal six-item readiness gate before figure/code generation; acknowledged as a compute-only skill but should be documented.
+- **§22.19 P0·f "reading the answer = leak" veto**: N/A by design — ct-samplesize generates from user-supplied design parameters only; it never references an answer/target dataset (no synthetic-ADSL reverse-derivation path exists).
+- Engine-layer hardening (§22.10–§22.17 independent-QC family) tracked as planned in CHANGELOG; this section is the normative-layer alignment only.
 
 ---
 
