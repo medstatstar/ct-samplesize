@@ -371,9 +371,21 @@ _PARAM_EXCLUDE = frozenset({
     "dist_plot", "power_time_seq", "heatmap",
 })
 
+# 引擎控制类参数：不在契约 required 白名单内，但用户显式请求时必须进入信封，
+# 否则 build_params 白名单会将其剥离，导致 samplesize_power 收不到对应 CLI flag。
+# C3 Monte-Carlo 验证（verify*）/ C5 公开证据基准（effect_ref·adopt_ref）/
+# C6 方案论证段（justify）·假设质量审计（audit·evidence_source）。
+_ENGINE_CONTROL_KEYS = (
+    "verify", "verify_design", "verify_n", "verify_looks", "verify_spending",
+    "justify", "audit", "evidence_source", "effect_ref", "adopt_ref",
+)
+
 
 # 契约索引缓存（tests/coze_cases/_contract_index.json 的 required 字段 = 每 test 所需参数白名单）
 _CONTRACT_REQUIRED_CACHE = None
+# optional 通道缓存（v5.13.19）：契约显式登记的 required 之外可选统计参数
+# （meta_planning 的 n_cv/n_sim），与 required 同一 JSON 事务加载
+_CONTRACT_OPTIONAL_CACHE = {}
 _CONTRACT_LOAD_FAILED = False
 
 
@@ -426,9 +438,21 @@ def _load_contract_required(test):
         data = json.loads(Path(idx_path).read_text(encoding="utf-8"))
         for entry in data.get("tests", []):
             _CONTRACT_REQUIRED_CACHE[entry["test"]] = frozenset(entry.get("required", []))
+            _CONTRACT_OPTIONAL_CACHE[entry["test"]] = frozenset(entry.get("optional", []))
     except Exception:
         _CONTRACT_LOAD_FAILED = True
     return _CONTRACT_REQUIRED_CACHE.get(test, frozenset()) if _CONTRACT_REQUIRED_CACHE else frozenset()
+
+
+def _load_contract_optional(test):
+    """从 _contract_index.json 加载该 test 的 optional 参数通道（v5.13.19）。
+
+    optional = required 之外、契约显式登记的可选统计参数（如 meta_planning 的
+    n_cv/n_sim）。用户显式提供（argparse 非 None）才随信封发送；不提供走原解析档，
+    向后兼容。与 _load_contract_required 同一加载事务（同一 JSON、同一缓存周期）。
+    """
+    _load_contract_required(test)  # 触发同一加载事务（含 optional 填充）
+    return _CONTRACT_OPTIONAL_CACHE.get(test, frozenset())
 
 
 def build_params(test, args, ctx):
@@ -471,6 +495,13 @@ def build_params(test, args, ctx):
                 continue
             if isinstance(v, (str, int, float, bool, list)):
                 params[k] = v
+    # 契约 optional 通道（v5.13.19）：required 之外、契约显式登记的可选统计参数
+    # （如 meta_planning 的 n_cv/n_sim），用户显式提供（argparse 非 None）才随信封
+    # 发送；不提供则 R 端走原解析档，向后兼容。契约缺失 → _load_contract_optional
+    # 返回空集，此处零操作。
+    for k in _load_contract_optional(test):
+        if k in ns and ns[k] is not None:
+            params[k] = ns[k]
     # 派生量
     params.update({
         "solve_for_power": ctx.get("solve_for_power", False),
@@ -495,6 +526,11 @@ def build_params(test, args, ctx):
         val = ns.get(cli_key)
         if val:
             params[coze_key] = val
+    # v5.13.6：引擎控制类参数显式转发（契约白名单之外的用户显式请求）
+    for _k in _ENGINE_CONTROL_KEYS:
+        _v = ns.get(_k)
+        if _v is not None and _v is not False:
+            params[_k] = _v
     return params
 
 
@@ -542,17 +578,22 @@ _ALWAYS_ALLOWED_PARAMS = frozenset({
 
 
 def _trim_bloated_params(test, params):
-    """出站信封守卫：裁剪疑似绕过 build_params 的过肥 params（详情见上方块注释）。"""
+    """出站信封守卫：裁剪疑似绕过 build_params 的过肥 params（详情见上方块注释）。
+
+    v5.13.19：白名单扩为 required ∪ optional（契约 optional 通道，meta_planning
+    的 n_cv/n_sim 等经 workbench 直传路径也会过此处，必须在白名单内才能存活）。
+    """
     if not isinstance(params, dict):
         return params
     required = _load_contract_required(test)
     if not required:
         return params  # 契约未登记 → 无法判定，放行（不裁剪）
-    limit = max(30, len(required) + 15)
+    allowed = required | _load_contract_optional(test)
+    limit = max(30, len(allowed) + 15)
     if len(params) <= limit:
         return params
     trimmed = {k: v for k, v in params.items()
-               if k in required or k in _ALWAYS_ALLOWED_PARAMS}
+               if k in allowed or k in _ALWAYS_ALLOWED_PARAMS}
     # 保底回补：模式关键参数任一缺失则计算必然失败，从原 params 回补
     for k in ("alpha", "power", "nobs"):
         if k not in trimmed and k in params:
@@ -560,7 +601,7 @@ def _trim_bloated_params(test, params):
     sys.stderr.write(
         "[ct-samplesize][guard] 检测到过肥请求信封：params %d 键 → 裁剪至 %d 键"
         "（疑似绕过 build_params 手拼全家族默认值；契约白名单=%s）\n"
-        % (len(params), len(trimmed), ",".join(sorted(required))))
+        % (len(params), len(trimmed), ",".join(sorted(allowed))))
     return trimmed
 
 
@@ -1203,6 +1244,17 @@ def _envelope_to_result(env, test, ctx):
     meta["_needs_upgrade"] = needs_upgrade
     if drift_notes:
         meta["_contract_drift"] = drift_notes
+    # D3（v5.13.24）：引擎 warnings 通道——此前 env["warnings"] 从未写入 meta，
+    # R 引擎的降级提示（如 D1 根治后「随访时间-效能曲线仅支持 survival」、
+    # 「热力图需要 curve_n_seq 与 curve_effect_seq」）到不了前端，用户无从知晓
+    # 图形为何没出。仅在非空时写入，避免污染 meta。
+    eng_warns = env.get("warnings") or []
+    # jsonlite auto_unbox：长度 1 的 warnings 会被序列化成字符串而非数组，
+    # 直接 list() 会把中文串拆成单字符——此处统一归一为字符串列表。
+    if isinstance(eng_warns, str):
+        eng_warns = [eng_warns]
+    if eng_warns:
+        meta["warnings"] = [str(w) for w in eng_warns]
     # 可复现性透传（upgrade J2 措辞修订，2026-09-29）：R 版本 + 包版本进 meta，
     # 供 --justify 渲染 "R <ver> + rpact <ver>/TrialSize <ver>" 式引擎声明
     #（用户口径：只报版本号，不区分云端/本地）。stats 已有同名键时不覆盖。

@@ -232,3 +232,31 @@ ct-samplesize/
 - MCPAN: https://cran.r-project.org/web/packages/MCPAN/
 - powerMediation: https://cran.r-project.org/web/packages/powerMediation/
 - CRAN ClinicalTrials View: https://cran.r-project.org/web/views/ClinicalTrials.html
+
+
+## Effect-size benchmark library: CLI entry points (moved from README 3.5/4.14, 2026-10-22 v5.13.27 spec alignment)
+
+Show mode (never silently substitutes):
+
+```bash
+python scripts/samplesize_power.py --test ttest_ind     --effect-ref references/effect_size_benchmarks/hcc__OS.json     --ta "HCC" --endpoint "OS" --show-assumptions
+```
+
+Explicit adoption (auditable source):
+
+```bash
+python scripts/samplesize_power.py --test ttest_ind     --effect-ref references/effect_size_benchmarks/hcc__OS.json     --adopt-ref conservative --sd 10 --side two --power 0.8
+```
+
+- After adoption the source and `basis` print to stdout, are written into the assumptions block, and the reproducible R code comments cite the source.
+- `--adopt-ref low|high` runs a three-point sensitivity (CI lower / median / upper); `--adopt-ref <index>` pins one single source.
+- Adoptable types (`param`/`scale`): `effect` (d/MD/SMD — ttest / anova / meta_planning), `hazard_ratio` (HR — survival), `odds_ratio` (OR — ci_or / regression_logistic), `risk_ratio` (RR — ci_rr / regression_poisson / rates_ext; OR/RR land on `--effect`).
+- Candidate ingestion: `adapters/ma_extractor.py --confirm candidates.json --into references/effect_size_benchmarks/<name>.json`.
+
+
+## Workbench: startup & feature overview (collapsed from README section 7, 2026-10-22)
+
+- **Online portal (no install)**: https://ct.medstatstar.com — same features and 65-test catalog as the local Workbench.
+- **Local startup**: `cd adapters/workbench && python server.py 8790` (talks to the real coze R engine by default; `CTSS_COZE_MOCK=1` for the offline demo; `CTSS_BACKEND=local_r` for the local-R dev backend, dev/regression only).
+- **Core features**: one-shot natural-language recognition (zero-LLM deterministic routing + LLM fallback), dynamic forms for all 65 tests, effect-size helper, curve / allocation-ratio plots, current analysis setting card, key-number cards, inline SVG figures (PNG switchable), reproducible R code, coze request-envelope preview (nothing sent), session-thread diffs (inherited / overridden / missing), multi-group comparison table, one-click single-file HTML report export, two-stage sanitized feedback.
+- Consulting-style phrasing ("what does this test mean") never triggers a cloud computation — the result area shows a hint instead, so idle chatter doesn't burn compute quota.

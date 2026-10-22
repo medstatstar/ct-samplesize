@@ -28,11 +28,21 @@ This tool only takes aggregate design parameters — never patient-level data.
 
 ## 1. How to Use It in a Chat (the Core)
 
-ct-samplesize is a **conversational skill**: you simply tell the assistant your trial design in natural language — no commands, no parameter names to remember. As a WorkBuddy skill it **auto-loads with no extra installation**.
+ct-samplesize is a **conversational skill**: describe your trial design in plain language — no commands, no parameter names to memorize. It auto-loads as a WorkBuddy skill, nothing to install.
 
-Below are 6 real conversational examples ordered by common entry point — from "not sure which test" to specific designs. Each gives **"You say"** (a copy-ready natural-language input), a sketch of **"The assistant replies"**, plus how to get the actual number.
+Three typical ways in: **state the design and compute** → **unsure? the assistant asks** → **stuck on test choice? you get a menu**. For 30 more full cases grouped by test family, see section 4.
 
-### Example 1 · Not sure which test (most common opening)
+### Example 1 · State the design, compute (the most common full flow)
+**You say:**
+> Two-sample means sample size, effect size d=0.5, 80% power, two-sided α=0.05
+
+**Assistant replies (sketch):**
+> Here is the **SAFE PREVIEW** for the two-sample t-test (d=0.5, power=0.8, two-sided α=0.05) — the exact request envelope, nothing sent or computed. Say "please compute directly" and you get: ≈ **64 per group** (128 total) plus an auto-attached power-vs-n curve (inline SVG, editable); say "show me the full R code" for the reproducible script.
+
+**📌 Three steps**: describe the design → review the SAFE PREVIEW → say "please compute directly". Nothing leaves by default; "show me the full R code" works for every test.
+
+
+### Example 2 · Not sure which test (most common opening)
 **You say:**
 > I want a sample-size calculation but I'm not sure which test to use — help me choose the right one
 
@@ -53,48 +63,7 @@ Below are 6 real conversational examples ordered by common entry point — from 
 
 **📌 Note:** When you say "not sure which test", the assistant uses **branch-by-branch probing** to clarify your needs, instead of dumping the 65-test menu. Once clarified, it moves to computation.
 
-### Example 2 · Two-means comparison (most common)
-**You say:**
-> Calculate sample size for two independent means, effect size d=0.5, power 80%, two-sided α=0.05
-
-**Assistant replies (sketch):**
-> Here is the sample-size calculation for a two-sample t-test (effect size d=0.5, power=0.8, two-sided α=0.05).
-> You need about **64 per group** (128 total).
-> Since this is a simple two-group solve, the assistant also auto-attaches a **sample-size curve** (n per group vs target power 0.6–0.95, SVG inline & editable); give a fixed n instead and you get the **power curve** (power vs n) automatically.
-> (Safe preview by default: the exact coze request envelope is shown, nothing sent or computed — say "please compute directly" to actually run it.)
-
-**📌 Get the actual number:** By default the skill shows a **SAFE PREVIEW** — the exact coze request envelope, nothing sent or computed. Say **"please compute directly"** and the assistant will really run it and give the number (on the default coze stateless engine this natural-language trigger is what fires the compute; **no `--yes` needed** — the legacy `--yes` flag applies only to the optional local-R dev backend, see Section 5, "Safe Preview").
-
-### Example 3 · Two-group proportion
-**You say:**
-> Control response 20%, treatment 35%, two-group proportion chi-square, α=0.05 two-sided, power=0.8
-
-**Assistant replies (sketch):**
-> Two-group proportion comparison (control 20% vs treatment 35%, χ², α=0.05 two-sided, power=0.8): you need about **137 per group** (274 total). A **sample-size curve** is auto-attached; ask for a power-vs-n curve at any fixed n if needed.
-
-**📌 Get the actual number:** By default the skill shows a **SAFE PREVIEW** — the exact coze request envelope, nothing sent or computed. Say **"please compute directly"** and the assistant will really run it and give the number (on the default coze stateless engine this natural-language trigger is what fires the compute; **no `--yes` needed**).
-
-### Example 4 · Survival endpoint with interim
-**You say:**
-> Design a survival trial with 1 interim analysis, HR=0.75, 1:1 randomization, power 80%, and **plot the power curve** (n vs power)
-
-**Assistant replies (sketch):**
-> Parsed: time-to-event endpoint, HR=0.75, 1:1 randomization, power 80%, 1 interim analysis (group-sequential / interim framework by default).
-> By default the skill shows a **SAFE PREVIEW** — the exact coze request envelope (test, params, mode) is displayed, nothing sent or computed.
-> Say "please compute directly" to trigger the real calculation: it returns the required sample size (events d and total n) and auto-attaches your requested **power curve** (power vs n, SVG inline & editable).
-
-**📌 Get the actual number:** SAFE PREVIEW by default (exact envelope shown, nothing sent or computed). Say "please compute directly" to really run it and get the number + curve inline (stateless remote engine, no `--yes` needed).
-
-### Example 5 · Non-inferiority / Bioequivalence (curve mode)
-**You say:**
-> Non-inferiority design, margin=0.1, control rate 85%, treatment 80%, power 80%, and **draw the sample-size curve** (n vs target power)
-
-**Assistant replies (sketch):**
-> Parsed as non-inferiority (margin=0.1, control 85% vs treatment 80%, power 80%). By default SAFE PREVIEW; say "please compute directly" to get the per-group n and an auto-attached **sample-size curve** (n vs target power, SVG inline). Bioequivalence (BE) is the same pattern: theta0=0.95, CV=25%, 2×2 crossover also auto-attaches a sample-size curve.
-
-**📌 Get the actual number:** SAFE PREVIEW by default (exact envelope shown, nothing sent or computed). Say "please compute directly" to run it and get the number + curve inline.
-
-### Example 6 · Test selection / design-family choice (popup menu)
+### Example 3 · Test selection / design-family choice (popup menu)
 **You say:**
 > Compare two antihypertensives on office systolic BP, parallel-group, power 90%. But I haven't decided superiority vs non-inferiority, and I'm not sure whether to add an interim analysis.
 
@@ -113,15 +82,17 @@ Below are 6 real conversational examples ordered by common entry point — from 
 >
 > Pick your preferences for ①–②, or choose ③ to hear the explanation, and I'll lock the test and move to parameter completion / computation.
 
-**📌 Note:** When you've **named the test type but are stuck on "which option / design family"** (e.g. superiority vs non-inferiority, with/without interim), the assistant **pops a routing menu** to confirm step by step — instead of deciding for you or dumping the full 65-test menu. The menu also offers an "explain the differences" option — when you're unsure, it explains before you decide. The full classification tree is in [`references/menu.md`](references/menu.md).
+**📌 Note:** When you've **named the test type but are stuck on "which option / design family"** (e.g. superiority vs non-inferiority, with/without interim), the assistant **pops a routing menu** to confirm step by step — instead of deciding for you or dumping the full 65-test menu. The menu also offers an "explain the differences" option — when you're unsure, it explains before you decide. Expand the full classification tree any time by saying **"list all 65 tests"**.
 
 > 💡 **Tip:** Most tests need only three things — effect size (or rate / HR) + power + α. Anything you omit (e.g. two-sided α=0.05, 1:1 randomization, follow-up) is filled with sensible defaults. It's fine to be incomplete — the assistant will tell you what's missing.
 
 ---
 
+> 💡 **Tip:** most tests need only "effect size (or rate / HR) + power + α"; unstated parts (two-sided α=0.05, 1:1 allocation) fill with standard defaults, and the assistant will tell you what is still missing. **For 30 more full cases grouped by test family → section 4.**
+
 ## 2. What You Can Compute — 65 Test Scenarios
 
-Tests are grouped by **endpoint / method type** (7 categories below). Each row gives the typical **clinical scenario** and a line you can **copy verbatim** under "Try saying". The same test may *also* be reached from a **design-family cross-index** (group-sequential, adaptive, equivalence / non-inferiority, Bayesian, dose-escalation, MAMS, historical control, vaccine, win-statistics …) — see [`references/menu.md`](references/menu.md).
+Tests are grouped by **endpoint / method type** (7 categories below). Each row gives the typical **clinical scenario** and a line you can **copy verbatim** under "Try saying". The same test may *also* be reached from a **design-family cross-index** (group-sequential, adaptive, equivalence / non-inferiority, Bayesian, dose-escalation, MAMS, historical control, vaccine, win-statistics …) — say **"list all 65 tests"** to expand the full capability menu.
 
 > The underlying R engine runs **server-side on coze** (rpact / TrialSize / PowerTOST and 20+ other packages …); the published skill ships no R locally. See Section 6 "Advanced Reference" for the architecture note — ordinary users don't need to care.
 
@@ -255,45 +226,36 @@ You stay in full control: the report is shown to you **before** anything is sent
 
 During the design phase you can anchor assumptions on **published public meta-analyses** (an open equivalent of the CODEX idea: borrow the method, never touch commercial curated data). Two routes:
 
-**Route C · Generate candidates from public literature (`scripts/ma_extractor.py`)**
+**Route C · Generate candidates from public literature**
 
 **You say:**
 > Find published meta-analysis effect sizes for hepatocellular carcinoma overall survival from public literature, and generate candidate benchmarks
 
-**What the assistant runs:**
-```
-python scripts/ma_extractor.py   --query "hepatocellular carcinoma AND (overall survival) AND meta-analysis[Title] AND hazard ratio"   --ta "HCC" --endpoint "OS" --retmax 6   --out candidates.json --sheet candidates.md
-```
-Output: a **candidate confirmation table** (markdown; each entry carries scale / point estimate / 95% CI / excerpt sentence / PMID). You verify each entry against the excerpt (pull the full text for values missing from the abstract), set `verify=ok` on the confirmed entries, then:
-```
-python scripts/ma_extractor.py --confirm candidates.json   --into references/effect_size_benchmarks/hcc__OS.json
-```
-Discipline: candidates **never auto-ingest**; entries with `scale=unknown` are hard-rejected (you must classify the type manually). Since v5.12.1 the ingest gate runs the full `effect_ref.validate` — incomplete entries (e.g. a missing estimate) are rejected before anything is written.
+**What the assistant does:**
+> Produces a **candidate confirmation table** (each entry carries scale / point estimate / 95% CI / excerpt sentence / PMID). You verify each entry against the excerpt (pull the full text for values missing from the abstract), then say **"ingest"** on the confirmed entries to add them to your effect-size benchmark library. Discipline: candidates **never auto-ingest**; entries with an unknown scale are hard-rejected (you must classify the type manually). Since v5.12.1 the ingest gate runs full validation — incomplete entries (e.g. a missing estimate) are rejected before anything is written.
 
-**Route A · Use benchmarks in a sample-size calculation (`--effect-ref` / `--adopt-ref`)**
+**Route A · Use benchmarks in a sample-size calculation**
 
 **You say:**
 > Use the benchmark just ingested — show me the reference list first, don't substitute yet
 
-**What the assistant runs (show mode — never silently substitutes):**
-```
-python scripts/samplesize_power.py --test ttest_ind   --effect-ref references/effect_size_benchmarks/hcc__OS.json   --ta "HCC" --endpoint "OS" --show-assumptions
-```
+**What the assistant does (show mode — never silently substitutes):**
+> Prints the reference list with sources, display-only.
 
 **You say:**
 > The reference looks reasonable — substitute the conservative bound (the CI end worst for sample size) at 80% power
 
-**What the assistant runs (explicit adoption, auditable source):**
-```
-python scripts/samplesize_power.py --test ttest_ind   --effect-ref .../hcc__OS.json --adopt-ref conservative   --sd 10 --side two --power 0.8
-```
-After adoption: the source and `basis` print to stdout, are written into the `references` section of the assumptions block, and the reproducible R code comments cite the source. For sensitivity, `--adopt-ref low|high` runs a three-point sensitivity (CI lower / median / upper, one computation each), or `--adopt-ref <index>` pins one single source.
+**What the assistant does (explicit adoption, auditable source):**
+> Plugs the chosen CI endpoint into the computation; the source and `basis` print alongside the result, are written into the assumptions block, and the reproducible R code comments cite the same source. For sensitivity you can run a **three-point check** (CI lower / median / upper, one computation each), or **pin one single source by index**.
 
-**Adoptable reference types** (`param`/`scale`): `effect` (d/MD/SMD — t-test / ANOVA / meta_planning), `hazard_ratio` (HR — survival tests), `odds_ratio` (OR — ci_or / regression_logistic), `risk_ratio` (RR — ci_rr / regression_poisson / rates_ext; OR/RR references land on `--effect` because the engine's ratio channel reads `effect`). Ratio-type estimates and CIs must be strictly positive; **references whose CI crosses the null (0 for effect, 1 for ratios) are display-only and can never be adopted** (the true effect may be zero or reversed); aggregate picks (median/conservative/...) are rejected on mixed param/scale files (cross-scale averaging is meaningless) — use `<index>` for a single source instead. Worked chat examples for each of these: §4.14 N3–N5.
+**Adoptable reference types** (`param`/`scale`): `effect` (d/MD/SMD — t-test / ANOVA / meta_planning), `hazard_ratio` (HR — survival tests), `odds_ratio` (OR — ci_or / regression_logistic), `risk_ratio` (RR — ci_rr / regression_poisson / rates_ext; OR/RR references land on `--effect` because the engine's ratio channel reads `effect`). Ratio-type estimates and CIs must be strictly positive; **references whose CI crosses the null (0 for effect, 1 for ratios) are display-only and can never be adopted** (the true effect may be zero or reversed); aggregate picks (median/conservative/...) are rejected on mixed-scale files (cross-scale averaging is meaningless) — pin one single source **by index** instead. Worked chat examples for each of these: §4.13 N3–N5.
 
 **Red line**: reference ≠ adoption — comparability of population / endpoint / effect-scale is yours to re-check; scale conflicts (an HR reference fed to a t-test, an OR reference fed to a t-test) are hard-rejected.
 
 ---
+
+**Q: Can I tweak parameters from a previous computation?**
+A: Yes. Each computation echoes a "current analysis setting" block; afterwards just say what to change (e.g. "raise power to 90%, make it one-sided") - untouched fields are inherited, changed fields are explicitly overridden, nothing is silently modified. You can also say "redo with a more conservative SD" for a sensitivity re-run. Every change is listed explicitly.
 
 ## 4. Comprehensive Usage Gallery — context-prompt examples (Simple / Medium / Complex)
 
@@ -329,22 +291,6 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 **Assistant replies (sketch):**
 > That's a two-sample t-test. Δ = 12, SD = 30 → **Cohen's d = 0.40**. At 90% power, two-sided α = 0.05: **≈ 134 per group** (268 total). Note: a 1:1 allocation is assumed; tell me if your allocation ratio differs and I'll recompute.
 
-#### A3 · Complex — Paired vs parallel, with/without ANOVA
-**You say:**
-> We're comparing a device reading against a lab reference on the same 40 patients. But I'm also considering a 3-arm trial comparing two devices vs lab. Not sure which design to size.
-
-**Assistant replies (sketch):**
-> Two designs here — let me help you pick:
-> **① Within-subject or between-subjects?**
-> - (a) Same patients measured twice → `ttest_paired` (per-sequence n, smaller sample)
-> - (b) Independent groups → `ttest_ind` (per-group n)
-> **② Multiple arms?**
-> - (a) Just two conditions → t-test family
-> - (b) Three arms (2 devices vs lab) → `anova` (effect size f)
-> **③ Can't decide?** → say "explain the differences between these choices in detail".
-
----
-
 ### 4.2 Binary / proportions
 
 #### B1 · Simple — Two-group rate, chi-square
@@ -353,13 +299,6 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 
 **Assistant replies (sketch):**
 > `proportion_two`: **≈ 137 per group** (274 total). A sample-size curve is auto-attached.
-
-#### B2 · Middle — OR as the primary effect (needs more subjects)
-**You say:**
-> I want to power on the odds ratio. Control event rate 50%, target OR = 2.0, 80% power, two-sided. How many per arm?
-
-**Assistant replies (sketch):**
-> `odds_ratio` with OR = 2.0 and p_control = 0.50 → treatment rate ≈ 66.7%. That needs **≈ 142 per group** (284 total) — note an OR framing typically needs more subjects than the equivalent risk-difference framing, because the implied rates move asymmetrically. Say the word if you'd rather power on absolute risk difference instead.
 
 #### B3 · Complex — NI margin, BE, or superiority?
 **You say:**
@@ -383,15 +322,6 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 **Assistant replies (sketch):**
 > `poisson`: **≈ 1,041 per group** (2,082 total) at 2 years/subject. A shorter exposure time raises the required n — tell me the per-subject follow-up and I'll adjust.
 
-#### C2 · Middle — Recurrent events (Andersen-Gill)
-**You say:**
-> We're counting hospitalisations over 2 years. Control rate ~1.0/yr, we expect a 40% reduction with treatment. Size for a recurrent-events model.
-
-**Assistant replies (sketch):**
-> `recurrent_events` (Andersen-Gill): control rate 1.0, rate ratio 0.6, 2-year follow-up → **≈ 158 per group**. This counts *events*, not just first events, so it's more efficient than a single-event survival approach for frequently-recurring outcomes.
-
----
-
 ### 4.4 Survival / time-to-event
 
 #### D1 · Simple — Log-rank, HR given
@@ -399,28 +329,14 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 > Survival trial, HR = 0.75, 1:1 randomization, power 85%, two-sided
 
 **Assistant replies (sketch):**
-> `survival` (simplified log-rank): you need **≈ 196 events**; at typical accrual/follow-up that's roughly **330–360 per arm**. The assistant auto-attaches the survival follow-up–power curve.
+> `survival`: **434 events** (Schoenfeld); expected event proportion 0.2337 at this timetable → **929 per group** (1,858 total). The reply prints the expected event proportion for verification — and the timetable itself moves the sample size (see S2).
 
 #### D2 · Middle — Non-inferiority survival with accrual/follow-up
 **You say:**
 > Non-inferiority survival design, HR margin 1.25, we enroll over 12 months and follow 12 months, event rate ~0.7, power 80%.
 
 **Assistant replies (sketch):**
-> `ni_survival`: with 12-mo accrual + 12-mo follow-up and a 1.25 HR margin, **≈ 370 per arm** (≈ 740 total). Early stopping for futility isn't assumed here — add a group-sequential framework if you want interim looks.
-
-#### D3 · Complex — Cox with covariate vs competing risks vs historical control
-**You say:**
-> Our primary is OS, but patients have measurable baseline risk. I've also heard about competing risks and using a historical control arm. Which sample-size approach fits?
-
-**Assistant replies (sketch):**
-> Three distinct models — pick the one matching your analysis plan:
-> **① Which survival model?**
-> - (a) Cox with a prognostic covariate → `cox_covariate` (enter R² of the covariate; reduces n)
-> - (b) Competing risks (e.g. death from other causes) → `competing_risks` (uses CIF)
-> - (c) Single-arm vs a historical control → `survival_historical` (no randomization)
-> **② Can't decide?** → "explain the differences between these choices in detail".
-
----
+> `ni_survival`: expected event proportion 0.3402 at this timetable → **≈ 730 per arm** (1,460 total). With a 70% event rate the proportion rises to 0.4132 and drops to **≈ 601 per arm** — the event-rate assumption is a big lever in survival designs. Early stopping for futility isn't assumed; add a group-sequential framework for interim looks.
 
 ### 4.5 Diagnostic / method comparison
 
@@ -430,15 +346,6 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 
 **Assistant replies (sketch):**
 > `roc` (Obuchowski): **≈ 110 subjects** (assuming a case-control 1:1 mix) to distinguish AUC 0.50 from 0.75 at 80% power.
-
-#### E2 · Middle — Bland-Altman agreement
-**You say:**
-> We need to show a new monitor agrees with the reference within ±2.5 units. Expected SD of differences is 5. Size a Bland-Altman study.
-
-**Assistant replies (sketch):**
-> `bland_altman`: with SD_diff = 5 and margin W = 2.5, you need **≈ 32 paired measurements** to claim the limits of agreement stay within ±2.5 at 95% confidence.
-
----
 
 ### 4.6 Group-sequential & interim analyses
 
@@ -456,15 +363,6 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 **Assistant replies (sketch):**
 > `group_sequential` with `--spending_func Pocock --futility`: 2 interims, effect 0.4, 90% power → **≈ 95 per arm**. Pocock gives equal boundaries across looks; adding futility lets you stop early if the treatment is clearly failing (saves subjects), at a small efficiency cost.
 
-#### F3 · Complex — Monte-Carlo validation of a GSD
-**You say:**
-> Before I commit, can you *simulate* my group-sequential survival design (2 interims, HR 0.7) to check the actual power and type-I error, not just the analytic number?
-
-**Assistant replies (sketch):**
-> Yes — `gsd_survival_sim` runs a Monte-Carlo validation (e.g. 2,000 sims, fixed seed). It reports **empirical power ±2 pp** and **type-I error ±0.5 pp**, and returns `INCONCLUSIVE` rather than a false PASS if the analytic n is off. This is pure-local (no cloud) and a great sanity check before protocols freeze.
-
----
-
 ### 4.7 Adaptive / Bayesian / assurance
 
 #### G1 · Simple — Adaptive design, 2 stages
@@ -473,13 +371,6 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 
 **Assistant replies (sketch):**
 > `adaptive`: a 2-stage design with effect 0.4 → **≈ 100 per arm** (stage-wise), with a pre-specified adaptation rule (e.g. stop for futility at interim). The assistant outlines the stage boundaries.
-
-#### G2 · Middle — Bayesian design with prior
-**You say:**
-> Bayesian design, control response 30%, treatment 15%, I have a weak prior (a0 = 0.5). What n?
-
-**Assistant replies (sketch):**
-> `bayesian`: control 0.30, treatment 0.15, prior weight a0 = 0.5 → **≈ 60 per arm** under the Bayesian decision rule. A tighter prior (larger a0) borrows more historical belief and can shrink n; a vaguer prior approaches the frequentist number.
 
 #### G3 · Complex — Assurance vs frequentist power
 **You say:**
@@ -498,13 +389,6 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 
 **Assistant replies (sketch):**
 > `dose_escalation`: 5 doses, target DLT 0.33 → the design specifies cohort sizes and the MTD-finding rule (e.g. 3+3 or CRM). The assistant reports the **recommended sample per dose and the stopping rule**, not a single "n".
-
-#### H2 · Middle — MAMS (multi-arm multi-stage)
-**You say:**
-> We have 2 experimental arms plus a control, 2 stages, expected effect 0.3. Size a MAMS design.
-
-**Assistant replies (sketch):**
-> `mams`: 3 arms (2 exp + 1 control), 2 stages, effect 0.3 → **≈ 90 per arm** at each stage with alpha spent across stages. MAMS drops futile arms at the interim, improving efficiency over running three separate trials.
 
 #### H3 · Complex — Dunnett vs MAMS for multiple comparisons
 **You say:**
@@ -527,26 +411,6 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 **Assistant replies (sketch):**
 > `win_ratio`: with a target Win-Ratio of 1.5, **≈ 350 per arm** (1,000-sim approximation). Win-Ratio handles composite time-to-event outcomes (death + hospitalization) in a single hierarchy.
 
-#### I2 · Middle — Cluster-randomized (DEFF)
-**You say:**
-> Cluster-randomized trial, ICC = 0.05, 30 individuals per cluster, effect 0.3. What's the design effect and total n?
-
-**Assistant replies (sketch):**
-> `cluster`: ICC 0.05, m = 30 → **design effect DEFF ≈ 2.45**, so you need ~2.5× the individual-level n. That's **≈ 35 clusters** (≈ 1,050 individuals) for effect 0.3 at 80% power. Unequal cluster sizes would inflate this further (`cluster_ext` models that).
-
-#### I3 · Complex — Historical control borrowing vs multiple endpoints
-**You say:**
-> I could either borrow a historical control (15/100 responders) instead of randomizing a control arm, or keep a concurrent control but analyze 3 co-primary endpoints. Which sizing approach?
-
-**Assistant replies (sketch):**
-> **① Which efficiency lever?**
-> - (a) Borrow historical data → `historical_controls` (a0 borrowing factor 0–1; shrinks n but adds bias risk)
-> - (b) Concurrent control + 3 co-primary endpoints → `multiple_endpoints` (inflation factor for correlation ρ)
-> - (c) All 3 endpoints must win → `must_win`
-> **② Can't decide?** → "explain the differences between these choices in detail".
-
----
-
 ### 4.10 Bidirectional solving — given n, what power?
 
 #### J1 · Simple — Reverse solve
@@ -555,15 +419,6 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 
 **Assistant replies (sketch):**
 > Reverse solve (`--nobs 50`): with n = 50/group and d = 0.5 you have **≈ 70% power** (not the 80% you'd sized for). Consider increasing n or accepting lower power — say the word and I'll show the power curve.
-
-#### J2 · Middle — Feasibility at a fixed cap
-**You say:**
-> Our site can only recruit 120 total for the proportion comparison (20% vs 35%). Is that enough? If not, what's the smallest detectable effect?
-
-**Assistant replies (sketch):**
-> At n = 60/group, `proportion_two` (20% vs 35%) gives **≈ 73% power**. If you need 80%, you're ~17 short per arm. I can also flip it: with 60/group at 80% power the smallest detectable gap is ≈ 13 pp (e.g. 20% vs 33%). Which framing do you want me to detail?
-
----
 
 ### 4.11 Curve mode & default figures
 
@@ -574,50 +429,7 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 **Assistant replies (sketch):**
 > Power curve (x = n, y = power) auto-drawn: at n = 64/group you cross 80%; the curve also shows the target-power reference line. SVG inline & editable.
 
-#### K2 · Middle — Sample-size curve across target power
-**You say:**
-> Draw the sample-size curve (n vs target power from 0.6 to 0.95) for the 20% vs 35% proportion test.
-
-**Assistant replies (sketch):**
-> Sample-size curve returned: required n/arm rises from ~110 (power 0.60) to ~165 (power 0.95). Useful for a feasibility slider in your protocol.
-
-#### K3 · Complex — Effect-size sensitivity + distribution overlap + heatmap
-**You say:**
-> For the t-test, overlay effect sizes 0.3 / 0.5 / 0.8 on the power curve, and also show the H0–H1 distribution overlap and a 2-D power×effect heatmap.
-
-**Assistant replies (sketch):**
-> All three figure modes for `ttest_ind`: (1) overlaid power curves at d = 0.3/0.5/0.8, (2) the H0 vs H1 density overlap at each d, (3) a 2-D sensitivity heatmap (n × effect → power). These are the **default figures** the engine now attaches automatically for the 9 curve solvers — you got them without asking.
-
----
-
-### 4.12 Cross-turn continuity & follow-ups
-
-#### L1 · Middle — Inherit prior settings, change one field
-**You say:**
-> Same t-test, but bump power to 90% and make it one-sided.
-
-**Assistant replies (sketch):**
-> Reads the last `## 当前分析设定：` block, overrides only `power` and `side`, inherits the rest:
-> `## 当前分析设定： test=ttest_ind | effect(d)=0.5 | alpha=0.05 | power=0.9 | solve=n | side=one_greater | sd=— | n=— | ratio=1.0`
-> → **≈ 76 per group** (one-sided, 90%). Nothing else silently changed.
-
-#### L2 · Middle — Re-run with a sensitivity assumption
-**You say:**
-> Re-do that with a more conservative SD (use 35 instead of 30) and show the R code.
-
-**Assistant replies (sketch):**
-> Inherits test/effect/α/power, updates `sd=35` → d drops to 0.343 → **≈ 200 per group** (was 134). Full reproducible R code printed (rpact / TrialSize source) so you can re-run locally.
-
----
-
-### 4.13 Safe preview, confidentiality & language switching
-
-#### M1 · Simple — Inspect before sending
-**You say:**
-> Preview only — don't compute yet. Just show me what you'd send for the t-test (d=0.5).
-
-**Assistant replies (sketch):**
-> SAFE PREVIEW: prints the exact coze envelope `{test: ttest_ind, effect: 0.5, alpha: 0.05, power: 0.8, side: two, …}` plus the hostname hash `query_origin`, `skill_version`, and `locale`. **Nothing leaves your machine.** Say "please compute directly" when ready.
+### 4.12 Confidential input & data-not-leaving
 
 #### M2 · Middle — Keep data local (confidential input)
 **You say:**
@@ -626,46 +438,25 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 **Assistant replies (sketch):**
 > Yes. We run the *framework* only — replace any real numbers with placeholders, I output the **full R code**, and you execute it locally with your real, confidential values. Only design parameters ever reach coze; raw documents/data never do. (For fully offline runs, set `CTSS_COZE_MOCK=1` for a demo or use the optional local-R dev backend.)
 
-#### M3 · Simple — Force language
-**You say:**
-> 用中文回复。
 
-**Assistant replies (sketch):**
-> 好的，后续输出将使用中文（即使系统语言为英文也能强制切换）。例如："两样本 t 检验（d=0.5）：每组约 64 例（共 128 例）。" 想要英文时说 "switch to English" 即可。
 
----
-
-### 4.14 Effect-size reference from public literature
+### 4.13 Effect-size reference from public literature
 
 #### N1 · Middle — Search public meta-analyses for a benchmark
 **You say:**
 > Help me find a published meta-analysis effect size for hepatocellular carcinoma overall survival, to use as my design assumption.
 
 **Assistant replies (sketch):**
-> Runs `scripts/ma_extractor.py` against public literature → produces a **candidate table** (scale / point estimate / 95% CI / excerpt sentence / PMID). You verify each entry against the abstract (hard-reject any `scale=unknown`), set `verify=ok`, then `--confirm` it into `references/effect_size_benchmarks/`. Nothing auto-ingests.
+> Searches public literature → produces a **candidate table** (scale / point estimate / 95% CI / excerpt sentence / PMID). You verify each entry against the abstract (hard-reject any unknown scale), then say **"ingest"** on the confirmed ones to add them to the benchmark library. Nothing auto-ingests.
 
 #### N2 · Complex — Adopt a benchmark, conservative bound
 **You say:**
 > Use that HCC OS reference, but only show me the reference list first — don't substitute it yet. Then size with the conservative (worst-case) CI bound at 80% power.
 
 **Assistant replies (sketch):**
-> Step 1 (show mode): prints the reference list with sources — **no silent substitution**. Step 2 (explicit adopt): `--adopt-ref conservative` plugs the worst-case CI endpoint into `ttest_ind` (or rejects if the scale is incompatible, e.g. an HR reference fed to a t-test). The adopted source + `basis` are printed and written into the assumptions block for auditability.
+> Step 1 (show mode): prints the reference list with sources — **no silent substitution**. Step 2 (explicit adopt): say **"adopt the conservative bound"** and the worst-case CI endpoint is plugged into `ttest_ind` (or rejects if the scale is incompatible, e.g. an HR reference fed to a t-test). The adopted source + `basis` are printed and written into the assumptions block for auditability.
 
-#### N3 · Middle — Adopt an OR / RR benchmark (v5.12.1)
-**You say:**
-> Use the confirmed OR benchmark for MACE — take the conservative CI bound — and size an OR precision study (baseline rate 30%, target half-width 0.5).
-
-**Assistant replies (sketch):**
-> OR / RR references are adoptable too (v5.12.1): `--adopt-ref conservative` on an OR file lands on `--effect` for the ratio-channel tests (`ci_or`, `regression_logistic`, …; RR → `ci_rr`, `regression_poisson`, `rates_ext`) because the engine's ratio channel reads `effect`. Ratio estimates and CIs must be strictly positive. The adopted value, source and `basis` are printed and written into the assumptions block — e.g. conservative OR = 1.30 → `ci_or` **≈ 343 per group** (baseline 30%, half-width 0.5, 95% confidence).
-
-#### N4 · Middle — Pin one specific source by index
-**You say:**
-> Don't aggregate — use source #2 only (the multi-centre one), then show me the R code.
-
-**Assistant replies (sketch):**
-> `--adopt-ref 2` adopts that single entry verbatim (no median/conservative aggregation) — ideal when one source matches your population best. The printed `basis` names the exact source (and PMID when available), so the audit trail is unambiguous; the reproducible R code comments cite the same source.
-
-#### N5 · Complex — Guardrails: what the skill refuses to do
+#### N3 · Complex — Guardrails: what the skill refuses to do
 **You say:**
 > My benchmark file has both a Cohen's d and an HR entry — just take the median. Oh, and one meta's CI crosses 1 — use that one too.
 
@@ -677,36 +468,18 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 
 ---
 
-### 4.15 Document upload → parameter extraction
+### 4.14 Document upload → parameter extraction
 
 #### O1 · Middle — Upload a protocol/SAP
 **You say:**
 > *(uploads `protocol.docx`)* Here's our draft protocol — pull the sample-size assumptions and compute.
 
 **Assistant replies (sketch):**
-> `scripts/office_to_md.py` converts the docx / xlsx / pptx to md **locally** (since v5.8.0 xlsx is parsed locally with zero dependencies — no external toolchain; a PDF binary can't be parsed zero-dependency, so you'll be pointed to the environment's pdf skill, with OCR for scans). It extracts only the design parameters (test, effect, α, power, n…) — the raw document text is **never sent to coze**. It then echoes the parsed `## 当前分析设定：` block for your confirmation before computing. (If the protocol is confidential, keep the compute fully local as in 4.13 M2.)
+> Document parsing runs **locally** (since v5.8.0 xlsx is parsed locally with zero dependencies — no external toolchain; a PDF binary can't be parsed zero-dependency, so you'll be pointed to the environment's pdf skill, with OCR for scans). the assistant extracts only the design parameters (test, effect, α, power, n…) from the converted Markdown — the raw document text is **never sent to coze**. It then echoes the parsed `## 当前分析设定：` block for your confirmation before computing. (If the protocol is confidential, keep the compute fully local as in 4.12 M2.)
 
 ---
 
-### 4.16 Bug reporting & workbench / portal
-
-#### P1 · Simple — Report a suspected error
-**You say:**
-> The number looks off — report a bug.
-
-**Assistant replies (sketch):**
-> Proposes a **sanitized 11-field report** (skill / version / test / error_type / … — no raw values or PII). You review the full text, may add a `description`, then explicitly confirm. On consent it sends to the unified endpoint `https://ct-bugreport.coze.site/run`. Nothing is transmitted without your "send" confirmation; in a fully local session it's saved as a file instead.
-
-#### P2 · Simple — Use the web portal / workbench instead of chat
-**You say:**
-> I'd rather use the web UI than chat. Is there one?
-
-**Assistant replies (sketch):**
-> Yes — two no-install options: (1) the unified ct-series portal **https://ct.medstatstar.com**, or (2) the local **Workbench** (`adapters/workbench/`, zero-dependency web UI: input → results → figure controls → follow-up questions, reflecting all 65 tests from the runtime schema). Both default to the live coze endpoint (MOCK returns fake results, so don't use it for real sizing).
-
----
-
-### 4.17 New test families — correlation / variance / CI precision / regression / meta-planning
+### 4.15 New test families — correlation / variance / CI precision / regression / meta-planning
 
 Sixteen tests were added in v5.9–v5.10 (49 → 61 → 65), closing the PASS-coverage gap. The cards below are the conversational entry points for the families you haven't seen in 4.1–4.9.
 
@@ -717,67 +490,30 @@ Sixteen tests were added in v5.9–v5.10 (49 → 61 → 65), closing the PASS-co
 **Assistant replies (sketch):**
 > `correlation` (Fisher-z exact, H0: ρ = 0): **n ≈ 85** at 80% power, two-sided α = 0.05. A one-sided test or a larger expected r shrinks this — say the word and I'll re-run.
 
-#### Q2 · Middle — CI precision instead of a hypothesis test
-**You say:**
-> I don't need a hypothesis test — I need the mean estimated within ±2 units at 95% confidence. SD is about 10. How many subjects?
-
-**Assistant replies (sketch):**
-> That's a precision goal, not power: `ci_mean` (half-width → n) gives **n ≈ 97**. The same precision family covers proportions (`ci_prop` — e.g. an event rate of 50% within ±10 percentage points needs ≈ **381**), OR / RR (`ci_or` / `ci_rr` — when anchoring on a published OR/RR, see N3), correlation (`ci_cor` — r = 0.5 with half-width ±0.1 needs ≈ **867**) and ICC (`ci_icc`, which also takes the cluster size m) — give me the endpoint and target half-width. Variance hypothesis tests and CV precision live in Q6 (`variance_one` / `variance_two` / `cv_one`).
-
-#### Q3 · Middle — Regression sample size (PASS-validated)
-**You say:**
-> Logistic regression with one continuous covariate, baseline event rate 50%, expected OR = 1.5, power 95%.
-
-**Assistant replies (sketch):**
-> `regression_logistic` (Hsieh, Bloch & Larsen 1998): **n ≈ 317** — reproduces the PASS validation point exactly. A binary covariate switches to `--x_type binary` plus the exposure prevalence `q`; count outcomes use `regression_poisson` (Signorini 1991) with over-dispersion `--phi`; multiple linear regression uses `regression_linear` (Cohen's f², `--u_pred` predictors).
-
-#### Q4 · Complex — Meta-analysis prospective planning + heterogeneity sweep
+#### Q2 · Complex — Meta-analysis prospective planning + heterogeneity sweep
 **You say:**
 > We're planning a meta-analysis: expected SMD 0.3, about 100 patients per study, heterogeneity I² around 30%. How many studies do we need for 80% power? And what if heterogeneity turns out worse?
 
 **Assistant replies (sketch):**
 > `meta_planning` (Hedges & Pigott 2001 random-effects): at I² = 0.30 you need **K = 3 studies**. The default output also includes the **heterogeneity sweep** — required K at I² ∈ {0, 0.25, 0.5, 0.75, 0.9} (here ≈ 2 / 3 / 4 / 8 / 18) plus a K–I² curve — so you can see how sensitive the plan is to heterogeneity. You can pass `--R` directly instead of `--i2` (R = I²/(1−I²); R = 0 → fixed effect), or flip the question with `--k_studies` (given K, what power?); for a non-null H0 effect (e.g. a prior meta-analytic pooled value) use `--effect0` in the λ numerator. Cluster-designed studies add `--cluster_cv` (cluster-size variation inflates the design effect).
 
-#### Q5 · Middle — Unequal cluster sizes & over-dispersed rates
+#### Q3 · Middle — Unequal cluster sizes & over-dispersed rates
 **You say:**
 > Cluster-randomized trial, ICC 0.05, 20 per cluster — but cluster sizes vary a lot (CV about 0.5). Separately, our count endpoint is over-dispersed (φ ≈ 2), rates 0.5 vs 0.25.
 
 **Assistant replies (sketch):**
 > Two extensions cover exactly these wrinkles: `cluster_ext` (generalized DEFF = 1+[(1+CV²)·m−1]·ρ) — with CV = 0.5, m = 20, ICC = 0.05 the design effect is **≈ 2.20** (vs 1.95 for equal sizes), so 100 individuals per group inflate to **221**, i.e. **12 clusters per arm (24 total)**. For the count endpoint, `rates_ext --rate_mode ratio` with φ = 2 → **≈ 197 per group** (394 total) for λ 0.5 vs 0.25 at 80% power (φ = 1 degenerates to the plain Poisson test). `rates_ext` also does single-rate and rate-ratio CI precision.
 
-#### Q6 · Middle — Variance / CV precision (analytical validation)
-**You say:**
-> Three questions for our analytical validation: ① 80% power to detect the new process's between-batch SD degrading from 1.0 to 1.5; ② compare measurement variances across two centers (expected ratio ≈ 2); ③ estimate a CV (≈ 20%) to within 10% relative error. Sample size for each?
+### 4.16 Clinically-worded assumptions & audit-ready output
 
-**Assistant replies (sketch):**
-> Three variance-family tests, one per question: `variance_one` (χ², σ² = σ0²) — σ0 = 1.0, σ1 = 1.5 at 80% power → **n ≈ 24**; `variance_two` (F test, ratio of two variances) — variance ratio 2 at 80% power → **≈ 68 per group**; `cv_one` (CV relative-error precision) — CV = 0.2, relative error 10% → **n ≈ 392**. If you only care about one degradation direction, `--side` narrows it; validation work often pairs with the diagnostics family in 4.5 (E1/E2) for the report.
-
-#### Q7 · Middle — Count-endpoint & multiple linear regression
-**You say:**
-> Poisson regression for a count endpoint (e.g. exacerbations per year): baseline rate 1/year, expected rate ratio 1.3, covariate mean 3.2, SD 2.1. What if the data are over-dispersed (φ ≈ 2)? Also, multiple linear regression: 3 predictors, f² = 0.15, 80% power.
-
-**Assistant replies (sketch):**
-> `regression_poisson` (Signorini 1991, normal X): **n ≈ 21** at φ = 1; **n ≈ 41** at φ = 2 — over-dispersion nearly doubles it, so estimate φ before locking n for count endpoints (`--t1` for unequal exposure times, `--r2` for correlation with other covariates). Multiple linear regression uses `regression_linear` (pwr.f2.test, R² test): u = 3, f² = 0.15, 80% power → **n ≈ 77**.
-
----
-
-### 4.18 Clinically-worded assumptions & audit-ready output
-
-#### R1 · Middle — MCID as the design assumption
-**You say:**
-> The accepted MCID for HbA1c is 0.3%. SD is about 0.9%. Size the trial on the MCID.
-
-**Assistant replies (sketch):**
-> `--mcid 0.3 --sd 0.9` converts the clinically-worded target into Cohen's d = 0.333 (the conversion is echoed for transparency) → **≈ 143 per group** at 80% power, two-sided. Declare `--mcid-source` and the audit promotes the assumption to "known"; `--mcid` and `--effect` are mutually exclusive — giving both errors out with guidance instead of guessing.
-
-#### R2 · Middle — IRB/SAP-ready justification paragraph
+#### R1 · Middle — IRB/SAP-ready justification paragraph
 **You say:**
 > Give me a sample-size justification paragraph I can paste into the protocol.
 
 **Assistant replies (sketch):**
 > After a successful computation the CLI prints a one-line offer — **I'll ask you before generating anything**. On your yes it re-runs with `--justify` and appends a **bilingual, IRB/SAP-ready paragraph** (skeleton: CONSORT-SPIRIT Item 14 / DELTA2 Box 4 + CDE《样本量估计指导原则(试行)》2024-12-23), rendering software as `R <ver> + rpact / TrialSize <ver>` (versions from the result envelope — no cloud/local wording). Placeholders (e.g. your MCID source) are left for you to fill — anti fake-precision.
 
-#### R3 · Complex — Audit the assumptions before computing
+#### R2 · Complex — Audit the assumptions before computing
 **You say:**
 > Before computing, audit my design assumptions — the effect 0.5 came from a pilot with 20 patients — and tell me the weakest link.
 
@@ -786,7 +522,34 @@ Sixteen tests were added in v5.9–v5.10 (49 → 61 → 65), closing the PASS-co
 
 ---
 
-> 💡 **Tip:** Every card above uses the same *context-prompt* pattern — describe the design, let the assistant pick/confirm the test, review the SAFE PREVIEW, then "please compute directly". **New in recent versions:** §4.14 N3–N5 (OR/RR benchmark adoption + guardrails), §4.17 Q1–Q7 (the 16 test families added in v5.9–v5.10 — correlation / variance / CI precision / regression / meta-planning; Q6 covers variance/CV precision, Q7 count-endpoint and linear regression), §4.18 (MCID wording / IRB-SAP justification / assumption audit). For the full 65-test parameter reference, see [`references/menu.md`](references/menu.md) and [`references/cli_examples.md`](references/cli_examples.md).
+### 4.17 More design families, measured — one-sample / single-rate / equivalence & superiority margins / survival details / simulation & re-estimation
+
+> The cards below cover common design families not shown in the A–K / Q galleries. All numbers are actual engine outputs (v5.13.26; defaults two-sided α=0.05, 80% power, 1:1 allocation unless stated). Same pattern as everywhere: you say it, the assistant replies.
+
+#### S1 · Medium — Bioequivalence (BE): 2×2 crossover TOST
+**You say:**
+> Generic BE study, expected GMR 0.95, within-subject CV 25%, 2×2 crossover — how many subjects?
+
+**Assistant replies (sketch):**
+> `be_tost` (2×2, θ0=0.95, CV=25%). About **28 total**. **Teaching point**: the sample explodes as GMR drifts from 1 — at the same CV, an expected GMR of 0.90 doubles it to **56**. When planning BE, double-check your GMR assumption more carefully than your CV.
+
+#### S2 · Medium — The timetable itself changes the sample size (accrual × follow-up)
+**You say:**
+> Survival trial, HR=0.7, event rate 30%. Finance wants three schedules priced: accrual 12 vs 36 months, follow-up 12 vs 18 months.
+
+**Assistant replies (sketch):**
+> `survival` (log-rank). Schoenfeld events stay **247**, but the subject count moves with the schedule:
+> 1. Accrual 12 + follow-up 12 → **529 per group** (expected event proportion 0.2337)
+> 2. Accrual 36 + follow-up 12 → **626** (0.1974) — longer accrual, less follow-up for later enrollees
+> 3. Accrual 12 + follow-up 18 → **499** (0.2476) — longer follow-up, more events
+> The reply prints the expected event proportion so you can verify n = events ÷ P yourself. **Conclusion: agree on the timetable before arguing about the sample size.**
+
+#### S3 · Complex — Conditional power & sample-size re-estimation (SSR)
+**You say:**
+> Halfway through: planned effect 0.3, observed 0.2, 100 of 200 planned subjects done at 50% timing — is the trial still worth finishing, and should we add subjects?
+
+**Assistant replies (sketch):**
+> `conditional_power`. Conditional power on the current trend is only **77.8%** (below the 80% target); the optimistic H1 re-estimate needs **450 subjects**, an SSR increase of **+125%**. Read the three numbers together: finishing as planned is under-powered, but whether +250 subjects is acceptable is a design decision, not a statistical one — I can plot both power curves for the decision meeting.
 
 ## 5. Safety & Disclaimer
 
@@ -804,9 +567,12 @@ CLI examples, bidirectional solving, curve mode, core formulas, system requireme
 
 ---
 
-**Version**: v5.12.1 | **License**: MIT | **Authors**: medstatstar, phoe-zip
+## Version
 
-For feature requests, bug reports, or other feedback, please contact the author directly at medstatstar@gmail.com (Wintone Zhang / 张文彤).
+- **Current version**: ct-samplesize v5.13.28 (2026-10-22)
+- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
+- **License**: MIT ｜ **Authors**: medstatstar, phoe-zip
+- For feature requests, bug reports, or other feedback, please contact the author directly at medstatstar@gmail.com (Wintone Zhang / 张文彤).
 
 ---
 
@@ -817,4 +583,3 @@ For feature requests, bug reports, or other feedback, please contact the author 
 > - **Tier A (non-confidential input)**: run fully locally using only ordinary data; Tier A may need external public retrieval but involves no confidential information. These skills are published openly on GitHub.
 > - **Tier B (confidential input)**: accept strictly confidential clinical-trial data / protocols / CRFs from pharma sponsors (e.g., ct-analysis, ct-sdtm, ct-protocol, ct-eligibility); Tier B is processed locally and never leaves the boundary (egress=none), or additionally requires policy approval (egress=approval-req, e.g. ct-eligibility). Tier B packages contain zero confidential data but are NOT publicly published (stays fully local) — confidential input never ships with the package or leaves the machine. For custom / on-prem deployment, contact the author.
 >
-> 📧 Contact: medstatstar@gmail.com (Wintone Zhang / 张文彤)

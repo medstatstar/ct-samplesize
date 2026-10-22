@@ -630,6 +630,9 @@ def build_parser():
                    help="簇大小变异系数 COV（meta_planning cluster：DE=1+((COV²+1)M-1)ρ；缺省 0=等簇大小）")
     p.add_argument("--k_studies", type=int, default=None,
                    help="研究数 K（meta_planning：给定→求效能；缺省→求所需 K）")
+    # ── 可变每研究样本量（2026-10-21 前端打通）：n_cv 走契约 optional 通道 ──
+    p.add_argument("--n_cv", type=float, default=None,
+                   help="研究间样本量变异系数 CV（meta_planning：>0 启用保守档 V_eff=V·(1+CV²)；再配 --n_sim 启用 MC 精确档输出功效带）")
 
     # ── Tier 2 新增（2026-10-12）：回归 / 整群扩展 / 率扩展 ──
     p.add_argument("--x_type", type=str, default=None,
@@ -654,7 +657,8 @@ def build_parser():
     p.add_argument("--win_ratio_theta", type=float, default=1.5)
     p.add_argument("--n_sim_initial", type=int, default=100)
     p.add_argument("--se_approx", type=float, default=0.0625)
-    p.add_argument("--n_sim", type=int, default=1000)
+    p.add_argument("--n_sim", type=int, default=None,
+                   help="MC 模拟次数（meta_planning：配 --n_cv 启用 MC 精确档 ss_meta_planning_mc，建议 ≥2000；缺省 None=不启用 MC）")
     # Must-Win / Co-Primary
     p.add_argument("--n_endpoints_must", type=int, default=2)
     p.add_argument("--effect_must", type=float, default=0.3)
@@ -843,11 +847,12 @@ def build_parser():
     pv.add_argument("--verify", action="store_true",
                     help="P1-C: 开启本地 Monte-Carlo 验证闭环（对 --verify-design 指定的设计，"
                          "用 --verify-n 回代模拟，校验 power ±2pp / TIE ±0.5pp）")
-    pv.add_argument("--verify-design", default="ttest_ind",
+    pv.add_argument("--verify-design", default=None,
                     choices=["ttest_ind", "ttest_one", "ttest_paired",
                              "proportion_two", "survival", "group_sequential",
                              "adaptive_reestimate"],
-                    help="P1-C 验证对象设计类型（默认 ttest_ind）")
+                    help="P1-C 验证对象设计类型（默认按所计算的检验自动映射；"
+                         "此处仅用于显式覆盖）")
     pv.add_argument("--verify-n", type=int, default=None,
                     help="P1-C 回代的样本量 n（解析解给出的 n；必填，否则验证无意义）")
     pv.add_argument("--verify-power", type=float, default=0.8,
@@ -1468,7 +1473,7 @@ def main():
                     "max_inflation": args.verify_max_inflation,
                 }.items() if v is not None}
                 vrep = _verify_run(
-                    args.verify_design, args.verify_n, alpha=args.alpha,
+                    args.verify_design or "ttest_ind", args.verify_n, alpha=args.alpha,
                     power=args.verify_power, side=args.verify_side,
                     nsim=args.verify_nsim, params=vparams, boundaries=bnds,
                     looks=(len(bnds) if bnds else args.verify_looks),

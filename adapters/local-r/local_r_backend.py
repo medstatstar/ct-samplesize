@@ -494,6 +494,7 @@ I18N_R = r"""# =================================================================
   label.meta_de = list(en = "Design effect (DE):", zh = "设计效应 (DE):"),
   label.meta_n_eff = list(en = "Effective N per study:", zh = "每研究有效样本 N':"),
   label.meta_het_sweep = list(en = "Required K by heterogeneity (I2 -> K):", zh = "不同异质性水平所需研究数（I2 -> K）:"),
+  label.meta_sd_conv = list(en = "Effect d = delta / sigma:", zh = "效应量折算 d = Δ / σ:"),
   label.k_studies = list(en = "Studies needed (K):", zh = "所需研究数 (K):"),
   label.baseline_rate = list(en = "Baseline rate p0:", zh = "基线率 p0:"),
   label.odds_ratio = list(en = "Odds ratio:", zh = "优势比:"),
@@ -2267,6 +2268,16 @@ cat(._qt("label.n_total_result"), ss_regression_linear({_u}, {_f2}, {args.alpha}
     elif args.test == "meta_planning":
         _et = args.effect_type if args.effect_type is not None else "smd"
         _eff = args.effect if args.effect is not None else 0.3
+        # σ 折算（2026-10-21）：提供 --sd 时 --effect 视为原始均差 Δ，自动折算 d = Δ/σ；
+        # 仅 smd/paired 有意义（or/rr/cor/cluster 效应量无量纲，填 sd 忽略）。
+        # 与 coze 端口径一致（d_val 被 _BUILD_CODE_EXCLUDE 排除，本地自行折算）。
+        _sd = args.sd if getattr(args, "sd", None) is not None else None
+        _sd_conv = bool(_sd is not None and _sd > 0 and _et in ("smd", "paired"))
+        _eff_raw = _eff
+        if _sd_conv:
+            _eff = _eff_raw / _sd
+        _sd_echo = (f'cat(._qt("label.meta_sd_conv"), "{_eff_raw:g} / {_sd:g} = {_eff:g}", "\\n")\n'
+                    if _sd_conv else "")
         _N = args.n_per_study if args.n_per_study is not None else 100
         _i2r = "NULL" if args.i2 is None else str(args.i2)
         _Rr = "NULL" if args.R is None else str(args.R)
@@ -2297,6 +2308,7 @@ cat(._qt("label.meta_n_eff"), {_N} / het_DE, "\\n")
             r_code = R_PASS_EXT + f"""
 cat(._qt("header.meta_planning"), "\\n")
 cat(._qt("label.effect_type"), "{_et}", ._qt("label.effect"), {_eff}, ._qt("label.n_per_study"), {_N}, "\\n")
+{_sd_echo}
 cat(._qt("label.i2"), {_i2r}, "\\n")
 cat(._qt("label.k_studies"), {args.k_studies}, "\\n")
 cat(._qt("label.achieved_power"), ss_meta_planning("{_et}", {_eff}, {_N}, i2={_i2r}, K={args.k_studies}, {_common}), "\\n")
@@ -2305,6 +2317,7 @@ cat(._qt("label.achieved_power"), ss_meta_planning("{_et}", {_eff}, {_N}, i2={_i
             r_code = R_PASS_EXT + f"""
 cat(._qt("header.meta_planning"), "\\n")
 cat(._qt("label.effect_type"), "{_et}", ._qt("label.effect"), {_eff}, ._qt("label.n_per_study"), {_N}, "\\n")
+{_sd_echo}
 cat(._qt("label.i2"), {_i2r}, "\\n")
 cat(._qt("label.target_power"), {args.power}, "\\n")
 cat(._qt("label.k_studies"), ss_meta_planning("{_et}", {_eff}, {_N}, i2={_i2r}, power={args.power}, {_common}), "\\n")

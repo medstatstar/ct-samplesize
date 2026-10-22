@@ -223,3 +223,39 @@ ct-samplesize/
 - MCPAN: https://cran.r-project.org/web/packages/MCPAN/
 - powerMediation: https://cran.r-project.org/web/packages/powerMediation/
 - CRAN ClinicalTrials View: https://cran.r-project.org/web/views/ClinicalTrials.html
+
+
+## 效应量参考库：命令行入口（自 README 4.14 移入，2026-10-22 v5.13.27 规范对齐）
+
+展示模式（绝不静默代入）：
+
+```bash
+python scripts/samplesize_power.py --test ttest_ind \
+    --effect-ref references/effect_size_benchmarks/肝细胞癌__OS.json \
+    --ta "肝细胞癌" --endpoint "OS" --show-assumptions
+```
+
+显式采纳（来源可审计）：
+
+```bash
+python scripts/samplesize_power.py --test ttest_ind \
+    --effect-ref references/effect_size_benchmarks/肝细胞癌__OS.json \
+    --adopt-ref conservative --sd 10 --side two --power 0.8
+```
+
+- 采纳后：来源与 `basis` 打印到 stdout、写入假设清单 `references` 段，可复现 R 代码注释标注来源。
+- 敏感场景可 `--adopt-ref low|high` 做三点敏感性（CI 下界 / 中位 / 上界各算一次），或 `--adopt-ref <序号>` 指定单一来源。
+- 可采纳的参考类型（`param`/`scale`）：`effect`（d/MD/SMD，服务 ttest / anova / meta_planning）、`hazard_ratio`（HR，服务生存检验）、`odds_ratio`（OR，服务 ci_or / regression_logistic）、`risk_ratio`（RR，服务 ci_rr / regression_poisson / rates_ext；OR/RR 参考经 `--effect` 落地，引擎比值通道读 `effect`）。
+- 候选条目核实后 `--confirm` 入库 `references/effect_size_benchmarks/`；检索由 `adapters/ma_extractor.py` 完成。
+
+
+## 工作台（Workbench）启动与功能概览（2026-10-22 自 README 第七节收敛）
+
+- **在线门户（免安装）**：https://ct.medstatstar.com —— 与本地工作台同一套功能与 65 种检验目录。
+- **本地启动**：`cd adapters/workbench && python server.py 8790`（默认连真实 coze R 引擎；
+  `CTSS_COZE_MOCK=1` 离线演示模式；`CTSS_BACKEND=local_r` 走本机 R 开发后端，仅 dev/回归用）。
+- **核心功能**：自然语言一键识别（零 LLM 确定性路由 + 大模型兜底）、65 检验动态表单、
+  效应量助手、曲线 / 分配比图、当前分析设定卡、关键数值卡片、内联 SVG 图形（可切 PNG）、
+  可复现 R 代码、coze 请求信封预览（不发）、会话线程 diff（继承 / 覆盖 / 缺失）、
+  多组对比表、一键导出单文件 HTML 报告、脱敏两阶段反馈上报。
+- 咨询类表述（如"这个检验是什么意思"）不会触发云端计算——结果区给出提示，避免误耗算力。

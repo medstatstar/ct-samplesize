@@ -2,14 +2,16 @@
 # -*- coding: utf-8 -*-
 """
 justify_text.py — IRB/SAP-ready 样本量论证段落生成（中英对照）
-（ct-update upgrade J2，对标 calc-sample-size 的 IRB-ready justification +
- medsyniq-lite 的"监管感知"叙事，2026-09-29）
+（ct-update upgrade J3，v5.13.13，对标 CONSORT 2025 item 16a + ICH E9(R1) estimand +
+ CDE《药物临床试验样本量估计指导原则（试行）》2024-12-23 + CASRAI MCID 披露规范）
 
-措辞骨架逐句锚定两套权威结构（非抄第三方模板）：
-  * CONSORT-SPIRIT Item 14 / DELTA2 Box 4（sample size 报告清单：主终点 → α/power →
-    目标差值按终点类型 → 分配比 → 公式/软件 + 脱落校正 → 敏感性；依据声明）
+措辞骨架逐句锚定三套权威结构（非抄第三方模板）：
+  * CONSORT 2025 item 16a（新增 7 项之一的样本量报告清单：主终点 → 各组假设值 →
+    目标差值+依据 → α/power → 脱落/不依从校正 → 每组例数 → 软件版本）
+  * ICH E9(R1) estimand 框架：人群 / 治疗条件 / 终点 / 伴发事件处理策略
   * CDE《药物临床试验样本量估计指导原则（试行）》（2024-12-23 施行）：试验设计 →
     检验水准与效能 → 统计方法假设 → 预期治疗效应及变异的参数依据 → 样本量调整沟通
+  * CASRAI MCID 披露规范：评估工具 / MCID 来源 / 人群 / 锚定方法 / 预设阈值用途
   输出为**双栏对照段落 + 〔占位符〕**：可粘贴进方案 14 节 / SAP 后由研究者补全
   引用文献与机构信息。本模块只产措辞骨架，不替研究者做临床判断——所有"依据"句
   都强制暴露来源占位，防『伪造精确』（anti fake-precision）。
@@ -39,15 +41,15 @@ def _engine_str(meta=None):
     形如：R 4.3.1 + rpact 3.5.1 + TrialSize 0.3.2。
     """
     meta = meta or {}
-    rv = meta.get("r_version") or ""
-    if rv.lower() in ("", "mock"):      # mock 信封版本不渲染进正式段落
+    rv = (meta.get("r_version") or "").strip()
+    # r_version 常含 "R version" 前缀（如 coze 返回 "R version 4.6.1 (2026-06-24)"），
+    # 统一 strip 避免 "R R version 4.6.1" 重复
+    rv = rv.replace("R version", "version", 1) if rv.lower().startswith("r version ") else rv
+    if not rv or rv.lower() == "mock":
         rv = _PLACEHOLDER
+    # 遍历所有实际调用的包（不硬编码包名，不同检验用不同包：pwr/rpact/PowerTOST 等）
     pk = meta.get("packages") or {}
-    pk_bits = []
-    for name in ("rpact", "TrialSize", "PowerTOST"):
-        ver = pk.get(name) or pk.get(name.lower())
-        if ver:
-            pk_bits.append("%s %s" % (name, ver))
+    pk_bits = ["%s %s" % (name, ver) for name, ver in sorted(pk.items()) if ver]
     if not pk_bits:
         pk_bits.append("rpact/TrialSize " + _PLACEHOLDER)
     return "R %s + %s" % (rv, " + ".join(pk_bits))
@@ -60,6 +62,14 @@ def _ctx(test, args, d_val, n_total, mcid_mode, meta=None):
     _effect = g("effect")
     if _effect is None and g("mcid") is not None:
         _effect = g("mcid")
+    # HR 取值回退链（v5.13.9）：不同生存检验的 HR dest 不同——
+    #   survival 系 hazard_ratio / gsd·ni·eq 系 hr_expected /
+    #   survival_exact 系 hr_exact / survival_superiority 系 sup_hr。
+    # 旧版只读 hazard_ratio，导致 gsd_survival 等检验的 HR 渲染成占位符。
+    _hr = g("hazard_ratio")
+    for _k in ("hr_expected", "hr_exact", "sup_hr"):
+        if _hr is None:
+            _hr = g(_k)
     return {
         "test": test or _PLACEHOLDER,
         "engine": _engine_str(meta),
@@ -72,9 +82,10 @@ def _ctx(test, args, d_val, n_total, mcid_mode, meta=None):
         "sd": _fmt(g("sd")),
         "ratio": _fmt(g("ratio") if g("ratio") is not None else 1),
         "n": _fmt(n_total),
+        "n_total": _fmt(n_total),
         "dropout": _fmt(g("dropout_rate")),
         "margin": _fmt(g("margin")),
-        "hr": _fmt(g("hazard_ratio")),
+        "hr": _fmt(_hr),
         "p1": _fmt(g("p1")),
         "p2": _fmt(g("p2")),
         "mcid": _fmt(g("mcid")),
@@ -207,6 +218,147 @@ GENERIC = {
     ],
 }
 
+# ---------------------------------------------------------------------------
+# CONSORT 2025 item 16a 合规声明块（v5.13.13 新增）
+# ---------------------------------------------------------------------------
+_CONSORT_COMPLIANCE = {
+    "en": [
+        "",
+        "--- CONSORT 2025 Item 16a Compliance Checklist ---",
+        "□ Primary outcome on which sample size is based: {test} "
+        "(endpoint: [__specify]; time point: [__specify])",
+        "□ Outcome values assumed per group: control = {p1}, treatment = {p2} "
+        "(source: [__cite])",
+        "□ Target difference: {effect} (MCID = {mcid}; source: {mcid_src})",
+        "□ Common standard deviation: {sd} (source: [__cite])",
+        "□ Significance level (α): {alpha} ({side_en})",
+        "□ Statistical power (1-β): {power}",
+        "□ Adjustments: dropout allowance {dropout}; "
+        "[__other: clustering/multiplicity/non-adherence]",
+        "□ Target sample size: {n_total} total [{n}]",
+        "□ Software: {engine}; formula/R code in appendix",
+        "□ Interim analyses / stopping guidelines: [__specify in SAP]",
+        "",
+        "Recommended citation format (CONSORT 2025):",
+        "  'The sample size was calculated using {engine} to detect a between-group "
+        "difference of {effect} in {test} with {alpha} {side_en} significance and "
+        "{power} power, assuming a standard deviation of {sd}, requiring {n_total} "
+        "participants (allowing {dropout} for attrition). This follows ICH E9(R1) "
+        "estimand framework for [__specify population / intercurrent events].'",
+    ],
+    "zh": [
+        "",
+        "--- CONSORT 2025 条目 16a 合规检查表 ---",
+        "□ 样本量计算所基于的主要终点：{test}（终点：〔填写〕；时点：〔填写〕）",
+        "□ 各组假设值：对照组 = {p1}，试验组 = {p2}（来源：〔引用〕）",
+        "□ 目标差值：{effect}（MCID = {mcid}；来源：{mcid_src}）",
+        "□ 共同标准差：{sd}（来源：〔引用〕）",
+        "□ 检验水准（α）：{alpha}（{side_zh}）",
+        "□ 检验效能（1-β）：{power}",
+        "□ 校正项：脱落率 {dropout}；〔其他：群集/多重性/不依从〕",
+        "□ 每组目标样本量：{n_zh}（合计：{n_total}）",
+        "□ 软件：{engine}；公式与 R 代码见附录",
+        "□ 期中分析 / 停止规则：〔在 SAP 中列明〕",
+        "",
+        "推荐引用格式（CONSORT 2025）：",
+        "  「样本量采用 {engine} 计算，基于 {test} 检测组间差值 {effect}，取 {alpha} "
+        "（{side_zh}）检验水准与 {power} 检验效能，假设标准差为 {sd}，需纳入 "
+        "{n_total} 例（计入 {dropout} 脱落）。遵循 ICH E9(R1) estimand 框架"
+        "〔填写人群 / 伴发事件处理策略〕。」",
+    ],
+}
+
+# ---------------------------------------------------------------------------
+# ICH E9(R1) estimand 框架对齐块（v5.13.13 新增）
+# ---------------------------------------------------------------------------
+_ESTIMAND_ALIGN = {
+    "en": [
+        "",
+        "--- ICH E9(R1) Estimand Alignment ---",
+        "Population: [__specify eligible population per ICH E9(R1) Section 2.2]",
+        "Treatment condition: [__experimental + comparator per protocol]",
+        "Endpoint: {test} measured at [__time point] on [__scale]",
+        "Intercurrent events strategy: "
+        "  • Treatment discontinuation: [__treatment policy / hypothetical / composite] "
+        "  • Rescue medication: [__strategy per ICH E9(R1) Section 5]",
+        "  • Death (if applicable): [__composite / while-on-treatment / hypothetical]",
+        "Population-level summary measure: [__difference in means / hazard ratio / "
+        "risk ratio / odds ratio — match to test]",
+        "",
+        "MCID anchor disclosure (CASRAI):",
+        "  • Outcome instrument: [__specify PRO/ClinRO/PerfO]",
+        "  • MCID source: {mcid_src}",
+        "  • Estimation method: [__anchor-based / distribution-based / expert consensus]",
+        "  • Population in which MCID was derived: [__specify — must match target population]",
+        "  • MCID threshold: {mcid} (used for sample size, NOT for post-hoc power)",
+    ],
+    "zh": [
+        "",
+        "--- ICH E9(R1) Estimand 框架对齐 ---",
+        "人群（Population）：〔按 ICH E9(R1) 第 2.2 条列明合格人群〕",
+        "治疗条件：〔试验药 + 对照药，按方案定义〕",
+        "终点（Endpoint）：{test}，测量时点〔 〕、尺度〔 〕",
+        "伴发事件（Intercurrent events）处理策略：",
+        "  • 治疗中止：〔治疗策略 / 假设性 / 复合终点〕",
+        "  • 救援用药：〔按 ICH E9(R1) 第 5 条策略〕",
+        "  • 死亡（如适用）：〔复合 / 治疗期间 / 假设性〕",
+        "人群水平汇总度量：〔均差 / 风险比 / 率比 / 比值比 — 与检验匹配〕",
+        "",
+        "MCID 锚定披露（CASRAI 规范）：",
+        "  • 评估工具：〔报告结局 / 医生报告结局 / 性能结局〕",
+        "  • MCID 来源：{mcid_src}",
+        "  • 估算方法：〔锚定法 / 分布法 / 专家共识〕",
+        "  • MCID 推导人群：〔 — 须与目标人群匹配〕",
+        "  • MCID 阈值：{mcid}（用于样本量计算，非事后效能）",
+    ],
+}
+
+# ---------------------------------------------------------------------------
+# 引用推荐块（v5.13.13 新增）
+# ---------------------------------------------------------------------------
+_REFERENCE_RECOMMENDATIONS = {
+    "en": [
+        "",
+        "--- Recommended References ---",
+        "Sample size methodology:",
+        "  • Chow SC, Wang H, Shao J. Sample Size Calculations in Clinical Research. "
+        "3rd ed. CRC Press; 2017.",
+        "  • Julious SA. Sample sizes for clinical trials. Chapman and Hall/CRC; 2010.",
+        "Reporting guidelines:",
+        "  • CONSORT 2025 Statement (Lancet 2025; item 16a: sample size determination)",
+        "  • SPIRIT 2025 Statement (JAMA 2025; item 13: sample size estimation)",
+        "Regulatory guidance:",
+        "  • ICH E9(R1): Addendum on estimands and sensitivity analysis (2019)",
+        "  • CDE. 药物临床试验样本量估计指导原则（试行）. 2024-12-23.",
+        "  • FDA. Guidance on Non-Inferiority Trials (2016); EMA CHMP Guideline (2005)",
+        "MCID methodology (if applicable):",
+        "  • Revicki D et al. Responder definitions and validating conclusions. "
+        "Pharmacoeconomics. 2008;26(6):451-464.",
+        "  • Revicki D et al. Recommended methods for determining responsiveness "
+        "and minimally important differences. J Clin Epidemiol. 2008;61(2):102-109.",
+    ],
+    "zh": [
+        "",
+        "--- 推荐参考文献 ---",
+        "样本量方法学：",
+        "  • Chow SC, Wang H, Shao J. Sample Size Calculations in Clinical Research. "
+        "3rd ed. CRC Press; 2017.",
+        "  • Julious SA. Sample sizes for clinical trials. Chapman and Hall/CRC; 2010.",
+        "报告规范：",
+        "  • CONSORT 2025 Statement（Lancet 2025；条目 16a：样本量确定）",
+        "  • SPIRIT 2025 Statement（JAMA 2025；条目 13：样本量估计）",
+        "监管指导原则：",
+        "  • ICH E9(R1)：Estimands 与敏感性分析增补（2019）",
+        "  • CDE《药物临床试验样本量估计指导原则（试行）》. 2024-12-23.",
+        "  • FDA Non-Inferiority Trials Guidance (2016)；EMA CHMP Guideline (2005)",
+        "MCID 方法学（如适用）：",
+        "  • Revicki D et al. Responder definitions and validating conclusions. "
+        "Pharmacoeconomics. 2008;26(6):451-464.",
+        "  • Revicki D et al. Recommended methods for determining responsiveness "
+        "and minimally important differences. J Clin Epidemiol. 2008;61(2):102-109.",
+    ],
+}
+
 _VARIANTS = [
     (("non_inferiority", "equivalence", "ni_survival", "be_tost",
       "superiority_margin", "survival_equivalence"), NONINFERIORITY),
@@ -247,10 +399,11 @@ def render(test, args, d_val, n_total=None, mcid_mode=False, n_note="总", meta=
     block = _pick(test or "")
     out = []
     out.append("\n\n" + "=" * 60)
-    out.append("样本量论证段落 / Sample-Size Justification (IRB/SAP-ready)")
+    out.append("样本量论证段落 / Sample-Size Justification (IRB/SAP-ready) — v5.13.13")
     out.append("=" * 60)
-    out.append("> 骨架：CONSORT-SPIRIT Item 14 + DELTA2 Box 4（英文可审计语序）；CDE《药物临床试验样本量估计指导原则（试行）》2024-12-23（中文口径）。")
-    out.append("> 用法：粘贴至方案『样本量』小节 / SAP；所有 [__ ] 与 ___ 占位必须由研究者填实（依据引用、机构信息），不得留白提交。本段落不替代监管沟通。\n")
+    out.append("> 骨架：CONSORT 2025 item 16a + ICH E9(R1) estimand + DELTA2 Box 4；CDE《药物临床试验样本量估计指导原则（试行）》2024-12-23（中文口径）。")
+    out.append("> 用法：粘贴至方案『样本量』小节 / SAP；所有 [__ ] 与 ___ 占位必须由研究者填实（依据引用、机构信息），不得留白提交。本段落不替代监管沟通。")
+    out.append("> 本次输出新增：CONSORT 2025 条目 16a 合规检查表 + ICH E9(R1) estimand 对齐块 + MCID 锚定披露 + 推荐参考文献。\n")
     out.append("【EN】")
     for i, s in enumerate(block["en"], 1):
         out.append("%d. " % i + s.format(**ctx))
@@ -263,6 +416,35 @@ def render(test, args, d_val, n_total=None, mcid_mode=False, n_note="总", meta=
         out.append("[MCID] 本文段落已注入 MCID 叙事：MCID=%s（原始单位）、SD=%s、d=%s；"
                    "依据声明：%s" % (_fmt(args.mcid), _fmt(getattr(args, "sd", None)),
                                     ctx["d"], getattr(args, "mcid_source", None) or _PLACEHOLDER))
+    # v5.13.13：追加 CONSORT 2025 合规检查表
+    out.append("")
+    out.append("【EN】" + _CONSORT_COMPLIANCE["en"][0])
+    for s in _CONSORT_COMPLIANCE["en"][1:]:
+        out.append(s.format(**ctx))
+    out.append("")
+    out.append("【中文】" + _CONSORT_COMPLIANCE["zh"][0])
+    for s in _CONSORT_COMPLIANCE["zh"][1:]:
+        out.append(s.format(**ctx))
+    # v5.13.13：追加 estimand 对齐块（仅非劣效/生存/MCID 模式显示完整）
+    if mcid_mode or test in ("non_inferiority", "equivalence", "survival",
+                              "survival_exact", "ni_survival", "be_tost"):
+        out.append("")
+        out.append("【EN】" + _ESTIMAND_ALIGN["en"][0])
+        for s in _ESTIMAND_ALIGN["en"][1:]:
+            out.append(s.format(**ctx))
+        out.append("")
+        out.append("【中文】" + _ESTIMAND_ALIGN["zh"][0])
+        for s in _ESTIMAND_ALIGN["zh"][1:]:
+            out.append(s.format(**ctx))
+    # v5.13.13：追加推荐参考文献
+    out.append("")
+    out.append("【EN】" + _REFERENCE_RECOMMENDATIONS["en"][0])
+    for s in _REFERENCE_RECOMMENDATIONS["en"][1:]:
+        out.append(s.format(**ctx))
+    out.append("")
+    out.append("【中文】" + _REFERENCE_RECOMMENDATIONS["zh"][0])
+    for s in _REFERENCE_RECOMMENDATIONS["zh"][1:]:
+        out.append(s.format(**ctx))
     return "\n".join(out)
 
 

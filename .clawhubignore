@@ -88,5 +88,20 @@ workbench/
 workbench/publish-kit/
 workbench/publish-dist/
 
+# 发布构建旧版本暂存（与 .gitignore 对齐，v5.12.0）
+workbench/_publish_trash/
+
 # ── F20 周备份目录（与 .gitignore 对齐，不进发布包）──
 _bak_weekly_*/
+
+# ── 反盗调遥测本地落盘（与 .gitignore 对齐，2026-10-21）──
+antiscrape_telemetry.jsonl
+*.telemetry.jsonl
+
+# ── 临时/运行产物垃圾（2026-10-21 与 .gitignore 对齐；ClawHub 不读 .gitignore 须自列）──
+*.tmp
+result.json
+*.out.json
+*.jsonl
+*.orig
+*.rej

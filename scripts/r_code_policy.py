@@ -9,8 +9,9 @@
     将 repro.r 替换为提示文案——两侧同源维护，增删方法必须同步改两处。
 
 分层依据（与用户确认的提案一致）：
-  A 类（提供 R 代码，39 个）= 经典教科书方法（封闭公式或单一权威包调用）
-  B 类（不提供，26 个）  = 序贯/自适应/蒙特卡洛模拟/先验借用/新兴复杂设计
+  A 类（提供 R 代码，38 个）= 经典教科书方法（封闭公式或单一权威包调用）
+  B 类（不提供，27 个）  = 序贯/自适应/蒙特卡洛模拟/先验借用/新兴复杂设计
+                         （2026-10-19 追加：meta_planning 纯商业保护划入，非复杂度依据）
 """
 from __future__ import annotations
 
@@ -33,6 +34,9 @@ R_CODE_UNAVAILABLE_TESTS = frozenset({
     # 生存高级（非劣效 / 等效 / 优效 / 精确 / 竞争风险 / 复发事件）
     "ni_survival", "survival_equivalence", "survival_superiority",
     "survival_exact", "competing_risks", "recurrent_events",
+    # Meta 分析前瞻性规划（2026-10-19 产品决策：纯商业保护划入 B 类，
+    # 非复杂度依据 —— 该检验为 Hedges & Pigott (2001) 封闭公式法）
+    "meta_planning",
 })
 
 #: 提示文案（与用户确认的版本一致；i18n 的 info.r_code_unavailable 同文）

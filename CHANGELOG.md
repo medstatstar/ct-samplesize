@@ -1,6 +1,337 @@
 # Changelog / 版本历史
 
 
+## 5.13.28 — 2026-10-22 · README 对齐 ct-sdtm 样板写法 + 生存类 event_rate 契约补登
+
+### 契约缺口修复：三个生存方法的 event_rate 此前无法提供（本地已生效，无需重新部署 coze）
+- 复核 README 案例数值时实测发现：`ni_survival` 传 `event_rate=0.7` 被丢弃（契约未登记），引擎恒按默认 0.6 计算——与 survival 已登记 event_rate 不一致
+- 修复：`_contract_index.json` 与 `MIN_REQUIRED` 为 `ni_survival` / `survival_equivalence` / `survival_superiority` 补登 `event_rate`（插在 followup_time 后）
+- 实测：er=0.6 → 每组 730（P=0.3402）；er=0.7 → 每组 601（P=0.4132），杠杆生效
+- **无需重新部署 coze**：R 引擎（v5.13.26 已上线）本就消费该键，缺的只是本地白名单登记；但云端 coze 工作流表单若未提供 event_rate 输入项，需人工核对补配
+
+### README 对齐 ct-sdtm 样板（§13.17）
+- 案例大全导语改为 ct-sdtm 式单句引用块（删除"学会本技能最快的方式就是看例子"元描述段——§13.17 导语禁令），并提示生存类设计需给出事件率与时间表
+- D1 / D2 案例卡的生存数值从旧口径（196 事件 / 330–360 例、370 例——B 方案前的算法）更新为 v5.13.26 新口径实测值：D1 → 434 事件 / 每组 929（P=0.2337）；D2 → 每组 730（P=0.3402），并补"事件率杠杆"教学点（er=0.7 → 601）
+- 案例区确认无工作台操作混入（工作台描述收敛于第七节极简披露，见 5.13.27）
+- **案例大全按"每大方向 2–3 张代表卡"精简（62 → 30 张，中英一致）**：
+  - 保留原则：每节留基础卡 + 最具独有价值的卡（如 4.1 留 A1/A2、4.4 留 D1/D2、4.13 留 N1–N3、4.17 留 BE / 生存时间表 / SSR 三张）
+  - 删除 32 张：参数化变体（B2/J2/K2）、跨节重复的选型路由卡（A3/D3/H3 中与弹出菜单示例重复者）、已被 S 系列实测卡覆盖的同族卡、纯增量小功能卡（N4/Q6/Q7/R1 等）
+  - N/Q/R/S 节内重编号连续（N1–N3 / Q1–Q3 / R1–R2 / S1–S3）；D1 卡与导语的"见 S9"引用同步改"见 S2"
+  - 被删能力兜底核对通过：全部 65 种检验仍在「二、场景索引」表中可发现（每行含"试试这样说"）
+- README 篇幅：zh 883→~590 行、en 914→~620 行
+- **删除「七、工作台（Web 工作台）与在线门户」极简披露节（中英同步）**：与首屏「不安装也能用」入口块重复；工作台披露由首屏入口块 + ADVANCED 附录承载，规范已固化进 ct-base v1.4.7（README 不设工作台独立章节）
+- **「一、如何在对话里使用」与案例大全去重（§13.17 三-3）**：原 6 个示例中 4 个与案例卡重复（两均数≈A1、两组率≈B1、生存+期中≈D1/F、非劣曲线≈B3/K），删除并重构为 3 个不重叠示例——示例 1「说清设计直接算」（完整流程三步：安全预览 → 请直接计算 → R 代码）、示例 2「不确定该用什么检验」（grill-me 追问，§13.3 强制）、示例 3「卡在选型给菜单」（弹出菜单，§13.3 强制）；导语明确指向第四节 30 张案例卡
+
+---
+
+## 5.13.27 — 2026-10-22 · README 按 ct-base §13 最新规范全面对齐 + 案例大幅扩充
+
+> 依据 ct-base `docs/06-readme-brand.md`（§13.3 结构 / §13.4 双语互链 / §13.15 免安装入口 / §13.17 净化清单）全面检查两份 README。
+
+### 新增案例 4.19 S1–S15（中英双语同步，全部为引擎实测数值）
+- 覆盖既有 A–R 系列未涉及的检验族：单样本 t（34）、单组率（736，含"绝对差距敏感性"教学点）、ANOVA 三臂（53）、优效性界值（160）、均数等效性（310）、BE-TOST（28，含 GMR 0.90→56 的快速上升教学点）、精确生存（760，分期事件）、单臂生存（172）、**时间表影响样本量（survival 529/626/499 + 期望事件比例，v5.13.26 B 方案核心新能力）**、中介效应（1057）、混合模型模拟功效（0.700/0.445 + 饱和提示）、条件功率与 SSR（77.8% / 450 / +125%）、must-win（62）、多重终点 Bonferroni（88→176）、计数终点成组序贯（33）
+- 案例卡总数 51 → **86**（双语一致）
+
+### 净化对齐（§13.17 第五条：全文级技术细节净化）
+- 移除全文 CLI 命令块与内部路径（`python scripts/...`、`adapters/ma_extractor.py`、`references/menu.md`、`--adopt-ref` / `--confirm` / `scripts/office_to_md.py` 等），改写为使用者对话语言（"采纳保守界" / "按序号单选" / "列出全部 65 种检验"）
+- 被移除的命令行入口完整迁入 `docs/ADVANCED.md` / `docs/ADVANCED_zh-CN.md`（内容零丢失）
+- 双语净化后残留扫描：0
+
+### 结构精简（2026-10-22 追加）
+- 删除「工作台 UI（Web 工作台）实操指南」整段（W1–W18 逐步教学），收敛为一节极简披露（工作台与对话共用引擎/目录 + 免安装门户入口 + 指向 ADVANCED）；启动方式与功能概览迁入 `docs/ADVANCED*.md`
+- 删除 4.16「错误上报与工作台 / 在线门户」案例节（P1/P2——与技能核心计算功能关系不大；错误上报能力保留于 FAQ 与第五节安全声明，工作台披露保留于第七节极简节），后续节号连续重排（4.17→4.16、4.18→4.17、4.19→4.18），尾部提示引用同步
+- 按 §13.17 禁入类再筛一轮：删除 L1/L2（跨轮追问——会话行为演示 / 参数化变体，能力转 FAQ「能接着上一轮的计算改参数吗」）、M1（安全预览演示——首屏与每卡「📌」已覆盖）、M3（强制语种——首屏与 FAQ 已覆盖）；M2（涉密输入数据不出域）保留为独立节「4.12 涉密输入与数据不出域」，后续节号连续重排（4.13→4.12 … 4.18→4.17），交叉引用同步
+- 新增「版本信息」页脚节（当前版本 / CHANGELOG 链接 / License / Authors / 联系作者），联系邮箱全文单点化（保密声明块内的 📧 行删除，§13.17 第八条）；六节内过期旧页脚（v5.13.21）归一
+
+---
+
+## 5.13.26 — 2026-10-22 · 入组期/随访期真正进入样本量换算（B 方案，口径变更）
+
+> 背景：5.13.25 全方法测试发现「表单可填但求 n 时完全不影响结果」的参数，用户选 B 方案改模型。本轮把 `accrual_time` / `followup_time` 从「摆设」变成真实输入：样本量不再用 `n = d / event_rate` 直接除（等价于假设人人都完整随访 A+F），而是 `n = d / P(event)`，其中 P 由入组期、随访期与事件率按指数生存 + 均匀入组积分算出。
+>
+> **这是口径变更**：同一组参数下，四个生存方法的样本量会变大（更保守、更接近真实设计）。旧口径只有在「随访期缺失」时才保留（`.event_prob` 自动退回 event_rate）。
+
+### 新增 `.event_prob()`（samplesize_functions.R）
+- 模型：对照臂 λ = −log(1−event_rate)/(A+F)（沿用 `survival_exact` 的事件率口径：研究结束时的累积事件比例）；均匀入组、入组期 A、再随访 F：
+  `P = 1 − (exp(−λF) − exp(−λ(A+F))) / (λA)`
+- dropout（单位时间脱落率 δ）按竞争删失折算：λ → λ+δ，并乘 λ/(λ+δ)
+- 自洽性校验：A→0 时 P → event_rate（瞬时入组退化为原口径）；缺 A 或 F≤0 时直接返回 event_rate（向后兼容）
+- 单调性校验：A↑（随访期不变）→ 平均随访变短 → P↓ → n↑；F↑ → P↑ → n↓
+
+### 四个方法接入
+| 方法 | 改动 |
+|---|---|
+| `survival` | `ss_survival_logrank` 删除恒返 NaN 的 TrialSize 分支（`TwoSampleSurvival.Equality` 实测 NaN，从未生效），统一 `n = d / P` |
+| `ni_survival` | `Cox.NIS(d = event_rate)` → `d = P`（Cox.NIS 源码中 d 即事件比例，n ∝ 1/d）；兜底与反解 power 同步 |
+| `survival_equivalence` | `ceiling(ev_pg1 / event_rate)` → `/ P`；反解 power 的期望事件数同步 |
+| `survival_superiority` | 同上 |
+
+### 契约与表单修正（survival）
+- `tests/coze_cases/_contract_index.json`：`survival.required` 补登 `followup_time`（此前未登记 → `build_params` 丢包 → R 端只拿到 accrual、无法换算，这是 accrual 长期不生效的直接原因）
+- `form_schema.MIN_REQUIRED["survival"]` 同步加 `followup_time`（表单必填区显示，默认 12 与 CLI 一致）
+
+### 透明性
+- narrative 增加「期望事件比例 (由入组期/随访期推算)」，`stats.event_prob` 同步下发——用户可自行核对 `n = d / P`
+- 顺带修 `10%%` 未转义的显示瑕疵（label 未经 sprintf，应为单 `%`）
+
+### 云端部署反馈加固（2026-10-22，已回写镜像）
+- `.event_prob()` 的 NULL/空向量防护：`as.numeric(NULL)` 返回 `numeric(0)`，`is.na()` 随之返回 `logical(0)`，短路 `||` 直接抛 "missing value where TRUE/FALSE needed"。`er` / `A` / `F` / `dl` 四个入参全部加 `length()==0` 守卫；缺时间信息时安全退回 event_rate（原口径）。云端部署实测发现并修复，已同步回本地镜像并重打包。
+
+### 实测（本机 R 后端）
+| 场景 | 修复前 | 修复后 |
+|---|---|---|
+| survival HR=0.7 er=0.3 A=12 F=6 | 每组 412（与 A 无关） | 每组 **589**（P=0.2098） |
+| survival A=36 F=6 | 412 | **682**（P=0.1812） |
+| survival A=12 F=18 | 412 | **499**（P=0.2476） |
+| ni_survival A=12/36 F=12 | 414 / 414 | **730 / 1072** |
+| survival_equivalence A=12/36 F=12 | 574 / 574 | **1011 / 1484** |
+| survival_superiority A=12/36 F=12 | 656 / 656 | **440 / 645**（sup_hr=0.6 口径） |
+
+回归：高级选项 25 用例 **25/25 PASS**；全方法 65 用例（含新口径）**全部 PASS**。
+
+---
+
+## 5.13.25 — 2026-10-22 · 全方法覆盖测试 + D4/D5/D6 修复（参数名不一致 / narrative 格式化）
+
+> 背景：对工作台 **65 个方法**做基础功能覆盖测试（每方法必填参数求 n），再对 **190 个必填参数**做「双值扰动」生效性测试（判断参数是否真的被引擎消费）。发现 3 类问题：narrative 把 list 当数值格式化（D4）、表单字段名与引擎读取键不一致导致用户填了不生效（D5/D6）；另有若干「表单可见但在该模式下不参与计算」的参数（已在报告中列明，属产品决策，未擅改统计模型）。
+
+### D4：cox_covariate narrative 把 list 直接格式化
+- `ss_cox_cov(power=)` 返回 `list(d=, n=)`，此前 `n <- ss_cox_cov(...)` 后整个 list 喂给 `.line()`，页面渲染成 `n (合计): 93.350941798387 312`（事件数与样本量拼成怪数），且 `stats$n` 是 list 污染前端数值卡
+- 修复：拆开呈现「所需事件数 (d)」与「n (合计)」；`stats` 改为 `n`（整数）+ `events`（一位小数）
+
+### D5：assurance 成功界值（margin）用户填了不生效
+- 表单字段 `--margin`（`MIN_REQUIRED` 同）→ 进 `p$margin`；引擎只认 `p$margin_assurance`，于是恒回落 0.05
+- 修复：R 端两键兼收 `p$margin_assurance %||% p$margin`。实测 margin 0.10→保证度 31.4%、0.30→4.9%，文本界值同步正确
+
+### D6：gsd_*_sim 模拟次数（n_sim）用户填了不生效
+- 表单字段 `--n_sim` → 进 `p$n_sim`；引擎只认 `p$n_simulations`，恒按 1000 次模拟
+- 修复：`samplesize_functions.R` 两键兼收。实测 150 次→经验功效 0.7533、400 次→0.7700
+
+### 报告存档（工作区）
+- `ct-samplesize_全方法测试报告_20261022.md`：65 方法基础覆盖（65/65 PASS）+ 190 参数生效性（166 EFFECTIVE / 19 NO_EFFECT / 3 LABEL_ONLY / 2 ERROR，逐项判读）
+- `test_all_methods.py` / `test_param_effectiveness.py`：可复跑脚本
+
+---
+
+## 5.13.24 — 2026-10-22 · D1 根因修复（R 引擎三分支对齐）+ 引擎 warnings 通道（D3）
+
+> 背景：5.13.23 的 D1 是**服务端拆分编排**（止血，不碰 coze）。本轮按用户拍板做**根因修复**：直接改 `adapters/coze/src/r_engine/run_task.R`，让引擎自己不再丢主结果。云端 coze 尚未部署新 R，故服务端编排保留作双保险，并新增 `CTSS_D1_SPLIT=0` 开关用于验证 R 端原生行为（否则编排会掩盖引擎行为）。回归中发现第三个断链缺陷 **D3**：引擎 `warnings` 从未写入 `meta`，用户看不到任何降级原因（如「随访曲线仅支持 survival」），本轮一并修复。
+
+### D1 根因修复（run_task.R，与云端共用同一份源码；部署后云端生效）
+- 新增 `.has_solve_anchor(p)`（dispatch 之前）：`power` 或 `nobs` 可解析为数值即视为「主求解锚」
+- `dispatch()` 三分支（`plot_dist` / `curve_power_time_seq` / `curve_heatmap`）改为与 2026-10-07 序列曲线重构**同构**：有锚 → 图累积进 `figs` + continue 主求解（不再提前 return）；无锚（纯图请求）→ 保留原「仅返回图」语义，零回归；图不可用时不阻断主结果，降级为 warning
+- `has_curve_arg` 分支内联的锚判定改为复用 `.has_solve_anchor()`（三分支 + 曲线分支共一处判定）
+- 本机验证（`CTSS_D1_SPLIT=0` 直达引擎）：仅 `power_time_seq`（ttest_ind）→ status=warn + **主结果 n=64 保留** + warning；三开关全开 → 主结果 + 分布图 + 双 warning；纯图无锚 → 原语义不变
+
+### 服务端编排配套（server.py，双副本同步）
+- `_D1_SPLIT_ENABLED`（`CTSS_D1_SPLIT=0` 关闭编排）：让 R 端修复可被独立验证；云端未部署前默认开启，双保险不变
+- `_d1_merge_fig_text()` 行级去重：R 端修复后图 spec 会连带带回主求解文本，去重避免主结果在页面上出现两次（对未修复的旧引擎同样正确）
+
+### D3：引擎 warnings 通道（adapters/coze_client.py，双副本同步）
+- `_envelope_to_result` 此前从未把 `env["warnings"]` 写入 `meta`——R 引擎的降级提示（图为何没出）到不了前端；现已写入（仅非空时）
+- 归一处理：`jsonlite` auto_unbox 使长度 1 的 warnings 序列化成**字符串**，`list()` 会把中文串拆成单字符列表——统一归一为字符串列表（server.py 编排侧同样处理）
+
+### 回归（本机 R 后端，两种模式各 25 用例）
+- `CTSS_D1_SPLIT=0`（直达 R 引擎）：**25/25 PASS**（C1 figures=7 / C2=2 / C5=6 均由单次 R 调用产出）
+- 默认（编排开启，云端等价路径）：**25/25 PASS**，0 缺陷复现、0 意外失败
+
+---
+
+## 5.13.23 — 2026-10-21 · 布尔图开关主结果保护（D1）+ figure_mode=png_file 落地（D2）
+
+> 背景：2026-10-21 工作台 36 个高级选项全量测试（25 用例，本机 R 后端）发现 2 个缺陷：**D1** 布尔图开关（`dist_plot` / `heatmap` / `power_time_seq`）触发 R 引擎 `dispatch()` 提前 return，只回布尔图、样本量主结果整个丢失（云端同参裁定同缺陷）；**D2** `figure_mode=png_file` 三级断链无人消费（前端经 params 通道进 ns，但 R 只产 SVG、服务端无本地转换）。本轮 D1 服务端即时止血、D2 完整修复；D1 根治（R 引擎三分支对齐）列入 coze 修复清单待部署。
+
+### D1：服务端拆分编排（adapters/workbench/server.py，双副本同步：publish-dist）
+- `_d1_fig_switch_on` / `_d1_strip_fig_switches` / `_d1_split_specs` / `_d1_merge_fig_result` / `_compute_fig_split`：检测到布尔开关时拆「主求解（去开关）+ 每个开启的开关各一个单开关图 spec」，经 `compute_batch` 一次调用（云端即一次 batch POST，本机逐项 Rscript）；每个图 spec 只带一个开关——`dispatch()` 对三个开关是「首个命中即 return」，同带多个只会出第一张图
+- 合并规则：主 Result 为体；图 figures 去重追加、narrative 分段追加、图 stats 入 `meta["fig_stats"]`（不覆盖主 stats）、warnings 合并；图 spec 失败（如 ttest_ind + power_time_seq：随访曲线仅支持 survival）降级为 warning，**绝不阻断主结果**
+- 序列曲线参数（`n_seq` 等）不受影响——R 端 2026-10-07 已重构为「主求解+曲线累积」，本来就走正常路径
+
+### D1A：coze 修复清单（docs/coze_fix_backlog.md，待下次 coze 部署）
+- `run_task.R` `dispatch()` ①②③④ 分支从「提前 return 只回图」改为「有主求解锚 → 图累积 + continue；无锚 → 保留纯图 return」（与 `has_curve_arg` 分支同构，锚判定提为 `.has_solve_anchor()` 共用）；含落地要点、验证用例、与服务端兜底的共存决策（R 端修复并云端回归通过前，不得移除服务端编排）
+
+### D2：figure_mode=png_file 完整落地（server.py serialize_result + 三份 HTML）
+- `serialize_result(result, options)`：`figure_mode == "png_file"` 时复用 `adapters/rendering.svg_to_png`（与 CLI `render_figures` 同一处理链：strip clip → fix xml → bbox → viewBox → cairosvg scale=2.0 光栅化）转 base64 PNG，`format` 同步改 `"png"`；cairosvg 不可用 / 单图失败 → 该图降级回 SVG 并在 `meta.warnings` 记录（ct-base §19.9 与 CLI 行为对齐）
+- 双通道覆盖：`options.figure_mode`（API 直调）+ `params.figure_mode`（前端 `data-fig` 通道进 `ns.figure_mode`）；`/api/batch` 逐项 options 同步透传
+- 前端三份文件（`adapters/workbench/workbench.html`、`workbench/index.html`、`workbench/publish-dist/index.html`）新增 `figHTML(f)`：按 `figure.format` 渲染——svg/html 内联、png 走 `data:image/png;base64` URI
+
+### 验证（本机 R 后端，25 用例全量回归）
+- 回归前：21/25 PASS + D1×3 / D2×1 缺陷复现
+- 回归后：C1/C2/C5（D1）与 D1-fig-png（D2）全部转 PASS；冒烟实测 C1 同时开 3 开关 → 主结果 n=64 + 曲线/分布/热力图 3 类图全出（power_time_seq 对 ttest_ind 无效以 warning 明示）；D2 8 图全转有效 PNG（\89PNG magic，单图 ~50KB）
+
+### 默认端口 8765 → 8790（5.13.22 追加：与 meta-analysis 错峰）
+- **根因**：8765 同为 meta-analysis 工作台的默认端口（其 server.py `PORT` 回退值）。两个技能各自裸启动时互抢端口——后启动方的启动流程会杀死先占者（2026-10-21 ct-samplesize 实例两次静默死亡、无 traceback，实为此因，非代码崩溃）
+- **修复**：ct-samplesize `server.py` 默认端口改 8790（`PORT` 环境变量仍优先，发布通道不受影响）；`adapters/workbench/README.md` 与根 `README.md` 中英快速上手同步改 8790。本地裸启动互不干扰；显式传端口行为不变
+
+## 5.13.22 — 2026-10-21 · meta_planning σ 折算落地（sd：effect 为原始均差 Δ 时自动折算 d=Δ/σ）
+
+> 背景：`--sd` 的 argparse help 与 form_schema common 组早承诺「提供 σ 时 effect 视为原始均差 Δ，折算 d=Δ/σ」，但 meta_planning 三条链路都没兑现：coze R 引擎 meta 分发块只读 `p$effect`；本地 R 后端 meta 分支只读 `args.effect`；build_params 又不把 sd 放进信封（CLI 路径只送预折算 d_val，meta 分支此前不采纳）。本轮把折算真正落地（契约 + 双适配器 + 文档），仅 smd/paired 生效（or/rr/cor/cluster 效应量无量纲，填 sd 忽略）。
+
+### 契约（_contract_index.json + coze_contract.md）
+- meta_planning `optional` 通道登记 `sd`（用户显式提供才随信封发送，零回归）；coze_contract.md 第 61 行参数列/备注同步
+- d_val 通道本就对 meta_planning 开启（`_test_consumes_d_val`：required 含 effect）——CLI/workbench 的预折算值自此被 meta 分支采纳
+
+### R 引擎（coze，run_task.R + common.R）
+- meta 分发块：smd/paired 下优先采纳 `p$d_val`（CLI/workbench 预折算），否则 `sd>0` 时 `eff <- eff/sd`（直连接管，如 meta-analysis 工作台）；`eff_raw` 留存供回显
+- 三个分支（MC / K 给定 / 求 K）输出行挂 `.sd_line()`：「效应量折算 d = Δ / σ」；common.R 新增 `label.meta_sd_conv`（中英）
+
+### 本地 R 适配器（local_r_backend.py）
+- meta 分支同口径：smd/paired 下 `args.sd>0` → `_eff = _eff_raw/_sd`（params 经 optional 通道带入 sd；d_val 被 `_BUILD_CODE_EXCLUDE` 排除，本地自行折算）；两个 r_code 分支（K 给定 / 求 K）插折算回显；标签字典补 `label.meta_sd_conv`
+
+### 验证与部署
+- dry-run 基线（本轮前）：`--test meta_planning --effect 5 --sd 10` → 载荷 `effect=5.0 / d_val=0.5`、无 sd，meta 分支两者都不读（空头支票）
+- ⚠️ R 引擎改动需 coze 重新打包上传才线上生效（与 5.13.19 MC 功效带、query_origin 闸门同一待部署批次）；本地后端与契约改动即时生效
+- meta-analysis 侧联动（样本估算页加 σ 输入 + server.py 补 sd 字段，连带修复 n_cv/n_sim 被 pydantic extra=ignore 吞掉的潜在 bug）随其自身发布
+
+### 工作台渲染层（5.13.22 追加：meta_planning 异质性扫描表修复）
+- **缺陷①（读取层）**：`renderResult` 的异质性扫描表读 `res.hetero_K/hetero_i2/hetero_power`（结果对象顶层），而 coze 契约中 hetero_* 序列经 `stats` 返回、落在 `r_result` 层 → 恒为 undefined，**扫描表从未渲染过**（v5.12.2 C7 起的专属呈现实为死代码）
+- **缺陷②（数组扁平化）**：扁平逻辑 `typeof v==="object"` 把数组也拍平成索引键，四条 hetero 序列以 "0".."4" 互相覆盖 → 数值卡区出现 5 张键名为 0/1/2… 的垃圾卡，且 hetero_i2/R/K 在卡片层彻底丢失
+- **缺陷③**：`</tbody</table>` 缺 `>`（畸形闭合）；`fmt(0)` 走指数记法渲染成 "0.000e+0"（I²=0 固定效应行不可读）
+- **修复**：hetero 读取改「flat（r_result 层）为准 + 顶层兜底」双轨；数组值不再扁平（保留在自身键下），新增「序列数据」折叠卡（与导出报告 rendering.py 序列数据分区同构，前 6 值 + 总数摘要），hetero_R（表中未列）保留可见杜绝静默丢失；`fmt` 零值短路；补 `seqData` 双语 i18n
+- **验证**：JSDOM 全链路回归 26/26（真实 catalog/schema 夹具 + 真实响应结构 + 三层变异验证：r_result 层渲染 / 顶层兜底渲染 / 无数据防幽灵表 + 嵌套 dict 零回归）；生产页 publish-dist/index.html 已重建（按请求读盘，运行中实例刷新即生效）
+- **实证结论**：高级选项透传链路（schema → 表单 → collectParams → build_namespace → 信封）本就完好——n_cv/n_sim（MC 功效带）/k_studies/R/cluster_cv/sd 等均正确入信封，MC 条带渲染正常；本轮坏的只是 hetero 扫描表的呈现层
+
+
+## 5.13.21 — 2026-10-21 · compute 提升计数器放行即重置 + 菜单快速切换「卡死」修复（前端四件套）
+
+> 接续 5.13.20 的两轮用户实测反馈。本轮两组改动互不重叠、合并发布：**B**（后端，提升计数器连续语义回归）与 **C+①+②+③**（前端，429 共用提示 / schema 缓存 / 竞态防护 / 失败容错回滚）。
+
+### B · 提升计数器放行即重置（server.py）
+- **缺陷**：`antiscrape.py` 设计意图为「**连续**限流拒绝计数，放行即重置」（L211 注释 + L403 admit 放行路径 pop），但本地 webguard 只接拒绝路径、**漏接放行重置**（server.py 对 `_rl_reject_count` 零引用）→ 计数器跨会话累计，偶尔 burst 几次即凑满 5 次触发 1 小时封禁。
+- **修复**：`_guard` 的 allow 路径（含 tarpit 放行）补 `_as._rl_reject_count.pop(pid, None)`，与 coze 端 admit 同语义——只有真正「连续 5 次拒绝、中间无一次成功」才提升。
+- **测试**：新增 Part E4（4 断言）：4 连拒不提升 → 放行 → 再 4 次仍不提升（连续语义实证）→ 连续第 5 次才提升。spy `add_to_denylist` 观测提升、不触飞书。**变异验证**：临时删去 pop → E4c/E4d 精准挂（55/57），还原后 57/57。
+
+### C+①+②+③ · 菜单快速切换「卡死」修复（workbench.html）
+- **缺陷链**：misc 限流 8 次/60s/会话（`/api/schema` 与 `/api/schema/<id>` 均属 misc）——页面加载即耗 1 次，一级/二级菜单每次切换各 1 次，**加载后 60s 内点 8 次菜单即 429**；而 `onTest()` 的 `await api(...)` 无 try/catch、无全局 rejection 兜底 → 429 后 `renderForm` 等全部不执行（静默），菜单高亮却已同步切走 → 「菜单新方法、表单停旧方法」，窗口内后续点击全 429，表现为卡死（约 60s 自愈）。
+- **① 容错回滚**：`onTest` 重写——try/catch 包 schema 拉取；失败时 `#schemaErr` 横幅显示友好文案（429 读 Retry-After 换算秒数）、CUR_TEST 保持上一个成功方法（仅在成功后赋值）、旧表单保留可继续使用；返回值改布尔，4 个调用点（applyCaseChip / restoreHistory / NL 路由×3）加守卫，失败即中止，杜绝拿旧表单填参。
+- **② 客户端 schema 缓存**：键 `test|lang`，首访后零请求——反复切换菜单不再消耗 misc 配额，从根上消除触发面（65 检验 × 2 语言最多 130 条，内存无压力）。
+- **③ 竞态防护**：`_onTestSeq` 序号，只认最新点击的响应——慢响应晚到被丢弃，不覆盖新表单。
+- **C 共用 429 helper**：`api()` 带出 `Retry-After`（§20.18.4 拒绝体禁 reason 键，限流信息只走 HTTP 头）；`rateLimitTip(e)` 供 compute 路径（doCompute / previewEnvelope catch）与 schema 路径（onTest）共用，避免两套文案漂移；zh/en i18n（`rateLimited` 带 %s 占位）。
+- **selectMethod**：菜单高亮改在 onTest 落定后按 CUR_TEST 切换——失败时高亮随 CUR_TEST 回滚，消除不一致态。
+- **测试**：node stub-DOM harness（vm 执行内联脚本 + 真实 catalog 夹具 + 可控 429/延迟 fetch）**18/18**：首访拉取 / 缓存命中零请求 / 第 9 次起优雅失败 + 状态回滚 + 友好横幅 / 竞态丢弃 / 语言维度缓存键分离 / Retry-After 换算。`node --check` 通过。
+
+### 验证与部署
+- 全量回归：主套件 19/19 + coze 47/47 + webguard **57/57** + e2e ALL PASSED + 前端 harness 18/18。
+- 工作台载荷已重建；**未发布，待授权；git 未提交**。
+- 部署备注（未采用，备选）：如遇极端批量场景仍可 env 调 `CT_WG_COMPUTE_HARD`；本轮不加——B+② 已覆盖误杀面，默认值保持 abuse 防护强度。
+
+
+## 5.13.20 — 2026-10-21 · 修复 Web 层热控交互误杀：自动提升仅限 compute 类（misc/static 不喂计数器）
+
+> 线上实测复现：用户正常操作工作台（连续切换检验渲染表单 + 新建会话计算）即可达 misc 8 次/60s 软限，第 5 次拒绝触发 antiscrape 自动提升 → **全类目 1 小时封禁**（静态资源一并 429，页面直接打不开），且提升写的是跨适配器共享的飞书拒止表（本地因缺 `coze_workload_identity` 模块写失败，仅内存生效）。根因：`_guard` 把 misc/static 拒绝也喂入提升计数器。
+
+### 修复
+- **`adapters/workbench/server.py` `_guard`**：自动提升条件由 `reason == "ratelimit"` 收紧为 `reason == "ratelimit" and cls == "compute"`，并附与 ct-base 模板接线的差异说明（模板面向单端点 coze 适配器、全部流量即计费 compute；本工作台为多类目 Web 层，misc= schema/session、static=静态资源，均本地廉价端点）。compute 才消耗 coze 算力额度，是反盗调唯一要保护的资产。
+- **误杀面量化**：修复前单次交互误杀影响 = 全类目 429 × 3600s（含页面本身）；修复后 misc 超限仅当次请求 429（可重试），换会话/刷新即恢复，零提升。
+
+### 验证
+- 新增 Part E（6 断言）：E1/E1b misc 拒绝不喂提升；E2/E2b/E2c compute 超硬限拒绝仍喂提升（保护不松动）；E3 反向验证（删隔离条件后 E1 场景必误喂，证明测试有牙）。webguard 回归 **53/53 全绿**（原 47 + 6）。
+- 线上实测（重启后新实例）：固定 Cookie 连续 12 次 `/api/schema/<id>` → 8×200 + 4×429（软限按设计拦截），服务端日志 4 条 reject **无**「自动提升拒止」行；换新会话 → 200；首页 → 200。
+- 端到端计算复测 PASS：`meta_planning` MC 档（n_cv=0.3 / n_sim=2000）经工作台 → coze → R 返回功效带 power_p5=0.8106 / p50=0.8423 / p95=0.8675 / p_ge_target=0.983。
+- 部署影响：仅工作台载荷需重建（server.py 变更）；coze 部署包零改动。**未发布，待授权。**
+
+
+## 5.13.19 — 2026-10-21 · meta_planning 保守档/MC 档前端打通（契约 optional 通道）+ 表单跨组去重
+
+> 对照后端 coze（2026-10-19 新增 `n_cv`/`n_sim` 能力）与前端工作台，发现新能力**五层全断**（契约→build_params→CLI→表单→结果渲染均无入口），UI 用户永远够不到保守档/MC 档。本版打通全链路并顺带修复 optional∩common 双渲染取值歧义（G2）。
+
+### 全链路打通（G1）
+- **契约索引**：`meta_planning` 新增 `"optional": ["n_cv","n_sim"]` 通道（required 之外的显式可选统计参数登记，单一真相源）。
+- **coze_client**：新增 `_load_contract_optional()`（与 required 同一 JSON 事务加载）；`build_params` 对 optional 键**非 None 才随信封发送**（不提供走原解析档，向后兼容）；`_trim_bloated_params` 白名单扩为 `required ∪ optional`（workbench 直传路径同样过此处，批量网格裁剪时 n_cv/n_sim 存活），告警打印同步改并集。
+- **CLI**：新增 `--n_cv`（float）；既有 `--n_sim` `default=1000→None` 并补 help——R 端 `p$n_sim` 唯一消费者就是 meta MC（`ss_gsd` 实际读 `n_simulations` 且带 `%||% 1000` 兜底），gsd_sim 零行为变化；audit「计算精度」维在 value-None 判定前即判 known，零审计回归。
+- **form_schema**：catalog `optional` 并入契约 optional（`required - MIN_REQUIRED ∪ 契约 optional`）；`schema_for` 跨组去重（common 剔除 required ∪ optional 已含参数）；`n_cv`/`n_sim` 双语标签（PARAM_META）。
+- **workbench.html**：MC 功效带专呈条带（P5 悲观 / P50 中位 / P95 乐观 / P(达到目标功效) 四卡，zh/en i18n），三键从通用数字卡剔除防重复展示。
+
+### 表单取值歧义修复（G2）
+- 修复前 `alpha`/`side` 等「契约 required 但非 min_required」参数在 common 与 optional **双渲染**，`collectParams` 按 `[data-dest]` 收集时后者覆盖前者（同名输入取值歧义）；去重后每组参数只渲染一次（影响所有 optional∩common 检验，非 meta 独有）。
+
+### 验证
+- CLI→build_params 五项：MC 档转发 / 不提供不发送 / n_sim 单独转发 / 过肥裁剪存活 / gsd_sim 惰性默认值消除，全过。
+- `schema_for`：meta 表单跨组零重复、`n_cv`/`n_sim` 入可选组、power 保留 common；ttest_ind 抽查无回归。
+- workbench 内联 JS `node --check` 通过；全量回归 **ALL PASSED**（e2e 契约含新 `meta_planning_mc` 用例 + 主套件 19/19 + coze 47 + webguard 47）。
+- **线上端到端实测 PASS**：v5.13.18 已部署后端 + 新客户端 optional 通道，`meta_planning` n_cv=0.3/n_sim=500 → 5.2s 返回功效带 power_p5=0.8081 / p50=0.8387 / p95=0.8672 / p_ge_target=0.984，所需 K=9；服务端无需更新（节点整体透传 params，R 引擎已支持）。
+
+### 部署影响
+- **coze 部署包无需重打**（服务端零改动，线上 5.13.18 已验证）；仅工作台载荷需重建（coze_client.py / samplesize_power.py / form_schema.py / workbench.html 四文件更新）。
+- **未发布**：工作台载荷就绪待授权；git 未提交。
+
+
+## 5.13.18 — 2026-10-21 · coze 端反盗调防护完善（补部署包/清单/环境变量文档/回归测试）+ 工作台 Web 层热控修正
+
+> 用户澄清：**要防护的是 coze 端；A 档技能的 Web 端本不需要防护**（ct-base §20.18.7「适用面：仅 B 档技能；A 档零防护」）。据此全面复查代码正确性：**coze 端准入接线本就与 ct-advisor 范本逐端点对齐**（无需改 main.py），真缺口在**部署层与测试层**；同时修正上一轮 Web 端热控实现的三处缺陷。改动未发布（待授权）。
+
+### Coze 端（§20.18 全库统一标准）
+
+- **部署包首次产出（最大缺口）**：`adapters/coze/` 此前**从未打包**——§20.18.4 防御代码（`wrap_stream_release` 流式并发槽延迟释放 + `CT_ENABLE_OPENAI_COMPAT` 默认关 404）虽在源码中，线上 Coze 跑的却是旧包、防护未生效。现产出 `archives/coze_project_5.13.18.zip`（68 文件 / 475,854 B ≈ 464.7 KB），`src/antiscrape.py` + `src/habit_analyzer.py` + `src/main.py` 与源**逐字节一致**（MD5 校验），`testzip` 通过，红线自检无 `tests/` / `__pycache__` / `.pyc`。**校验锚点用内容指纹而非 zip MD5**——`manifest.json` 内含 `generated_at` 时间戳，每次重建 zip MD5 都会变（v5.13.18 首次构建 `a554a01e…`、重建 `5594d5b8…`，两者内容等价）；除 manifest.json 外全部条目的汇总指纹恒定，单文件校验用 `src/antiscrape.py` MD5 = `2fafd234f7f8652b705e188ac4fe4d03`。
+- **manifest.json 补齐**：旧清单为 2026-10-15 的 75 文件版、**不含** `src/antiscrape.py` / `src/habit_analyzer.py`（清单与实际包内容失真）。随包重生成为 v5.13.18 / 68 文件版，两个反盗调件已在列。
+- **平台发布反馈修复（2026-10-21 打包报告，`_build_deploy.py` 三处整改）**：① **junk 漏过滤**——上一包混入 `*.bak_rcp` / `*.bak_nvar` 备份（4）+ `result.json` / `*.out.json` 运行产物（3），靠平台侧兜底剔除；本地镜像已删源文件并在 `keep()` 加 `_JUNK_SUFFIXES` / `_JUNK_NAMES` 过滤 + EXCLUDE CHECK 扩充。② **`_*.py` 排除规则误杀**——「名字以 `_` 开头的 .py 不进包」本意排镜像根构建脚本，却把 `src/graphs/nodes/_version.py`（三个节点 `from graphs.nodes._version import COZE_VERSION` 的单一真源）与全部 12 个 `__init__.py` 一并排除（平台靠保留工作区文件 + 命名空间包侥幸运行）→ 收窄为仅镜像根生效。③ **`COZE_VERSION` 滞后**（`5.3.16`）——与平台侧已提升的值对齐，提升为 `5.13.18`（manifest 单一真源）。加**回归断言**：`_version.py` 缺席即构建失败（SystemExit），绝不产出残包。修正后包：**74 文件 / 403,310 B ≈ 393.9 KB**（68 − 7 junk + 1 `_version.py` + 12 `__init__.py`），74/74 与源逐字节一致，`testzip` OK，junk NONE / 红线 CLEAN。
+- **DEPLOY.md 新增第 11 章「反盗调准入部署」**：此前**零环境变量说明**——`CT_ANTISCRAPE_SALT` 未配则 pseudoid 每次重启变化、拒止表命中失效（唯一「不配即等于没防护」项），文档化必配/建议变量表、已接入端点清单（含未接入的 4 个不耗算力端点及其判定依据）、**5 条部署后自检**（盐生效 / 缺 `query_origin` → 200 空体 silent drop / OpenAI 口 404 / 限流 429 且体不含 `reason` / 遥测落表）、版本与包信息。
+- **反盗调回归测试（从零到有）**：`adapters/coze/tests/test_antiscrape.py`（**47 断言全绿**），按 §20.18.6 四项测试纪律编写——① 副作用断言 ② 反向验证 ③ 不触网捕获 ④ 双轨校准夹具（3 个高频合法画像不误杀）。四部分：A 源码接线实锤（**逐端点切区块**验证四个算力端点各自挂准入 + 统一拒绝载体 + `wrap_stream_release` + OpenAI 口默认 404 + 轻量准入）、B 准入决策（pseudoid 确定性 / `query_origin` 硬拒 silent drop / 包体上限 413 + `doc_context` 豁免 / 限流 429 / 并发上限 / 拒止表 / 轻量准入）、C 统一拒绝载体（禁 `reason` / `retry_after` 区分键）、D 跨层协调 + 遥测落盘 + 与 ct-base 模板逐字节一致（MD5 `2fafd234f7f8652b705e188ac4fe4d03`）。
+- **反向验证实锤（纪律②，测试有牙）**：① 按行号精确删掉 `/run` 区块的 4 行准入接线 → 断言精准挂 3 条（A2 / A2b / A2c），还原后 47/47 全绿；② 把 `wrap_stream_release(stream_generator, …)` 换成裸生成器 → A4 精准挂。**首版 A2 只数调用总数（≥4），删掉一处后仍 ≥4 而漏挂**——已改为逐端点切区块验证。
+
+### 工作台 Web 层热控（上一轮实现的三处缺陷修正）
+
+- **缺陷①（致命·发布态失效）**：`adapters/coze/` 整段在 `build_publish.py` 的 `EXCLUDE_SEGMENTS` 内（§16.7 Coze 私有镜像红线），而白名单未含 `antiscrape.py` → **发布载荷里没有 antiscrape** → Web 层 import 失败 → 拒止表共享与跨层封禁在**发布态直接失效**（仅剩纯本地限速），且失败全静默。修法：`build_publish.py` 新增 `DERIVED` 构建期派生规则（`adapters/coze/src/antiscrape.py` → 载荷 `adapters/workbench/antiscrape.py`），**单一真源保持**（构建期复制，非人工第二份副本；范式对齐 ct-adam `workbench/antiscrape.py` 随包注入），并加**断言**防规则被误删而静默失效。
+- **缺陷②（§20.18.7 实现纪律 2 违反·禁全静默）**：antiscrape 导入失败原为 `except Exception: _as = None` 零日志 → 拒止表共享悄悄降级而运维零可见性。改为**三级候选路径**（载荷落点 → coze 端同源 → ct-base 权威模板）逐个尝试，失败写 `[ct-webguard] WARN antiscrape 不可用…` 服务端日志。
+- **缺陷③**：安全响应头缺 `Referrer-Policy: no-referrer`（ct-base webguard 模板 `_SECURITY_HEADERS` 为三件套）→ 抽出 `_SECURITY_HEADERS` 常量统一供 `_wg_reject` / `_send` / `_send_file` 三处使用，杜绝遗漏；另补 `poll` 限速档（模板四档，ct-samplesize 前版仅三档）。
+- **Web 层回归测试（从零到有）**：`adapters/workbench/tests/test_webguard.py`（**45 断言全绿**），纯内存不触网：A 接线实锤（混入 WebGuardMixin / 三处 guard / 拒绝短路 `if r: return` 而非头号反模式 `return self._send_json(...)` / 拒绝即断连 / 安全头三件套 / 四档齐备 / XFF 默认不采信 / 导入失败写日志 / 载荷含 antiscrape）、B 分级限速 + tarpit 指数退避（1/2/4/8/16s、封顶 30s、超硬限 ratelimit、**IP 聚合天花板兜底**换会话仍被拦、静态档 20 次不误杀、窗口过期重放）、C 统一拒绝载体、D 并发闸（占满 → busy 429、释放后槽位归还）+ 包体 413 + 跨层协调（同盐同公式 pseudoid 可复现）。反向验证：移除 `Referrer-Policy` + 断开连 → A10/A11 精准挂。
+- **端到端实测（MOCK 起服，真实 HTTP）**：三件套安全头齐全（`nosniff` / `DENY` / `no-referrer`）；`Set-Cookie: ct_wb_sid=…; HttpOnly; SameSite=Lax` 正常下发；`/api/nl` 路由正常（`ttest_ind` / `confidence=medium` / `engine=rule`）；限流实测 tarpit 延迟 **1.00s → 2.02s → 4.02s** 指数递增、第 7 次转 **429**（硬限 6 + 1）、`Retry-After: 60` + `Connection: close`、拒绝体 `{"ok":false,"error":"rate_limited"}` **不含 `reason` / `retry_after` 键**（§20.18.4 信息泄露收敛）。
+
+### 验证
+
+- `py_compile` × 5 文件全通过（`main.py` / `antiscrape.py` / `habit_analyzer.py` / `server.py` / `build_publish.py`——WebGuardMixin 为 server.py 内联蒸馏版，无独立 webguard.py）；全量测试 **111 断言全绿**（`tests/test_ct_samplesize.py` 19 + `adapters/coze/tests/test_antiscrape.py` 47 + `adapters/workbench/tests/test_webguard.py` 45）；
+- `build_publish.py` 重跑通过，载荷 1424.9 KB，`REDLINE check OK`（无 genie / coze / r-assets / publish-kit），载荷内 `tests/` 仅契约索引（§16.8 白名单），**新增的两个测试文件均未入发布包**；
+- coze 包 `testzip` OK、红线 CLEAN；`manifest.json` 68 文件含两个反盗调件。
+- **四方 antiscrape MD5 一致**：`ct-base` 模板 = `ct-samplesize/adapters/coze/src` = 载荷 `publish-dist/adapters/workbench` = `2fafd234f7f8652b705e188ac4fe4d03`（开发态 `adapters/workbench/antiscrape.py` 不存在属预期——它只由构建期派生进载荷）。
+- **遗留残留已清理**：测试期产生的 `antiscrape_telemetry.jsonl`（运行时状态，落在 skill 根目录）已删除，并在 `.gitignore` / `.clawhubignore` 双份加入 `antiscrape_telemetry.jsonl` + `*.telemetry.jsonl` 护栏（防 `git add .` 误提交）；误生成的 `coze_project_5.6.0.zip`（脚本默认版本号产物）与 `.orig.tmp` 中间件已删；测试服务进程（18772 / 18774）已终止。
+- **构建脚本护栏（防误产错版包）**：`adapters/coze/_build_deploy.py` 原以 `sys.argv[1] if len>1 else "5.6.0"` 取版本——漏传参数会**静默产出 `coze_project_5.6.0.zip`**（极易被误当交付物上传）。改为**缺参即报错退出**（退出码 1）+ 版本号格式校验（非数字开头拒绝），并给出用法提示。实测缺参与非法版本号均正确拒绝（REAL_EXIT=1），显式传 `5.13.18` 构建正常。
+- **未发布**：工作台载荷与 coze 部署包均已就绪待授权；git 未提交。
+
+### 全面代码复查（2026-10-21 追加，用户令查「web 端 + coze 端防护，确保无代码错误」）
+
+- **发现并修复 1 个真实缺口（Web 端）**：`_export` 手拼响应头（`send_response` + `Content-Disposition`）**绕过 `_SECURITY_HEADERS` 三件套**——全文件 4 处响应路径中唯一漏挂（`_wg_reject` / `_send` / `_send_file` 均已接线）。已补三件套循环；**端到端 HTTP 实测**：`POST /api/export` 200 响应头含 `nosniff` / `DENY` / `no-referrer`（Content-Disposition 正常）。**根因是测试 A11 只断言「常量存在」而非「全路径接线」**——已补 **A17**（块级切分 `_wg_reject`/`_send`/`_send_file`/`_export` 四个方法体逐一验证含安全头循环）+ **A18** 反向验证（删 `_export` 循环 → A17 精准挂，实测 46 通过/1 失败）。Web 测试 45→47 断言。
+- **Coze 端复查结论：无错误**。准入/释放配对语义逐路径核对——`check_allow` 仅在并发闸通过后 `_inflight += 1`（daily_quota 拒绝路径内联回退），调用方仅在 `antiscrape_admitted=True` 时释放，五个算力端点配对正确；`wrap_stream_release` 钉释放点于流耗尽（StopIteration/GeneratorExit/异常三分支 `finally`），且仅当标志为真才释放（防 deny 路径重复释放）；统一拒绝载体 429 固定体 + `Retry-After`、200/413 空体，禁 `reason`/`retry_after` 键；`{"error":"busy"}` 并发载体为 docs §Web 信息泄露收敛条目**原文明列**的两种合法固定体之一（非违规）。
+- **与 ct-advisor 范本逐字对齐确认**：`/stream_run` 准入 → `antiscrape_admitted=True` → 生成器构造 → `StreamingResponse(wrap_stream_release(...))` 结构与范本完全一致。范本同有的理论窄窗（生成器**构造**若抛异常则并发槽延迟到 GC 回收才释放）如实标注、**不偏离范本**——`agent_stream_handler` 为生成器工厂（调用即返回生成器对象，函数体不执行），实际风险趋近于零。
+- **`habit_analyzer.py` 随包不接线确认**：进程内无 import（与 ct-advisor 范本一致）——它是 §20.18.6 标准模板组成件（供 Coze 工作流侧/后续接入），非死代码遗漏。
+- **Web 端 sys.path 注入无模块遮蔽**：三级候选路径注入的目录（adapters/workbench、coze/src、ct-base/antiscrape）顶层模块名与 server.py 后续 import（form_schema/session_store/coze_client/rendering/bug_report/nl_llm/samplesize_power/tempfile）零冲突；失败导入会被 Python 从 `sys.modules` 清除，候选链回退有效（D6b 实证）。
+- **复查后的存量差距（非本轮引入，如实标注、待授权处理）**：① 业务端点 500/502 错误体回显 `str(e)`（`_compute`/`_export`/`_batch`/`_nl`/`_preview` 共 ~8 处）——违反 docs「Web 层信息泄露收敛」的「500/502 禁回显异常文本」纪律（该纪律 2026-10-19 新增，晚于这些端点诞生）；400 参数校验反馈属功能需求不受此限。② `do_OPTIONS` 不经 `_guard`（仅 204 空响应不耗算力，但不受限速约束）。两者均为存量设计，改动会触及前端错误展示行为，未擅动。
+- **验证闭环**：py_compile × 6、全量测试 **113 断言全绿**（19 + 47 + 47）、载荷重建（1425.0 KB / `REDLINE check OK` / 载荷内 server.py 与源 MD5 一致）、`_export` 安全头 HTTP 实测通过。coze 部署包不含 server.py，无需重打。
+
+
+## 5.13.16 — 2026-10-20 · 工作台 UI 三修：咨询闸门扩充 + vague 守卫 + 会话线程导航显隐/信封预览按钮
+
+> 用户实测报告：「平均数相同的数据，为什么分布情况可能差很多？」被误当计算意图直发云端出样本量结果。根因两层，均已修复；同日附带修复会话线程入口不可达与信封预览死链。改动仅本地，未发布（待授权）。
+
+- **咨询闸门扩充（`server.py::_ADVISORY_MARKERS`）**：补「为什么 / 为何 / 什么原因 / 怎么理解 / 如何理解 / 什么意思 / 意味着什么 / 说明什么 / 怎么办 / 怎么回事」及英文 `\bwhy\b` / `what does .+ mean` / `\bexplain\b` / `what causes` 等概念型提问标记。原标记只有设计/选型类表述（怎么设计/区别/对比…），概念型提问里出现检验关键词（如「平**均数**」子串命中「均数」）会漏拦。
+- **vague 守卫（`server.py::_nl` + 前端 `nlCompute()`）**：规则低置信（`confidence=low`）+ 语句**零参数抽取**（`needs_llm_fallback`）+ 非多值 → 标记 `route.vague=true` 随响应返回；前端命中后只预选检验并填表、提示「请核对参数后手动点计算」，**绝不自动点火云端**（对齐对话模式红线：绝不对缺失参数静默补默认——此前表单默认值凑齐必填项即静默算出与用户意图无关的结果）。i18n 新增 `vagueTip`（中/EN）。
+- **会话线程导航显隐修复**：侧栏「会话线程」项此前硬编码 `style="display:none"` 且全代码无取消逻辑 → 会话切换/新建 UI（sessionSel + 新建会话）不可达。已移除隐藏样式。
+- **信封预览死链修复**：后端 `/api/preview` 与 `doCompute(true)` 均已存在但无 UI 触发 → 能力域方法页「计算」旁新增「预览请求信封」按钮（`previewEnvelope()`，dry-run 渲染 coze 请求信封、不外发），中英双语。
+- **单一真源归一**：以上修复一律改真源（`adapters/workbench/workbench.html` + `adapters/workbench/server.py`）后重跑 `build_publish.py` 派生载荷；`publish-dist/index.html` 与「真源 + favicon 改写」逐字节一致，`server.py` 真源=载荷一致。顺带剪除载荷残留 `scripts/r_code_policy.py.bak_rcp`。
+- **验证**：`py_compile` + inline JS `node --check` 通过；闸门单测 8/8（概念句 5 例拦、正常计算句 3 例放行）；MOCK 起服 `/api/nl` 端到端 4 例：用户原句 advisory=true（不出结果只出提示）/「标准差大说明什么」advisory=true/「均值比较一下」vague=true（拦自动点火）/正常计算句放行且 params 正确抽取。README 中英文第七节随布局修订已同步。
+- **咨询转接 Ct-Advisor（C 方案，同日追加）**：advisory 拦截后，若咨询句与样本量/效力相关（`样本量|样本含量|检验效力|效能|power|sample size`，`_SS_ADVISORY_RE`）→ 结果区追加「转 Ct-Advisor 处理 ↗」按钮，新标签打开 `https://ct-advisor.app.workbuddy.host/#q=<URL编码>`；预填文本 = 原句 + 上下文附注（当前检验 + 已填参数，空值剔除）。URL hash 传参不入服务器日志；advisor 侧只预填不自动发送（HITL）。零凭据、零跨端点调用、不触 §20.18 antiscrape 准入。配套 ct-advisor 侧 `#q=` 预填（见其 CHANGELOG 同日条目）。`advisorHandoffUrl` 纯函数单测 8/8。
+
+
+## 5.13.15 — 2026-10-20 · coze 端点落实 ct-base §20.18.6 反盗调（antiscrape）六级准入
+
+> 随 ct-base v1.4.x 契约 §20.18 落实。**取代**下方「（待部署）2026-10-19 · query_origin 准入闸门」条目：旧 `_guard_query_origin` 整套闸门已删除，其 `query_origin` 空值拒绝并入 antiscrape 第 2 级硬拒字段，避免双闸门语义冲突。改动在 `adapters/coze/src/main.py` + 新增 `antiscrape.py` / `habit_analyzer.py`，**仅端点侧行为**；部署需重新打包上传 Coze（手动，待授权）。
+
+- **§20.18.6 三步范式**：
+  1. **拷贝标准件**：`antiscrape.py`（43702 字节）+ `habit_analyzer.py`（12425 字节）从 ct-base 逐字拷贝至 `adapters/coze/src/`，`diff -q` 校验与 ct-base 完全一致。`antiscrape.py` 纯标准库实现，飞书依赖惰性 import 优雅降级。
+  2. **接线四个算力端点 + OpenAI 兼容口**：`/run` `/stream_run` `/async_run` `/node_run` 全部挂接 `_admit_antiscrape(request, raw_body, payload)` + `request.state.antiscrape_admitted = True`；非流式端点（`/run` `/async_run` `/node_run`）包 `try/except/finally: _release_antiscrape(request)` 释放全局并发（原 `/async_run` 缺 finally，已补）；`/stream_run` 的并发槽改由标准件 `wrap_stream_release` 在流真正耗尽时释放（见下「流式并发槽延迟释放」）。`/v1/chat/completions` 默认 `404`（§20.18.4：零合法流量模板端点 = 纯攻击面），经 `CT_ENABLE_OPENAI_COMPAT=1` 显式开启后受 `_admit_antiscrape_light(request, with_concurrency=True)` 轻量准入。
+  3. **统一拒绝载体（§20.18.4 信息收敛）**：`_response_from_admit` 固定 `429 → {"ok":false,"error":"rate_limited"}` + `Retry-After` 头（窗口长度属公开限速参数）；**禁带 `reason` 区分键、`retry_after` 键**；`200 silent drop` / `413` → 空体。比 ct-advisor 范本更严（范本漏 `X-AntiAbuse: deny:reason` 头违反信息收敛红线，已修正）。
+- **六级准入全部生效**：0 跨项目盐一致性（进程 env → 平台 env → 共享 config 表三级回退）→ 1 包体上限 2MB（豁免 `doc_context`）→ 2 硬拒字段（`query_origin` 空值 / 占位哈希 silent drop）→ 3 拒止表 429 → 4 单点限流 30/60s → 5 全局并发 50 → 6 匿名日总额度（默认关）。
+- **移除冗余旧闸门**：删除 `_guard_query_origin` / `_is_placeholder_origin` / `_PLACEHOLDER_ORIGIN_RE` 整套块（原仅 `query_origin` 空值拒绝，缺拒止表/限流/并发/包体/遥测，且 `/v1/chat/completions` 常开违反 §20.18.4）。
+- **验证（不触网，纯内存断言）**：五用例全绿 —— 合法放行 / 空 origin 200 静默 / 占位哈希 200 静默 / 3MB 非文档 413 / 3MB+doc_context 豁免放行。`main.py` `py_compile` 通过；grep 确认无 `_guard_query_origin` 残留；接线点核对：行 71/72/73/79/99/105/354/356/415/460/519/559/633/670/673/681/693。
+- **部署约束（架构风险）**：`adapters/coze/` 被根 `.gitignore` 第 19 行整目录忽略，改动经 `_build_deploy.py` 打 zip 部署、**不进 git**；依赖本地工作目录 + 人工部署，clean checkout 会丢，需靠部署包/发布基础设施留存。
+- **部署前平台 env 注入待办**：`CT_ANTISCRAPE_SALT` 🔴 必配固定盐（否则重启失效）；`CT_ANTISCRAPE_DENYLIST_TABLE_ID`（拒止表，缺省走本地 JSONL 降级）；`CT_ANTISCRAPE_FEISHU_APP_TOKEN` / `CT_ANTISCRAPE_FEISHU_TABLE_ID`（遥测，惰性 import 优雅降级）。
+
+### 5.13.15 追加（2026-10-20）· 流式并发槽延迟释放
+
+> 基于实测教训优化：默认 `try: return StreamingResponse(gen); finally: release_inflight()` 会在 `StreamingResponse(...)` 一构造完即触发 finally，此时流尚未被消费，**全局并发上限（默认 50）对流式在途算力完全失效**（并发计数在返回响应瞬间即归零，真正耗时的 R 计算/LLM 推理期间不受约束）。
+
+- **修复**：`/stream_run` 改用 ct-base 标准件 `wrap_stream_release(stream_generator, request, on_finish=lambda: cozeloop.flush())` 包裹生成器，把并发槽释放钉在生成器 `StopIteration` / 客户端断开 `GeneratorExit` / 异常处（同步/异步生成器自适应）。`cozeloop.flush()` 同步移入流结束处；deny / JSON 解析错误等早返路径保留显式 `cozeloop.flush()`。
+- **去重**：删除 `main.py` 本地 `_wrap_stream_release`，改为从 `antiscrape` 导入标准件（与 ct-base 同源，避免再次写错）；`antiscrape.py` 已随 ct-base 同步（新增 `wrap_stream_release` + `import inspect`），`diff -q` 校验逐字一致。
+- **验证**：ct-base `wrap_stream_release` 单测全绿（SYNC / ASYNC 构造时不释放·耗尽后释放、DISCONNECT 在 GeneratorExit 释放、on_finish 调用、未准入不释放共 5 类）；`main.py` / `antiscrape.py` `py_compile` 通过。仍受限于无 coze 运行时，端到端需部署后验证。
+
 ## 5.13.14 — 2026-10-19 · 外部对照/RWD 增强设计：分布平衡（DBML）方法与报告义务
 
 - 新增 SKILL.md 节「External-Control / RWD-Augmented Designs · Distributional Balancing」：DBML 三步法（VAE 检出异常 RWD 单位 → 重加权匹配治疗组分布 → 加权抽样；匹配分布而非单位对），实证协变量平衡优于 matching/weighting 基线（arXiv:2609.23524）。
@@ -8,7 +339,9 @@
 - 与 Stat Med 2026 贝叶斯外部对照（DOI `10.1002/sim.70748`）分层衔接；引擎未改动（规范+报告纪律登记）。
 - 证据登记：`ct-base/references/qc_independence_pharmasug2026.md`。
 
-## （待部署）2026-10-19 · coze 端点落实 ct-base §1.4 `query_origin` 准入闸门
+## （已撤销 · 未部署，被 5.13.15 反盗调集成取代）2026-10-19 · coze 端点落实 ct-base §1.4 `query_origin` 准入闸门
+
+> ⚠️ 本条目描述的闸门（`_guard_query_origin` 等）已在 5.13.15 中**整体删除**，其功能由 antiscrape 第 2 级硬拒字段覆盖。保留仅作历史记录，请勿据此部署。
 
 > 随 ct-base v1.3.33 契约 §1.4 落实。改动在 `adapters/coze/src/main.py`（samplesize R 引擎工作流源码），**仅端点侧行为**；部署需重新打包上传 Coze（手动，待授权）。
 
@@ -1495,3 +1828,16 @@ Addresses the real reasons prior versions were blocked/deleted by ClawHub's auto
 
 - All 37 test types now call pre-written R functions (`ss_*`) in `scripts/r_templates/`; the main dispatcher `samplesize_power.py` no longer contains scattered R snippets. / 全部 37 种检验类型改为调用预编写的 R 函数（`ss_*`），存放于 `scripts/r_templates/`；主分发脚本 `samplesize_power.py` 不再含散落 R 代码片段。
 - Fixed 7 R functions (`ni_survival`, `survival_exact` reverse, `group_sequential`, `adaptive`, `mixed_model`, `equivalence`, `be_tost`); on package failure they auto-fall back to analytic closed-form approximations (Schoenfeld / O'Brien-Fleming etc.) — zero crash, stable results. / 修复 7 个 R 函数（`ni_survival`、`survival_exact` 反向、`group_sequential`、`adaptive`、`mixed_model`、`equivalence`、`be_tost`），包调用失败时自动回退至解析闭式近似（Schoenfeld / O'Brien-Fleming 等），保证零崩溃、结果稳定。
+
+---
+
+## 附记（随 5.13.21 一并发布，载荷内容不变）— 2026-10-21 · 发布管线「测试资产防泄漏」复核加固
+
+> 用户诉求：「发布时似乎会把用于测试的本地连接 R 环境的 Python 函数也发布掉，确认现在没这个问题了」。
+> 结论：三面发布产物（工作台载荷 / coze 部署包 / ClawHub 发布集）本就干净；复核中抓到并修复以下缺口：
+
+- **`scripts/_wtest.tmp` 泄漏向量**：发布流程第 1 步 `git add -A` 会收编 untracked 垃圾，而 `.clawhubignore` 无 `*.tmp` 模式 → 该文件会进 ClawHub 发布集（实测模拟：82 文件发布集中含 `scripts/_wtest.tmp`）。已删除该文件，并在 `.gitignore`（第一道防线，阻止 `git add -A` 收编）+ `.clawhubignore`（第二道防线）双补 `*.tmp` / `result.json` / `*.out.json` / `*.jsonl` / `*.orig` / `*.rej`。
+- **`build_publish.py` junk 过滤对齐**：补 `result.json` / `*.out.json` 排除（与 coze 端 `_build_deploy.py` 的 `_JUNK_NAMES` 同款；平台发布报告曾混入此类运行产物）。
+- **skill-publish `scrub_copy.py` v1.4.1 联动修复（共享工具）**：`--platform skillhub` 分支只按扩展名白名单过滤、`.clawhubignore` 目录级排除完全失效（该文件头部自述覆盖 ClawHub/SkillHub 双平台，工具实现与契约矛盾）——实测 `adapters/local-r/`（dev/回归专用本地 R 后端）17 个 `.py` 穿过白名单且 `RESULT: PASS` 照常输出（静默泄漏）。已为 skillhub 分支新增 `.clawhubignore` 预 pass；模拟发布复测 local-r 零残留（副本 96→79 文件）。
+- **实证结论（四条发布路径全过）**：① 工作台载荷 53 文件：无 local-r、无测试文件（`tests/` 仅契约索引，§16.8 设计内白名单）；② coze 部署包 74 文件：无测试/local-r；③ ClawHub 发布集 81 文件：local-r 经 `.clawhubignore` 排除、junk 零残留；④ SkillHub 发布副本 79 文件：修复后 local-r 零残留。
+- **说明**：`adapters/local-r/` 仍在 GitHub 仓库中（git 跟踪）——这是设计内的源码版本控制（与 `adapters/coze/` 同策略），发布包层面三路径均已排除；载荷中本地 R 回退按设计不可用（`compute_backend.py` 对缺失抛显式 RuntimeError，dev-only）。

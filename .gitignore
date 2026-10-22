@@ -85,7 +85,26 @@ Thumbs.db
 workbench/
 workbench/publish-kit/
 workbench/publish-dist/
-workbench/_publish_trash/   # 发布构建旧版本暂存（fileserv 删除被 safe-delete 拦截，v5.12.0）
+# 发布构建旧版本暂存（fileserv 删除被 safe-delete 拦截，v5.12.0）
+workbench/_publish_trash/
 
 # ── F20 周备份目录（2026-10-04 周检备份，本地回滚用，不进 VCS/发布包）──
 _bak_weekly_*/
+
+# ── 反盗调遥测本地落盘（2026-10-21，§20.18.6 第四项纪律产物）──
+# antiscrape 本地遥测默认写 CWD/antiscrape_telemetry.jsonl；本地跑测试/开发态
+# 时会污染技能根目录，属运行时状态（非源码、非配置）→ 不入 VCS、不进发布包。
+antiscrape_telemetry.jsonl
+*.telemetry.jsonl
+
+# ── 临时/运行产物垃圾（2026-10-21 发布管线复核补漏）──
+# _wtest.tmp 类占位垃圾：发布流程 git add -A 会收编 untracked，.gitignore 是第一道防线
+*.tmp
+# coze 端运行产物（平台发布报告曾混入 result.json / *.out.json，靠平台侧兜底剔除）
+result.json
+*.out.json
+# 遥测/日志类本地状态（antiscrape_telemetry.jsonl 特例已列，此处覆盖全部变体）
+*.jsonl
+# 补丁残留
+*.orig
+*.rej

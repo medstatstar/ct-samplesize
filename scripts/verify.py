@@ -480,6 +480,8 @@ def run_verify(design, n, alpha=0.05, power=0.8, side="two", nsim=20000,
     params = dict(params or {})
     if nsim > NSIM_HARD_CAP:
         raise SystemExit("--verify-nsim 超过硬上限 %d" % NSIM_HARD_CAP)
+    # R 端求解的 n 常为 float（64.0），range 不接受 float → 强转 int
+    n = int(round(float(n)))
     fp_src = json.dumps({"d": design, "n": n, "a": alpha, "pw": power, "s": side,
                          "ns": nsim, "sd": seed, "p": params, "b": boundaries,
                          "lk": looks, "sp": spending, "ee": expected_events,

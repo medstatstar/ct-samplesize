@@ -167,8 +167,10 @@ ss_regression_linear <- function(u, f2, alpha, power = NULL, n = NULL) {
 }
 ss_meta_planning <- function(effect_type, effect, n_per_study, i2 = NULL, R = NULL, K = NULL,
                              alpha = 0.05, power = NULL, effect0 = NULL, side = "two",
-                             p0 = NULL, m = NULL, icc = NULL, cov = NULL) {
+                             p0 = NULL, m = NULL, icc = NULL, cov = NULL, n_cv = NULL) {
   vw <- .meta_vw(effect_type, effect, n_per_study, p0, m, icc, cov)
+  # 可变每研究样本量（2026-10-19，解析保守档）：V_eff = V·(1+CV²)，与 cluster DE 同构
+  if (!is.null(n_cv) && n_cv > 0) vw <- vw * (1 + n_cv^2)
   tr <- function(x) switch(effect_type, or = log(x), rr = log(x), cor = atanh(x), x)
   core_eff <- tr(effect)
   if (is.null(effect0)) effect0 <- if (effect_type %in% c("or", "rr")) 1 else 0
@@ -179,6 +181,58 @@ ss_meta_planning <- function(effect_type, effect, n_per_study, i2 = NULL, R = NU
     while (k < 1e6 && .pow_meta(k, core_eff, vw, R, alpha, core0, side) < power) k <- k + 1
     k
   } else round(.pow_meta(K, core_eff, vw, R, alpha, core0, side), 4)
+}
+
+# ── MC 精确档（2026-10-19，Tier B）：可变每研究样本量的精确功效 ──
+#   N_i ~ 对数正态（精确匹配均值 N̄ 与 CV），逐研究 V_i 独立计算，
+#   随机效应合并方差用精确式 se² = 1/Σ(1/(V_i+τ²))（τ² = R·V̄；小样本研究自动降权），
+#   输出功效分位数带 P5/P50/P95 与 P(功效≥目标)。seed 固定 → repro 可复现。
+#   K 给定 → 该 K 下的功效带；K 缺省 → 搜索最小 K 使中位功效 ≥ 目标（中位口径）。
+ss_meta_planning_mc <- function(effect_type, effect, n_per_study, n_cv, i2 = NULL, R = NULL,
+                                K = NULL, alpha = 0.05, power = 0.8, effect0 = NULL, side = "two",
+                                p0 = NULL, m = NULL, icc = NULL, cov = NULL,
+                                n_sim = 2000, seed = 20261019) {
+  vw0 <- .meta_vw(effect_type, effect, n_per_study, p0, m, icc, cov)
+  tr <- function(x) switch(effect_type, or = log(x), rr = log(x), cor = atanh(x), x)
+  core_eff <- tr(effect)
+  if (is.null(effect0)) effect0 <- if (effect_type %in% c("or", "rr")) 1 else 0
+  core0 <- tr(effect0)
+  if (is.null(R)) R <- if (is.null(i2)) 0 else i2 / (1 - i2)
+  tau2 <- R * vw0
+  zc <- .ss_zcrit(alpha, side)
+  .draw_n <- function(k) {
+    if (is.null(n_cv) || n_cv <= 0) rep(n_per_study, k)
+    else { s2 <- log(1 + n_cv^2); stats::rlnorm(k, meanlog = log(n_per_study) - s2 / 2, sdlog = sqrt(s2)) }
+  }
+  .vw_of <- function(Nv) {
+    # V ∝ 1/N 的类型（smd/paired/or/rr/cluster，DE 为常数）按比例精确缩放；cor 逐点算
+    if (identical(effect_type, "cor")) 1 / pmax(Nv - 3, 1) else vw0 * n_per_study / Nv
+  }
+  .pow_once <- function(k) {
+    Nv <- .draw_n(k); Vi <- .vw_of(Nv)
+    lam <- (core_eff - core0) * sqrt(sum(1 / (Vi + tau2)))
+    if (side == "one") pnorm(zc, mean = lam, lower.tail = FALSE)
+    else 1 - pnorm(zc - lam) + pnorm(-zc - lam)
+  }
+  set.seed(seed)
+  if (is.null(K)) {
+    k <- 1
+    repeat {
+      pw <- vapply(seq_len(n_sim), function(i) .pow_once(k), numeric(1))
+      if (stats::median(pw) >= power || k >= 1e4) break
+      k <- k + 1
+    }
+    list(k = k, power_p5 = unname(round(stats::quantile(pw, 0.05), 4)),
+         power_p50 = round(stats::median(pw), 4),
+         power_p95 = unname(round(stats::quantile(pw, 0.95), 4)),
+         p_ge_target = round(mean(pw >= power), 4), n_sim = n_sim, n_cv = n_cv)
+  } else {
+    pw <- vapply(seq_len(n_sim), function(i) .pow_once(K), numeric(1))
+    list(k = K, power_p5 = unname(round(stats::quantile(pw, 0.05), 4)),
+         power_p50 = round(stats::median(pw), 4),
+         power_p95 = unname(round(stats::quantile(pw, 0.95), 4)),
+         p_ge_target = round(mean(pw >= power), 4), n_sim = n_sim, n_cv = n_cv)
+  }
 }
 
 # -- G13 regression_logistic: Hsieh 1998 (continuous) / 1989 (binary) --

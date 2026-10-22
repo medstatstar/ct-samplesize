@@ -2,14 +2,15 @@
 # -*- coding: utf-8 -*-
 """
 hypothesis_audit.py — 假设质量审计四分级 + 设计逻辑族选择 + fallback 场景规划
-（ct-update upgrade I，对标 sample-size-and-power-planning-assistant，2026-09-29）
+（ct-update upgrade J，v5.13.13，对标 CONSORT 2025 item 16a + ICH E9(R1) estimand +
+ CDE《药物临床试验样本量估计指导原则（试行）》2024-12-23）
 
 定位（与 assumption_block.py 的分工）：
   * assumption_block.py 回答「这次计算用了哪些参数、走没走默认」——**计算层**审计。
   * 本模块回答「每个设计假设的**证据强度**如何、设计逻辑族是否自洽、
     假设被推翻时**退路是什么**」——**方案规划层**审计，方案/SAP 撰写前使用。
 
-三个能力：
+四个能力：
   1. 四分级（grade）：逐个假设评定
        known        证据充分（历史数据/文献锚定/监管共识），可直接写入 SAP
        weak         有方向但量级不确定（如仅专家意见、外推的变异度），需灵敏度分析覆盖
@@ -20,6 +21,8 @@ hypothesis_audit.py — 假设质量审计四分级 + 设计逻辑族选择 + fa
   3. fallback 场景规划（contingency）：按最脆弱的假设给出退路模板
      （事件数不足→延长随访/合并终点；ICC 超预期→加群；CV 高→中间再估样本量…），
      并标注哪些设计族天然支持期中重估（adaptive / group_sequential / assurance）。
+  4. CONSORT 2025 合规检查表 + 监管就绪评分 + 引用推荐（v5.13.13 新增）：
+      逐参数给出具体引文格式建议、CONSORT 2025 条目 16a 对齐检查、整体就绪量化评分。
 
 纯标准库、零联网、不调 coze——规划层文本工作，不触动数值真相源。
 可独立运行（--test 冒烟）；samplesize_power.py 在 --audit 下附加渲染。
@@ -82,9 +85,48 @@ ASSUMPTION_DIMS = {
                         "线性外推乐观假设"),
     "followup_time":   ("可行性依据",     "生存必需", "同 accrual", "同 accrual"),
     "nsim":            ("计算精度",       "模拟法", "—", "—"),
+    # ── v5.13.9：检验专属 dest 维度（与 REQUIRED_BY_TEST 对齐 catalog 真名）──
+    "hr_exact":        ("HR 依据",        "生存精确法必需", "同 hazard_ratio", "同 hazard_ratio"),
+    "cox_hr":          ("HR 依据",        "Cox 协变量必需", "同 hazard_ratio", "同 hazard_ratio"),
+    "sup_hr":          ("HR 依据",        "生存优效 margin 必需", "同 hazard_ratio", "同 hazard_ratio"),
+    "eq_margin_surv":  ("界值依据",       "生存等效必需", "同 margin", "同 margin"),
+    "sup_margin_surv": ("界值依据",       "生存优效 margin 必需", "同 margin", "同 margin"),
+    "theta0":          ("界值依据",       "BE 必需", "同 margin", "同 margin"),
+    "ci_control":      ("累积发生率依据", "竞争风险必需",
+                        "本人群累积发生率（Kaplan-Meier 带 CI）", "文献粗率直接挪用未核人群"),
+    "ci_treatment":    ("累积发生率依据", "竞争风险必需", "同 ci_control", "同 ci_control"),
+    "rate_control":    ("事件率依据",     "复发事件必需", "同 lambda1", "同 lambda1"),
+    "rate_ratio":      ("效应量依据",     "复发事件必需",
+                        "既往复发率比研究（带 CI）", "仅专家预期"),
+    "new_median":      ("效应量依据",     "历史对照必需", "同 hazard_ratio", "同 hazard_ratio"),
+    "median0":         ("效应量依据",     "单样本生存必需",
+                        "本人群历史中位生存（登记数据）", "跨人群/跨线数外推"),
+    "median1":         ("效应量依据",     "单样本生存必需",
+                        "预期中位生存（先导数据/文献）", "拍定期望值"),
+    "gs_rate1":        ("事件率依据",     "GSD Poisson 必需", "同 lambda1", "同 lambda1"),
+    "gs_rate2":        ("事件率依据",     "GSD Poisson 必需", "同 lambda1", "同 lambda1"),
+    "ve_control":      ("对照效力依据",   "疫苗必需", "同 p1", "同 p1"),
+    "ve_treatment":    ("效应量依据",     "疫苗必需",
+                        "预期保护效力（先导/文献带 CI）", "仅专家预期"),
+    "varcorr":         ("相关结构依据",   "混合模型必需", "同 correlation", "同 correlation"),
+    "sd_diff":         ("变异度依据",     "Bland-Altman 必需", "同 sd", "同 sd"),
+    "effect_size":     ("效应量依据",     "自适应模拟必需", "同 effect", "同 effect"),
+    "effect_must":     ("效应量依据",     "must-win 必需", "同 effect", "同 effect"),
+    "effect_dunnett":  ("效应量依据",     "Dunnett 必需", "同 effect", "同 effect"),
+    "delta_effect":    ("效应量依据",     "MAMS 必需", "同 effect", "同 effect"),
+    "p_control_current": ("对照率依据",   "历史对照必需", "同 p1", "同 p1"),
+    "historical_response": ("效应量依据", "历史对照必需", "同 hazard_ratio", "同 hazard_ratio"),
+    "n_sim":           ("计算精度",       "模拟法", "—", "—"),
+    "n_doses":         ("结构参数",       "剂量爬坡必需", "设计决定，无证据问题", "—"),
+    "target_dlt":      ("结构参数",       "剂量爬坡必需", "协议既定 DLT 阈值", "—"),
 }
 
 # 各 test 的逻辑必需参数（missing 判定用；solve_for_power 方向不要求 nobs）
+# v5.13.9：参数名与 params_catalog 逐检验对齐（diff 全 65 检验字段集修正）——
+#   旧版沿用通用名（hazard_ratio/margin/theta1/lambda1/nsim…）而部分检验实际消费
+#   检验专属 dest（hr_expected/hr_exact/cox_hr/eq_margin_surv/n_sim…），导致该检验
+#   真实必填参数"被静默判 missing"→ 假 NOT_READY 误报。alpha/power 为全检验通用
+#   监管预期参数，恒列入；可行性类（accrual/followup）仅在用户显式给出时评分。
 REQUIRED_BY_TEST = {
     "_default": ["effect", "alpha", "power"],
     "ttest_ind": ["effect", "alpha", "power"],
@@ -93,47 +135,47 @@ REQUIRED_BY_TEST = {
     "anova": ["effect", "alpha", "power", "k_groups"],
     "proportion_one": ["p1", "alpha", "power"],
     "proportion_two": ["p1", "p2", "alpha", "power"],
-    "proportion_paired": ["p1", "p2", "correlation", "alpha", "power"],
+    "proportion_paired": ["p1", "p2", "alpha", "power"],
     "odds_ratio": ["p1", "alpha", "power"],
     "risk_ratio": ["p1", "alpha", "power"],
     "non_inferiority": ["effect", "margin", "alpha", "power"],
-    "equivalence": ["effect", "margin", "alpha", "power"],
-    "be_tost": ["cv", "theta1", "theta2", "alpha", "power"],
+    "equivalence": ["effect", "sd", "alpha", "power"],
+    "be_tost": ["cv", "theta0", "alpha", "power"],
     "survival": ["hazard_ratio", "alpha", "power"],
-    "ni_survival": ["ni_margin_surv", "alpha", "power"],
-    "survival_exact": ["hazard_ratio", "alpha", "power"],
-    "survival_equivalence": ["hazard_ratio", "margin", "alpha", "power"],
-    "survival_superiority": ["hazard_ratio", "sup_margin", "alpha", "power"],
-    "cox_covariate": ["hazard_ratio", "alpha", "power"],
-    "survival_one_sample": ["lambda1", "alpha", "power"],
-    "competing_risks": ["hazard_ratio", "alpha", "power"],
-    "recurrent_events": ["hazard_ratio", "alpha", "power"],
-    "survival_historical": ["hazard_ratio", "alpha", "power"],
+    "ni_survival": ["ni_margin_surv", "hr_expected", "alpha", "power"],
+    "survival_exact": ["hr_exact", "alpha", "power"],
+    "survival_equivalence": ["hr_expected", "eq_margin_surv", "alpha", "power"],
+    "survival_superiority": ["sup_hr", "sup_margin_surv", "alpha", "power"],
+    "cox_covariate": ["cox_hr", "alpha", "power"],
+    "survival_one_sample": ["median0", "median1", "alpha", "power"],
+    "competing_risks": ["ci_control", "ci_treatment", "alpha", "power"],
+    "recurrent_events": ["rate_control", "rate_ratio", "alpha", "power"],
+    "survival_historical": ["new_median", "hist_n", "alpha", "power"],
     "cluster": ["effect", "icc", "alpha", "power"],
-    "poisson": ["lambda1", "alpha", "power"],
+    "poisson": ["lambda1", "lambda2", "alpha", "power"],
     "roc": ["auc0", "auc1", "alpha", "power"],
-    "bland_altman": ["sd", "margin", "alpha", "power"],
-    "mixed_model": ["effect", "correlation", "alpha", "power"],
+    "bland_altman": ["sd_diff", "w", "alpha", "power"],
+    "mixed_model": ["effect", "varcorr", "alpha", "power"],
     "multiple_endpoints": ["effect", "correlation", "alpha", "power"],
-    "vaccine_efficacy": ["prob_control", "ve_treatment", "alpha", "power"],
+    "vaccine_efficacy": ["ve_control", "ve_treatment", "alpha", "power"],
     "win_ratio": ["win_ratio_theta", "alpha", "power"],
-    "must_win": ["effect", "n_endpoints_must", "alpha", "power"],
-    "historical_controls": ["effect", "alpha", "power"],
-    "dose_escalation": ["target_dlt", "prob_control"],
-    "mams": ["effect", "n_arms_mams", "n_stages_mams", "alpha", "power"],
+    "must_win": ["effect_must", "n_endpoints_must", "alpha", "power"],
+    "historical_controls": ["p_control_current", "historical_response", "alpha", "power"],
+    "dose_escalation": ["target_dlt", "n_doses", "alpha"],
+    "mams": ["n_arms_mams", "delta_effect", "alpha", "power"],
     "assurance": ["effect", "sd", "alpha"],
     "conditional_power": ["observed_effect", "planned_effect", "n_completed", "n_planned"],
     "group_sequential": ["effect", "alpha", "power"],
     "adaptive": ["effect", "alpha", "power"],
-    "adaptive_simulate": ["effect", "alpha", "power", "nsim"],
+    "adaptive_simulate": ["effect_size", "alpha", "power"],
     "bayesian": ["effect", "sd", "alpha"],
     "gsd_proportion": ["p1", "p2", "alpha", "power"],
-    "gsd_survival": ["hazard_ratio", "alpha", "power"],
-    "gsd_hazard": ["hazard_ratio", "alpha", "power"],
-    "gsd_poisson": ["lambda1", "alpha", "power"],
-    "gsd_survival_sim": ["hazard_ratio", "alpha", "power", "nsim"],
-    "gsd_hazard_sim": ["hazard_ratio", "alpha", "power", "nsim"],
-    "dunnett": ["effect", "k_groups", "alpha", "power"],
+    "gsd_survival": ["hr_expected", "alpha", "power"],
+    "gsd_hazard": ["hr_expected", "alpha", "power"],
+    "gsd_poisson": ["gs_rate1", "gs_rate2", "alpha", "power"],
+    "gsd_survival_sim": ["hr_expected", "alpha", "power", "n_sim"],
+    "gsd_hazard_sim": ["hr_expected", "alpha", "power", "n_sim"],
+    "dunnett": ["effect_dunnett", "n_groups_dunnett", "alpha", "power"],
     "mediation": ["effect", "alpha", "power"],
     "superiority_margin": ["effect", "sup_margin", "alpha", "power"],
 }
@@ -268,6 +310,71 @@ FALLBACKS = {
 
 
 # ---------------------------------------------------------------------------
+# 4) 参数→推荐引用格式（v5.13.13 新增）
+# ---------------------------------------------------------------------------
+_CITATION_FORMATS = {
+    "effect": {
+        "format": "Author (Year). Title. Journal Volume:Pages. 【报告同类终点效应量，带 95% CI】",
+        "example": "Smith A et al. (2023). Efficacy of X in Y population. Lancet 401:123-130. 【报告 Z 人群终点 W 的效应量 Δ=5.2 (95% CI 3.1–7.3)】",
+    },
+    "sd": {
+        "format": "Author (Year). Title. Journal Volume:Pages. 【报告同人群同方法实测 SD，带样本量】",
+        "example": "Jones B et al. (2022). Variability of endpoint W in population Z. J Clin Epidemiol 145:88-95. 【n=120, SD=12.5, 测量方法：___】",
+    },
+    "p1": {
+        "format": "Author (Year). Title. Journal Volume:Pages. 【报告对照率，带观察例数】",
+        "example": "Brown C et al. (2023). Event rate in control arm. NEJM 389:456-465. 【n=300/1500=20.0%, 多中心, 随访 12 月】",
+    },
+    "hazard_ratio": {
+        "format": "Author (Year). Title. Journal Volume:Pages. 【报告 HR，带 95% CI 与中位生存】",
+        "example": "Wilson D et al. (2024). Survival outcomes with X vs Y. JCO 42:789-798. 【HR=0.65 (95% CI 0.52–0.81), 中位 OS 18.2 vs 12.5 月】",
+    },
+    "margin": {
+        "format": "监管文档 / 临床共识文件编号 + 条款；或已发表界值论证研究",
+        "example": "FDA Guidance (2016) Section III.B: 保留对照疗效≥50% 推导 δ=4.0；或 EMA CHMP Guideline (2005) Appendix 2",
+    },
+    "icc": {
+        "format": "Author (Year). Title. Journal Volume:Pages. 【报告同类干预/人群 ICC，带区间】",
+        "example": "Adams E et al. (2021). ICC for cluster designs in X trials. Trials 22:123. 【ICC=0.03 (95% CI 0.01–0.08), 同类干预/人群】",
+    },
+    "cv": {
+        "format": "Author (Year). Title. Journal Volume:Pages. 【报告制剂桥接预试验 CV，带例数与方法】",
+        "example": "Lee F et al. (2023). BE study of X formulation. Clin Pharmacol Ther 114:345-352. 【n=48 交叉, CV=23.5%, 制剂: ___】",
+    },
+    "dropout_rate": {
+        "format": "Author (Year). Title. Journal Volume:Pages. 【报告同类试验实测脱落率，带脱落原因分布】",
+        "example": "Taylor G et al. (2022). Attrition in X trials: a systematic review. Clin Trials 19:234-243. 【加权脱落率 8.2%, 主要脱落原因：失访/退出/AE】",
+    },
+    "correlation": {
+        "format": "Author (Year). Title. Journal Volume:Pages. 【报告同人群实测相关系数，带样本量】",
+        "example": "Martin H et al. (2023). Correlation between endpoints in X disease. Stat Med 42:567-578. 【r=0.62, n=150, Pearson/Spearman】",
+    },
+    "power": {
+        "format": "ICH E9 / 监管指导原则；或适应症常规",
+        "example": "ICH E9 (1998) Section 3.1: 确证性试验效能通常不低于 80%；肿瘤适应症惯例 90%",
+    },
+    "event_rate": {
+        "format": "Author (Year). Title. Journal Volume:Pages. 【报告本人群实测事件率或大型登记数据】",
+        "example": "National Registry (2024). Annual report of X disease. 【n=5000, 12 月事件率 15.3%; 或 KM 估计】",
+    },
+}
+
+# ---------------------------------------------------------------------------
+# 5) CONSORT 2025 条目 16a 合规检查表（v5.13.13 新增）
+# ---------------------------------------------------------------------------
+_CONSORT_16A_ITEMS = [
+    ("主终点定义", "主要终点明确定义（评估变量/汇总度量/时点/分析人群）"),
+    ("各组假设值", "每组的结局值假设（连续=均率；二分类=率；生存=HR/事件率）"),
+    ("目标差值", "组间目标差值 + 依据（MCID/文献/监管共识）"),
+    ("标准差", "连续终点的共同标准差（来源引用）"),
+    ("检验水准", "α（单/双侧）+ 多重性校正（如适用）"),
+    ("检验效能", "目标效能（1-β）+ 适应症常规依据"),
+    ("校正项", "脱落/不依从/群集/不等分配校正"),
+    ("软件版本", "计算软件 + 版本号 + 方法/R代码"),
+    ("期中分析", "期中分析计划 + α 消耗函数（如适用）"),
+]
+
+# ---------------------------------------------------------------------------
 # 审计引擎
 # ---------------------------------------------------------------------------
 def _param_state(args, dests, k):
@@ -393,14 +500,46 @@ def audit_hypotheses(args, test, parser, grades_override=None):
     }
 
 
+def _readiness_score(report):
+    """计算监管就绪量化评分（v5.13.13 新增）。
+
+    评分逻辑：
+      - 基础分 = 100
+      - missing 每个 -15（最高扣至 0）
+      - unknown 每个 -10
+      - weak 每个 -5
+      - 全 known → 100
+      - 90+ / 70-89 / 50-69 / <50 对应 A/B/C/D 四级
+    """
+    s = report["summary"]
+    score = 100 - s["missing"] * 15 - s["unknown"] * 10 - s["weak"] * 5
+    if score < 0:
+        score = 0
+    if score >= 90:
+        grade = "A"
+        desc = "就绪 — 可直接撰写 SAP 提交"
+    elif score >= 70:
+        grade = "B"
+        desc = "基本就绪 — weak 假设需附灵敏度分析"
+    elif score >= 50:
+        grade = "C"
+        desc = "条件就绪 — 建议先补强证据或改用自适应设计"
+    else:
+        grade = "D"
+        desc = "不就绪 — 关键假设缺失，需先导研究或重新设计"
+    return score, grade, desc
+
+
 def render_text(report):
     """中英混排文本渲染（跟随 locale 的简化版：中文主文案，术语中英并注）。"""
     zh = {"known": "✔ known 有据", "weak": "△ weak 薄弱",
           "unknown": "✗ unknown 无据", "missing": "⚠ missing 未给（静默默认）"}
+    score, grade, desc = _readiness_score(report)
     lines = []
-    lines.append("\n\n## 假设质量审计 / Hypothesis Audit (upgrade I)\n")
-    lines.append("检验类型: **%s** ｜ 设计逻辑族: **%s** ｜ 总体判定: **%s — %s**\n"
-                 % (report["test"], report["family"], report["overall"], report["overall_note"]))
+    lines.append("\n\n## 假设质量审计 / Hypothesis Audit (upgrade J, v5.13.13)\n")
+    lines.append("检验类型: **%s** ｜ 设计逻辑族: **%s** ｜ 总体判定: **%s — %s** ｜ 监管就绪评分: **%d/100 (%s) — %s**\n"
+                 % (report["test"], report["family"], report["overall"], report["overall_note"],
+                    score, grade, desc))
     if report["family_assumption_focus"]:
         lines.append("> 本族假设重心：%s\n" % report["family_assumption_focus"])
     s = report["summary"]
@@ -425,6 +564,31 @@ def render_text(report):
                 lines.append("  - %s" % fb)
     else:
         lines.append("\n### 3. Fallback 场景规划\n\n- 无薄弱假设，暂无需预注册退路。")
+    # v5.13.13：CONSORT 2025 条目 16a 合规检查表
+    lines.append("\n### 4. CONSORT 2025 条目 16a 合规检查表\n")
+    for i, (item, desc_item) in enumerate(_CONSORT_16A_ITEMS, 1):
+        lines.append("%d. □ %s — %s" % (i, item, desc_item))
+    # v5.13.13：弱/未知假设引用推荐
+    weak_unk = [g for g in report["grades"] if g["grade"] in ("weak", "unknown")
+                and g["param"] in _CITATION_FORMATS]
+    if weak_unk:
+        lines.append("\n### 5. 弱/未知假设的引用推荐（提升为 known 的具体引文格式）\n")
+        for g in weak_unk:
+            cf = _CITATION_FORMATS[g["param"]]
+            lines.append("**%s**（%s）：" % (g["param"], g["dimension"]))
+            lines.append("  推荐格式：%s" % cf["format"])
+            lines.append("  示例：%s" % cf["example"])
+    else:
+        lines.append("\n### 5. 引用推荐\n\n- 所有假设均已标注已知来源，无需额外引用推荐。")
+    # v5.13.13：总体监管就绪评分
+    lines.append("\n### 6. 监管就绪量化评分\n")
+    lines.append("| 维度 | 数值 |")
+    lines.append("|---|---|")
+    lines.append("| 总分 | %d / 100 |" % score)
+    lines.append("| 等级 | %s — %s |" % (grade, desc))
+    lines.append("| 评分逻辑 | missing×15 + unknown×10 + weak×5 扣分；最低 0 |")
+    lines.append("\n> 评分说明：90+ = A 就绪 / 70-89 = B 基本就绪 / 50-69 = C 条件就绪 / <50 = D 不就绪。")
+    lines.append("> 评分目的：辅助研究者识别证据薄弱环节，不替代统计师/监管专家判断。")
     lines.append("\n> 本审计为**规划层**文本评估，不参与数值计算；分级可经 agent 访谈或统计师"
                  "复核后用 grades_override 回填修正。输出供方案/SAP 撰写参考，非监管意见。")
     return "\n".join(lines)
