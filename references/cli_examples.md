@@ -138,7 +138,8 @@ python scripts/samplesize_power.py --test superiority_margin --sup_margin 0.05 -
 python scripts/samplesize_power.py --test poisson --lambda1 0.05 --lambda2 0.03 --t1 2 --t2 2 --power 0.8
 
 # === Survival ===
-python scripts/samplesize_power.py --test survival --hazard_ratio 0.75 --power 0.85
+# 2026-10-28：补 event_rate/入组/随访，否则只回所需事件数（不给样本量）
+python scripts/samplesize_power.py --test survival --hazard_ratio 0.75 --event_rate 0.7 --accrual_time 12 --followup_time 12 --power 0.85
 
 # === Survival — PASS extensions (v3.5) ===
 python scripts/samplesize_power.py --test survival_equivalence --eq_margin_surv 1.25 --hr_expected 1.0 --accrual_time 12 --followup_time 12 --event_rate 0.7 --power 0.8
@@ -147,7 +148,8 @@ python scripts/samplesize_power.py --test cox_covariate --cox_hr 2.0 --cox_r2 0.
 python scripts/samplesize_power.py --test survival_one_sample --median0 12 --median1 18 --accrual_time 12 --followup_time 12 --power 0.8
 python scripts/samplesize_power.py --test competing_risks --ci_control 0.2 --ci_treatment 0.1 --power 0.8
 python scripts/samplesize_power.py --test recurrent_events --rate_control 1.0 --rate_ratio 0.6 --recur_followup 2 --power 0.8
-python scripts/samplesize_power.py --test survival_historical --hist_median 12 --new_median 18 --hist_n 100 --accrual_time 12 --followup_time 12 --power 0.8
+# 2026-10-28：参数名修正 --hist_median → --median0（原写法 argparse 直接报 unrecognized arguments）
+python scripts/samplesize_power.py --test survival_historical --median0 12 --new_median 18 --hist_n 100 --accrual_time 12 --followup_time 12 --power 0.8
 
 # === Special Designs ===
 python scripts/samplesize_power.py --test cluster --icc 0.05 --m 30 --n_indiv 64
@@ -223,7 +225,7 @@ python scripts/samplesize_power.py --test mams --nobs 100
 python scripts/samplesize_power.py --test survival_equivalence --eq_margin_surv 1.25 --hr_expected 1.0 --accrual_time 12 --followup_time 12 --event_rate 0.7 --nobs 350
 ```
 
-**Covers all 65 test types.** Reverse-solve strategy:
+**Covers all 67 test types.** Reverse-solve strategy:
 - **Native package reverse (priority):** `pwr.*` (`pwr.t.test(n=)` auto-reverses), `PowerTOST::power.TOST(n=)`, `rpact::getPowerMeans/getPowerSurvival(n=)` — exact.
 - **Analytic inverse:** self-written tests (ROC, Poisson, vaccine efficacy, multi-endpoint, Bayesian, Win Ratio, MAMS etc.) back-solve `z_b` via non-centrality, then `power = pnorm(z_b)`.
 - **Approx/precision:** `bland_altman` returns achievable CI half-width (precision, not power); `dose_escalation` is heuristic design (power N/A); `conditional_power`/`assurance` `--nobs` maps directly to planned/assurance sample size.

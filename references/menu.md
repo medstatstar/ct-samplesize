@@ -60,6 +60,8 @@ the right `--test` is on the right.
 - `anova` — Multi-group (k groups)
 - `equivalence` — Equivalence (means)
 - `mixed_model` — Repeated measures / longitudinal
+- `wilcoxon` — Wilcoxon rank-sum, two independent samples (nonparametric, Noether 1987; `--superiority` φ or `--median_diff`+`--sd`+`--shape`)
+- `wilcoxon_signed_rank` — Wilcoxon signed-rank, paired/one-sample (nonparametric; same effect inputs as `wilcoxon`)
 
 ### ② Binary / Proportions
 > 常见参数：`--p1`/`--p2`（率差场景）或 `--effect OR/RR` · `--margin`（非劣效/BE）· `--sup_margin`/`--p_control_sup`/`--delta_sup`（优效）· `--alpha` · `--power`

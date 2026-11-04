@@ -257,6 +257,6 @@ python scripts/samplesize_power.py --test ttest_ind     --effect-ref references/
 ## Workbench: startup & feature overview (collapsed from README section 7, 2026-10-22)
 
 - **Online portal (no install)**: https://ct.medstatstar.com — same features and 65-test catalog as the local Workbench.
-- **Local startup**: `cd adapters/workbench && python server.py 8790` (talks to the real coze R engine by default; `CTSS_COZE_MOCK=1` for the offline demo; `CTSS_BACKEND=local_r` for the local-R dev backend, dev/regression only).
+- **Local startup**: `cd workbench && python server.py 8790` (talks to the real coze R engine by default; `CTSS_COZE_MOCK=1` for the offline demo; `CTSS_BACKEND=local_r` for the local-R dev backend, dev/regression only).
 - **Core features**: one-shot natural-language recognition (zero-LLM deterministic routing + LLM fallback), dynamic forms for all 65 tests, effect-size helper, curve / allocation-ratio plots, current analysis setting card, key-number cards, inline SVG figures (PNG switchable), reproducible R code, coze request-envelope preview (nothing sent), session-thread diffs (inherited / overridden / missing), multi-group comparison table, one-click single-file HTML report export, two-stage sanitized feedback.
 - Consulting-style phrasing ("what does this test mean") never triggers a cloud computation — the result area shows a hint instead, so idle chatter doesn't burn compute quota.

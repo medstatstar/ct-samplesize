@@ -79,6 +79,16 @@ where d = total events required, HR = hazard ratio.
 
 **Note:** Simplified. For exact results with accrual time, censoring, non-proportional hazards → use R `rpact` or `gsDesign`.
 
+Event-to-subject conversion (2026-10-28 修正):
+
+$$n = \frac{d}{\bar P}, \qquad \bar P = \frac{P_c + r\,P_t}{1+r}$$
+
+where $P_c$ = P(event) in the control arm, $P_t$ = P(event) in the experimental arm
+(with $\lambda_t = \lambda_c \times HR$), $r = n_2/n_1$. Both arms are computed with
+uniform accrual $A$, follow-up $F$ and competing dropout $\delta=-\ln(1-\text{dropout})/(A+F)$.
+Using the control arm only (the pre-5.14 behaviour) overstates $\bar P$ and under-recruits
+by 5–17 %.
+
 ---
 
 ## 7. Repeated Measures

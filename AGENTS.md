@@ -136,3 +136,67 @@ install.packages(c("TrialSize", "pwr", "rpact", "PowerTOST", "simr", "lme4", "pR
 # The v5 refactor removed statsmodels / numpy / scipy (no local Python computation).
 # Optional: cairosvg — only for --figure-mode png_file (local SVG→PNG rasterization).
 ```
+
+## Test Infrastructure / 测试基建
+
+> 沉淀自 v5.13.42 全量回归实战。**纪律全文见 ct-base `references/workbench_ui.md` §21.6（jsdom 断言纪律）与 §22（计算正确性实证裁决）**——叶技能遵循 ct-base 底座子集约束。核心三条：闭式/近似公式必须 MC 实证裁决（自洽性断言只证明实现忠实、不证明正确）；jsdom 断言匹配渲染后显示文本（`paramLabel` 会把 `power` 译成「目标检验效能」）；机检项负例双向验证（违例真报 + 合法真过）。
+
+### Suites / 套件一览
+
+| 套件 | 命令 | 覆盖 | 备注 |
+|---|---|---|---|
+| 本地 NL 路由 | `python tests/test_nl_local.py` | 意图判定 / 咨询拦截 / 分类路由 / 参数提取 | 零网络 |
+| 特性回归 | `python tests/test_features.py` | 5 本地用例（其余 live-only 自动跳过） | |
+| 合约信封 | `python tests/coze_cases_regression.py` | 67 检验契约信封结构 | 零网络 |
+| 合约 live | `CTSS_COZE_LIVE=1 python tests/coze_cases_regression.py` | 真实端点 21 案例 | 打 coze，注意 429 |
+| NL 30 案例 | `python tests/test_natural_language.py` | 自然语言端到端 | 打 coze |
+| 全覆盖 69 | `python tests/test_full_coverage.py` | 全检验矩阵 | 打 coze |
+| 矩阵缺口 | `CTSS_COZE_LIVE=1 python tests/test_matrix_gaps.py` | FD-B2 反求等 57 项 | live-only；报告落 `tests/matrix_gaps_report.json` |
+| jsdom UI | `NODE_PATH="C:/Users/WintoneFileSrv/.workbuddy/binaries/node/workspace/node_modules" node tests/test_meta_ui_jsdom.js` | catalog 驱动 UI 回归 26 断言 | 夹具在 `%TEMP%/ctss_fix/` |
+| **工作台全自动化**（下） | 见下 | 工作台页面五层 110 例：静态契约/后端API/前端单元/E2E/布局a11y | **发布前强制闸门**，mock |
+| **scratch 四件套**（下） | 见下 | wilcoxon 新增链 + 本轮 UI 修复聚焦 | 本地夹具，gitignored |
+
+**429 限流判据（§22.2）**：live 套件批量"失败"先看信封——`{"ok": false, "error": "rate_limited"}` = 基础设施节流非回归，用同端点其他套件全过反证。Heavy 套件连打（150+ 调用/小时）会烧掉配额，套件之间留间隔；限流未退不反复探测（探测也耗配额）。
+
+### scratch/ 回归脚本四件套（tests/scratch/，本地资产，勿当垃圾清理）
+
+| 脚本 | 运行 | 断言数 | 用途 |
+|---|---|---|---|
+| `verify_wilcoxon.R` | `"C:/Tools/R-4.6.1/bin/x64/Rscript.exe" tests/scratch/verify_wilcoxon.R adapters/coze/src/r_engine` | 20 | wilcoxon 双检验 R 单元：折算路径 / Noether 闭式 / 最小整数性 / 单双侧 / 不等比例 / ARE 自洽 / **MC 锚定**（n=30 模拟 0.802） |
+| `mc_wilcoxon.R` | `"C:/Tools/R-4.6.1/bin/x64/Rscript.exe" tests/scratch/mc_wilcoxon.R` | — | 蒙特卡洛裁决（20000 次精确 `wilcox.test`）——**公式正确性的唯一证据来源**（§22.1） |
+| `e2e_wilcoxon.py` | `python tests/scratch/e2e_wilcoxon.py` | 16 | `run_task.R --input json --output json` dispatch 全路径：求解 / 反求 / 两路径 / 单侧 / 脱落 / 错误路径 / 曲线 |
+| `ui_focus_check.js` | `NODE_PATH=... node tests/scratch/ui_focus_check.js` | 26 | 本轮 UI 修复聚焦：菜单落位 / 占位提示 / 求解方向切换输出 / **or 组必填提示五情形** / 缺失参数转义 / 叙述结构化 |
+
+维护纪律：① 夹具从活服务器（`CTSS_COZE_MOCK=1 PORT=8791 python workbench/server.py 8791`）`/api/schema` 导出，**必须用 Python 无 BOM 写盘**（PowerShell `Set-Content utf8` 加 BOM 会崩 Node `JSON.parse`）；② 断言匹配显示文本非内部键名；③ 期望值实证锚定（贴线值先精算）；④ 改 R 公式后必须同跑 `mc_wilcoxon.R` 再收。
+
+### 界面机检（C-detail-*）
+
+```bash
+# ct-base 通用引擎（零依赖，默认全开含 C-detail-escape）；本技能无 rules.json 走家族默认
+python "C:/Users/WintoneFileSrv/.workbuddy/skills/ct-base/scripts/wb_detail_check.py" --html workbench/workbench.html
+# 发布副本同步复检
+python "C:/Users/WintoneFileSrv/.workbuddy/skills/ct-base/scripts/wb_detail_check.py" --html workbench/publish/workbench/workbench.html
+```
+任一 FAIL = 禁止交付。v5.13.42 起工作台与发布副本均全绿（label / placeholder / claim / i18n-ph / escape）。
+
+### 工作台全自动化测试（标准检验流程 / release gate）
+
+> 规范全文：`references/workbench_qa.md`（zh：`references/workbench_qa_zh-CN.md`）；套件实操：`workbench/autotest/README.md`。与上方 `C-detail-*` 机检互补——C-detail 查静态细节（label/placeholder/escape），本套件查**运行时行为 + 后端契约 + 真实流程 + 布局**。
+
+**强制闸门**：改 `workbench.html` / `server.py` / `form_schema.py` / `tokens.css` / `wb-list.css` / `wb-list.js` 任一，或跑 `build_publish.py` / `install_genie.py` 前，**必须**全量跑通：
+
+```bash
+cd workbench/autotest
+python run_all.py                # 五层 110 例，约 70s，全绿才允许发布
+python run_all.py --layer L1 L3  # 开发迭代只跑指定层
+```
+
+判据：**5 层 0 failed / 0 error**；任一失败 = 禁止发布。报告落 `autotest/report/<ts>/`（summary.md / failures.md / junit_L*.xml）。
+
+**五层**：L1 静态契约（纯 Python 解析 HTML，不启浏览器）· L2 后端 API（起 `server.py` 子进程 + requests，67 方法全参数化、非法输入必 4xx、凭据白名单、限流）· L3 前端单元（Playwright 内直调页面 JS）· L4 端到端（真实点击：选方法→填参→计算→历史→导出→反馈弹窗）· L5 布局/响应式/a11y（三档视口：桌面/平板/手机，横向溢出、44px 热区、对比度）。
+
+**回归基线（7 个真实 bug，持续守护）**：① P0 `#v-domain` 缺闭合标签致历史页/页脚被吞、功能 0×0 不可用；② P0 `/config/llm_key.py` 等凭据文件可被 HTTP GET 下载；③ P1 argparse usage 打 stderr 在容器里拖死请求（点计算一直转圈）；④ P1 `survival` optional 用 CLI 别名 `hr` 渲染空控件；⑤ P2 切 EN 残留中文（域标题/会话下拉）；⑥ P2 `title`/`aria-label` 无 i18n；⑦ P2 移动端 CTA 40px < 44px。完整根因与修法见 `references/workbench_qa_zh-CN.md` §四。
+
+**🔴 强制护栏**：跑 `build_publish.py` 前先备份 `publish/.wbapp_*.genie` 与 `publish/.workbuddy/applications.yaml`——其 PRUNE 会剪掉 appId 认领标记，丢失后再发布会生成带后缀新域名、无法回到 `https://ct-samplesize.app.workbuddy.host/`。本套件**不进**工作台发布载荷（白名单构建，`autotest/` 不在白名单）。
+
+

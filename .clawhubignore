@@ -84,12 +84,12 @@ Thumbs.db
 .ctbase_injected.json
 
 # ── 工作台发布基础设施与运行载荷（2026-09-26 带后端升级，与 .gitignore 对齐）──
-workbench/
-workbench/publish-kit/
-workbench/publish-dist/
+# 2026-10-24 目录合并：原 workbench/ 宿主目录已整体并入 adapters/workbench/
+# （§16.12 单目录承载，与 meta-analysis 一致）。adapters/workbench/ 已在上方
+# 「工作台整体排除」段统一列出；publish-kit/ 与 _publish_trash/ 随之被覆盖。
 
-# 发布构建旧版本暂存（与 .gitignore 对齐，v5.12.0）
-workbench/_publish_trash/
+# 发布构建旧版本暂存（与 .gitignore 对齐，v5.12.0，已被 adapters/workbench/ 覆盖）
+# workbench/_publish_trash/
 
 # ── F20 周备份目录（与 .gitignore 对齐，不进发布包）──
 _bak_weekly_*/
@@ -105,3 +105,13 @@ result.json
 *.jsonl
 *.orig
 *.rej
+
+# ── 2026-10-27 发布前检查自动补（F15/F20 · 双 ignore 对齐）──
+.pytest_cache/
+
+# ── ct-update 周检自动补齐（2026-11-03） ──
+browser_tests.py
+ctqa.config.json
+
+# ── ct-update 周检自动补齐（2026-11-03） ──
+workbench/

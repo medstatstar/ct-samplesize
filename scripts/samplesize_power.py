@@ -133,7 +133,8 @@ def _auto_curve_tests() -> frozenset:
         return _AUTO_CURVE_TESTS_CACHE
     try:
         idx_path = (Path(__file__).resolve().parent.parent
-                    / "tests" / "coze_cases" / "_contract_index.json")
+                    / "adapters" / "workbench" / "publish" / "tests" / "coze_cases"
+                    / "_contract_index.json")
         data = json.loads(Path(idx_path).read_text(encoding="utf-8"))
         s = frozenset(
             t["test"] for t in data.get("tests", [])
@@ -495,7 +496,9 @@ def build_parser():
                  "correlation","variance_one","variance_two","cv_one",
                  "ci_mean","ci_prop","ci_or","ci_rr","ci_cor","ci_icc",
                  "regression_linear","meta_planning",
-                 "regression_logistic","regression_poisson","cluster_ext","rates_ext"])
+                 "regression_logistic","regression_poisson","cluster_ext","rates_ext",
+                 # 非参数（NP1/NP2, v5.13.39）：Wilcoxon 秩和 / 符号秩（Noether 1987）
+                 "wilcoxon","wilcoxon_signed_rank"])
     p.add_argument("--nl", default=None,
                    help="自然语言需求（零 LLM 本地确定性解析：自动识别 --test 并提取参数）。"
                         "例：'非劣效生存试验，NI界值1.25，期望HR=1.0，入组12月随访12月'。"
@@ -563,6 +566,20 @@ def build_parser():
                    help="gsd_proportion 治疗组比例 (difference 模式必填, 默认 0.7)")
     p.add_argument("--p2", type=float, default=0.5,
                    help="gsd_proportion 对照组比例 (difference 模式必填, 默认 0.5)")
+    # ── 非参数 Wilcoxon（NP1/NP2, v5.13.39）──
+    # 效应输入两路径：superiority 直给优先；否则 median_diff + sd（+ shape）按位移分布折算。
+    # 偏态结局（生存时间、不良事件计数、中位数与均数差异显著）不满足正态近似时使用。
+    # 命名说明：不叫 --phi 是为避开 regression_poisson/rates_ext 的过离散参数 φ。
+    p.add_argument("--superiority", type=float, default=None,
+                   help="随机优势 φ（治疗组受试者结局优于对照组受试者的概率，0.5=无差异，"
+                        "典型 0.6 小 / 0.65 中 / 0.7 中大≈d=0.5）。直给时优先于 median_diff 路径")
+    p.add_argument("--median_diff", type=float, default=None,
+                   help="组间（或配对差）中位数差 Δ。需配合 --sd 折算 φ："
+                        "normal → φ=Φ(Δ/(σ√2))（两样本）/ Φ(Δ/σ)（配对）；"
+                        "logistic → φ=plogis(Δ/(s·k))，s=σ√3/π。仅给 Δ 不给 sd 将报错（不静默默认）")
+    p.add_argument("--shape", choices=["normal", "logistic"], default="normal",
+                   help="median_diff 折算 φ 时的位移分布形状假设：normal（默认）或 logistic。"
+                        "logistic 厚尾、同等 Δ 下所需样本量更小")
     # ── Non-inferiority / Equivalence ──
     p.add_argument("--margin", type=float)
     # ── Survival ──

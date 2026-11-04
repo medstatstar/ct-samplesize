@@ -252,7 +252,7 @@ python scripts/samplesize_power.py --test ttest_ind \
 ## 工作台（Workbench）启动与功能概览（2026-10-22 自 README 第七节收敛）
 
 - **在线门户（免安装）**：https://ct.medstatstar.com —— 与本地工作台同一套功能与 65 种检验目录。
-- **本地启动**：`cd adapters/workbench && python server.py 8790`（默认连真实 coze R 引擎；
+- **本地启动**：`cd workbench && python server.py 8790`（默认连真实 coze R 引擎；
   `CTSS_COZE_MOCK=1` 离线演示模式；`CTSS_BACKEND=local_r` 走本机 R 开发后端，仅 dev/回归用）。
 - **核心功能**：自然语言一键识别（零 LLM 确定性路由 + 大模型兜底）、65 检验动态表单、
   效应量助手、曲线 / 分配比图、当前分析设定卡、关键数值卡片、内联 SVG 图形（可切 PNG）、

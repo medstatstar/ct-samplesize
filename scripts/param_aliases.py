@@ -75,6 +75,10 @@ _PARAM_PATTERNS = [
     ("rate_ratio", [r"率比", r"rate_ratio", r"rate\s*ratio"], False),
     ("hr_expected", [r"期望.*hr", r"expected.*hr"], False),
     ("win_ratio_theta", [r"win.{0,3}ratio", r"win比率", r"胜率比"], False),
+    # ── 非参数 Wilcoxon（NP1/NP2, v5.13.39）──
+    # 注意：shape 是枚举（normal/logistic），不走数值匹配，见 _detect_shape
+    ("superiority", [r"随机优势", r"优势概率", r"superiority", r"mann.{0,4}whitney.{0,6}(效应|优势)", r"p\s*\(\s*x\s*<\s*y\s*\)"], False),
+    ("median_diff", [r"中位数差", r"中位.?数差异", r"median\s*diff", r"位置差"], False),
 ]
 
 
@@ -154,6 +158,17 @@ def _detect_side(nl):
     return None
 
 
+# ── Wilcoxon 位移分布形状（NP1/NP2, v5.13.39）───────────────────────────────
+# 枚举参数，无数值可抓：显式提到 logistic/厚尾 → logistic；正态位移 → normal；
+# 都未提 → None（R 端默认 normal，审计会标 weak 提示未确认）。
+def _detect_shape(nl):
+    if re.search(r"logistic|厚尾", nl, flags=re.IGNORECASE):
+        return "logistic"
+    if re.search(r"正态位移|normal\s*shift|正态分布假设", nl, flags=re.IGNORECASE):
+        return "normal"
+    return None
+
+
 # ── 两组均值差（效应量 d 的推断）────────────────────────────────────────────
 # 「试验组收缩压下降 15mmHg，对照组下降 10mmHg」→ effect = |15 - 10| = 5。
 # 仅当 NL 同时显式给出「试验组/治疗组」与「对照组」两组的变化数值才推断，
@@ -202,6 +217,11 @@ def extract_parameters(nl, test=None):
     side = _detect_side(nl)
     if side:
         params["side"] = side
+        hints += 1
+
+    shape = _detect_shape(nl)
+    if shape:
+        params["shape"] = shape
         hints += 1
 
     # 两组均值差 → 效应量（仅当 NL 未显式给 effect 时推断，避免覆盖明确值）

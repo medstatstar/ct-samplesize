@@ -136,7 +136,7 @@ if (!is.null(p$plot_dist)) {
 
 ### 无需部署（纯本地）的同期改动
 
-`adapters/workbench/server.py`（D1B 编排 + CTSS_D1_SPLIT 开关 + D2 PNG）、`adapters/coze_client.py`（D3 warnings 通道）、`form_schema.py`（survival 的 followup_time 必填）、`tests/coze_cases/_contract_index.json`（survival.required 补登 followup_time）、workbench 三份 HTML（figHTML 渲染）。
+`workbench/server.py`（D1B 编排 + CTSS_D1_SPLIT 开关 + D2 PNG）、`adapters/coze_client.py`（D3 warnings 通道）、`form_schema.py`（survival 的 followup_time 必填）、`tests/coze_cases/_contract_index.json`（survival.required 补登 followup_time）、workbench 三份 HTML（figHTML 渲染）。
 
 ### 部署后必须做的云端回归（通过前不得移除服务端编排）
 

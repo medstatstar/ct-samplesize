@@ -565,6 +565,8 @@ Sixteen tests were added in v5.9–v5.10 (49 → 61 → 65), closing the PASS-co
 
 CLI examples, bidirectional solving, curve mode, core formulas, system requirements, common errors, file structure, and references for developers have been moved to **[ADVANCED.md](docs/ADVANCED.md)**. Ordinary users don't need it; see Sections 1-5 for daily use.
 
+> **For maintainers**: the workbench page's **standard inspection process (mandatory pre-publish gate)** — a 5-layer automated suite (static contract / backend API / frontend unit / end-to-end / layout a11y, 110 cases) — is documented in **[references/workbench_qa.md](references/workbench_qa.md)**. Must pass before any workbench source change or publish.
+
 ---
 
 ## Version

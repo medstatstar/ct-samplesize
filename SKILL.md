@@ -3,12 +3,12 @@ slug: ct-samplesize
 displayName: Clinical Trial Sample Size / 临床试验样本量专家
 name: ct-samplesize
 cn_name: 临床试验样本量专家
-version: 5.13.28
+version: 5.14.7
 invocable: true
 required_commands: [python]
-summary: 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 65 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
+summary: 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 67 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
 license: MIT
-description: "Sample size and power calculation tool for clinical trial practitioners. No local R install needed — a cloud R compute service covers all 65 test types and returns publication-grade SVG figures. Natural-language driven; full reproducible R code is returned by default; default output in Chinese or English per OS language setting (prompt can force-switch). / 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 65 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。"
+description: "Sample size and power calculation tool for clinical trial practitioners. No local R install needed — a cloud R compute service covers all 67 test types and returns publication-grade SVG figures. Natural-language driven; full reproducible R code is returned by default; default output in Chinese or English per OS language setting (prompt can force-switch). / 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 67 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。"
 triggers:
   - "clinical trial sample size"
   - "样本量计算"
@@ -21,7 +21,11 @@ triggers:
   - "adaptive design"
   - "group sequential design"
   - "Bayesian clinical trial"
-metadata: { openclaw: { emoji: "📊" }, authors: ["medstatstar", "phoe-zip"], license: "MIT", tags: [clinical-trial, sample-size, power, coze, adaptive-design, bayesian, win-ratio], homepage: "https://github.com/medstatstar/ct-samplesize" }
+  - "Wilcoxon rank-sum sample size"
+  - "非参数检验 样本量"
+  - "wilcoxon signed-rank"
+  - "秩和检验 样本量"
+metadata: { openclaw: { emoji: "📊" }, authors: ["medstatstar", "phoe-zip"], license: "MIT", tags: [clinical-trial, sample-size, power, coze, adaptive-design, bayesian, win-ratio, nonparametric, wilcoxon], homepage: "https://github.com/medstatstar/ct-samplesize" }
 permissions:
   scope: "user-space-only"
   network: "required"
@@ -40,7 +44,7 @@ permissions:
 | Share link | `https://ct-samplesize.app.workbuddy.host/` |
 | appId | `wbapp_9K1dei1PydVQ66YmawCD3C` |
 | domainPrefix | `ct-samplesize` |
-| Deploy metadata | `adapters/workbench/app.config.json` |
+| Deploy metadata | `workbench/app.config.json` |
 | Deployed as | Static site (`python -m http.server $PORT --bind 0.0.0.0`) |
 | Payload | `WorkBuddy/2026-09-14-14-39-40/deploy_ctss/static/index.html` |
 
@@ -56,7 +60,7 @@ permissions:
 
 ## Purpose
 
-This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. **The default authoritative engine is a remote coze R compute service** (rpact / TrialSize / PowerTOST and 20+ other packages — running server-side, so your machine needs **no local R**), covering all 65 test types. Results come in Chinese or English per the OS language setting (prompt can force-switch). Reproducible R code is returned by default (coze returns it on every analysis).
+This skill provides clinical trial researchers with an easy-to-use, comprehensive sample size & power calculation tool. **The default authoritative engine is a remote coze R compute service** (rpact / TrialSize / PowerTOST and 20+ other packages — running server-side, so your machine needs **no local R**), covering all 67 test types. Results come in Chinese or English per the OS language setting (prompt can force-switch). Reproducible R code is returned by default (coze returns it on every analysis).
 
 ---
 
@@ -64,13 +68,13 @@ This skill provides clinical trial researchers with an easy-to-use, comprehensiv
 
 | Capability | Description | Typical Scenario |
 |:---|:---|:---|
-| **① Sample size ⇄ Power (bidirectional)** | Solve n given target power, AND solve achievable power given fixed n. `--power` (forward) and `--nobs` (reverse) are mutually exclusive; covers all 65 types. | Sample size fixed, evaluate if power meets target |
+| **① Sample size ⇄ Power (bidirectional)** | Solve n given target power, AND solve achievable power given fixed n. `--power` (forward) and `--nobs` (reverse) are mutually exclusive; covers all 67 types. | Sample size fixed, evaluate if power meets target |
 | **② Power curve** | Given a sample-size sequence, batch-compute and plot the **Power curve** (x=sample size, y=power), with a target-power reference line. | Sample-size sensitivity analysis, protocol reporting |
 | **③ Sample-size curve** | Given a power-target sequence, batch-compute and plot the **sample-size curve** (x=target power, y=required n). | Resource planning, feasibility assessment |
-| **④ Deterministic NL pre-route (zero-LLM)** | `--nl "<natural language>"` runs a local zero-LLM deterministic detector that identifies `--test` and extracts params (power 80%→0.8, rate 70%→0.7, "enroll 30"→reverse-solve power, etc.), emitting a strong signal for the coze request; when confidence is low / params incomplete it prints a structured prompt and **never silently mis-params** — the local agent then asks the user for the missing test/params (≤2 rounds, then defaults); **raw NL text is never sent to coze** (the workbench is **deterministic-first** — `classify_test` + `param_aliases`, identical to conversation mode; the LLM fallback in `adapters/workbench/nl_llm.py` defaults to the family backend model LongCat-2.0 per ct-base §12 (key via `load_llm_key()`: `LONGCAT_API_KEY` env > obfuscated `config/llm_key.py`; `CTSS_NL_ENDPOINT` overrides to any OpenAI-compatible model) and may only propose a test when rules fail — never override a rule-identified test; the coze compute endpoint has no NL/LLM path). Logic in `scripts/classify_test.py` + `scripts/param_aliases.py`; per-test contract baselines in `tests/coze_cases/` (`tests/coze_cases_regression.py` offline regression), 65-test enumeration in `adapters/coze/coze_contract.md`. | User phrases it colloquially, e.g. "non-inferiority survival trial, NI margin 1.25…" |
+| **④ Deterministic NL pre-route (zero-LLM)** | `--nl "<natural language>"` runs a local zero-LLM deterministic detector that identifies `--test` and extracts params (power 80%→0.8, rate 70%→0.7, "enroll 30"→reverse-solve power, etc.), emitting a strong signal for the coze request; when confidence is low / params incomplete it prints a structured prompt and **never silently mis-params** — the local agent then asks the user for the missing test/params (≤2 rounds, then defaults); **raw NL text is never sent to coze** (the workbench is **deterministic-first** — `classify_test` + `param_aliases`, identical to conversation mode; the LLM fallback in `workbench/nl_llm.py` defaults to the family backend model LongCat-2.0 per ct-base §12 (key via `load_llm_key()`: `LONGCAT_API_KEY` env > obfuscated `config/llm_key.py`; `CTSS_NL_ENDPOINT` overrides to any OpenAI-compatible model) and may only propose a test when rules fail — never override a rule-identified test; the coze compute endpoint has no NL/LLM path). Logic in `scripts/classify_test.py` + `scripts/param_aliases.py`; per-test contract baselines in `tests/coze_cases/` (fixture data), 67-test enumeration in `adapters/coze/coze_contract.md`. | User phrases it colloquially, e.g. "non-inferiority survival trial, NI margin 1.25…" |
 
-- ②③ curve mode: list `"20,40,200"` or auto-seq `"20:20:200"` (start:step:stop); overlay multiple effect-size curves for sensitivity (continuous/survival solvers; proportion solvers plot the single p1/p2 series); returns the figure (SVG default per the ct-* uniform figure spec, PNG fallback) **plus the numeric series as machine-readable stats (x/y arrays)**. Full parameters & 65-test examples → `references/cli_examples.md`.
-- **Specialized curve modes (`--effect_seq` / `--dist_plot` / `--power_time_seq` / `--heatmap`, added 2026-08-28):** effect-axis / H0–H1 overlap / follow-up-power / 2-D sensitivity scans for the 9 curve solvers; full parameters & 65-test examples → `references/cli_examples.md`.
+- ②③ curve mode: list `"20,40,200"` or auto-seq `"20:20:200"` (start:step:stop); overlay multiple effect-size curves for sensitivity (continuous/survival solvers; proportion solvers plot the single p1/p2 series); returns the figure (SVG default per the ct-* uniform figure spec, PNG fallback) **plus the numeric series as machine-readable stats (x/y arrays)**. Full parameters & 67-test examples → `references/cli_examples.md`.
+- **Specialized curve modes (`--effect_seq` / `--dist_plot` / `--power_time_seq` / `--heatmap`, added 2026-08-28):** effect-axis / H0–H1 overlap / follow-up-power / 2-D sensitivity scans for the 9 curve solvers; full parameters & 67-test examples → `references/cli_examples.md`.
 - **★ Default figures (v5.6 + 2026-08-28):** when no figure is requested, the R engine auto-attaches the full set for the 9 curve solvers (curves + dist-overlap + heatmap) and the survival follow-up–power curve (`type` field + bilingual `caption`); all figure generation moved to the coze side — coze R (`coze_figure_layer.R`) is the primary plotter, `figure_kit.py` the coze-internal fallback, the local CLI a **thin client** consuming coze-returned `figures[]`. **Zero new R packages**. Opt out via any explicit figure flag / `--dry-run`; see [Default Figures (v5.6)](#default-figures-v56) and `references/default_figures.md`.
 
 ---
@@ -103,7 +107,7 @@ Mandatory constraints (curve-already-contains-single-point; batch-grid-submit; t
 
 > Authoritative layered menu: [`references/menu.md`](references/menu.md) · CLI examples & bidirectional solve: [`references/cli_examples.md`](references/cli_examples.md) · Operation SOP: [`references/operation_sop.md`](references/operation_sop.md).
 >
-> **Two-level routing rule (per Type-Compute, do NOT dump the full test list):** on a Complex request, first show **only this level-1 summary** (7 endpoint categories + high-frequency design families). After the user picks a category, go to `references/menu.md` **Part 1** for that category and show the **level-2 sub-list** (the specific `--test` options). Never present all ~65 tests in one screen.
+> **Two-level routing rule (per Type-Compute, do NOT dump the full test list):** on a Complex request, first show **only this level-1 summary** (7 endpoint categories + high-frequency design families). After the user picks a category, go to `references/menu.md` **Part 1** for that category and show the **level-2 sub-list** (the specific `--test` options). Never present all ~67 tests in one screen.
 
 **Level 1 — endpoint categories:**
 - ① **Continuous** (means) · ② **Binary / Proportions** (rates, OR/RR, NI/BE) · ③ **Count / Rates** (Poisson) · ④ **Survival / Time-to-event** (logrank, HR, one-sample) · ⑤ **Diagnostic / Method comparison** (ROC, Bland-Altman) · ⑥ **Special / Advanced designs** (group-sequential, adaptive, Bayesian, MAMS, win-ratio, cluster …)
@@ -122,7 +126,7 @@ Mandatory constraints (curve-already-contains-single-point; batch-grid-submit; t
 
 | Requirement | Details |
 |:---|:---|
-| **coze compute endpoint** | **Production default.** Set `CTSS_COZE_ENDPOINT` (or `COZE_ENDPOINT`) to the coze R service; covers all 65 tests. For a no-network demo, set `CTSS_COZE_MOCK=1`. |
+| **coze compute endpoint** | **Production default.** Set `CTSS_COZE_ENDPOINT` (or `COZE_ENDPOINT`) to the coze R service; covers all 67 tests. For a no-network demo, set `CTSS_COZE_MOCK=1`. |
 | **Python** | ≥ 3.8, **stdlib only** (argparse / json / urllib). The v5 refactor removed the local pure-Python fallback and all third-party compute deps (statsmodels / numpy / scipy are no longer required). No local R required. |
 | **R (dev / optional)** | **Not shipped in the published skill.** The coze R engine source is maintained in the coze-synced backend directory (excluded from the publish package). The legacy local-R backend and R templates are kept for offline dev / contribution only — **the v5 `select_backend` no longer routes to them**; they are not part of the published skill. |
 
@@ -158,17 +162,19 @@ This skill is **parameter-driven** (design params via CLI / natural language). W
 
 ## Implementation
 
-**Bidirectional solve:** `--power` (default) solves required `n` given target power; `--nobs N` reverses to achievable power given fixed `n` (mutually exclusive, `--nobs` wins). Default = **SAFE PREVIEW**: `--dry-run` prints the coze request envelope without sending; `--show-code` reveals it (and, with `CTSS_RETURN_R_CODE=1`, the R source coze used); no `--yes` needed for coze (stateless remote compute). Full CLI examples (all 65 tests, reverse-solve, curve mode) → `references/cli_examples.md`; data format → `references/data_format_guide.md`.
+**Bidirectional solve:** `--power` (default) solves required `n` given target power; `--nobs N` reverses to achievable power given fixed `n` (mutually exclusive, `--nobs` wins). Default = **SAFE PREVIEW**: `--dry-run` prints the coze request envelope without sending; `--show-code` reveals it (and, with `CTSS_RETURN_R_CODE=1`, the R source coze used); no `--yes` needed for coze (stateless remote compute). Full CLI examples (all 67 tests, reverse-solve, curve mode) → `references/cli_examples.md`; data format → `references/data_format_guide.md`.
 
 **Common params:** `--side one|two` (default `two`, test direction); `--sd FLOAT` (optional, auto-computes Cohen's d = Δ/sd; omitted ⇒ `--effect` is d directly).
 
-**Curve mode:** `--n_seq`/`--power_seq`/`--plot_effects`/`--effect_seq`/`--dist_plot`/`--power_time_seq`/`--heatmap` — see Features. **9 tests support curves** (`.curve_solvers`: ttest_ind/paired/one, anova, proportion_one/two, survival, equivalence, be_tost); `--dist_plot` covers `ttest*/proportion*/survival`; `--power_time_seq` survival-only; others return "curve not supported".
+**Curve mode:** `--n_seq`/`--power_seq`/`--plot_effects`/`--effect_seq`/`--dist_plot`/`--power_time_seq`/`--heatmap` — see Features. **11 tests support curves** (`.curve_solvers`: ttest_ind/paired/one, anova, proportion_one/two, survival, equivalence, be_tost, wilcoxon, wilcoxon_signed_rank); `--dist_plot` covers `ttest*/proportion*/survival`; `--power_time_seq` survival-only; others return "curve not supported".
 
 > **Architecture & security:** orchestration (`scripts/samplesize_power.py`) contains **no R code**; `ComputeBackend` (`scripts/compute_backend.py`) routes to `CozeBackend` (default authoritative, server-side R) — the only backend in v5. All R logic lives in the coze-synced, publish-excluded backend directory. Every user string reaching server-side R is validated against a strict allowlist. History → `CHANGELOG.md`.
 
 ### Workbench
 
-A local web UI covering the full flow "input → results → figure-option control → follow-up questions": `adapters/workbench/` (backend `server.py` is a stdlib-only `http.server`, frontend `workbench.html` is a single zero-dependency file). The form schema is reflected at runtime from argparse + `_contract_index.json` (65 tests / 207 CLI params, zero-maintenance); follow-up questions reuse the deterministic merge (`merge_spec`). Launch defaults to the **live coze endpoint** (not MOCK — MOCK returns fake results). On Windows hosts with a stale system `HTTP(S)_PROXY` in the registry, strip the proxy env (`HTTPS_PROXY= HTTP_PROXY= ... NO_PROXY=*`) or urllib cannot reach coze. See `adapters/workbench/README.md` for the exact launch command and endpoints.
+A local web UI covering the full flow "input → results → figure-option control → follow-up questions": `workbench/` (backend `server.py` is a stdlib-only `http.server`, frontend `workbench.html` is a single zero-dependency file). The form schema is reflected at runtime from argparse + `_contract_index.json` (67 tests / 210 CLI params, zero-maintenance); follow-up questions reuse the deterministic merge (`merge_spec`). Launch defaults to the **live coze endpoint** (not MOCK — MOCK returns fake results). On Windows hosts with a stale system `HTTP(S)_PROXY` in the registry, strip the proxy env (`HTTPS_PROXY= HTTP_PROXY= ... NO_PROXY=*`) or urllib cannot reach coze. See `workbench/README.md` for the exact launch command and endpoints.
+
+**Standard inspection process (mandatory release gate):** any change to `workbench.html` / `server.py` / `form_schema.py` / `tokens.css` / `wb-list.css` / `wb-list.js`, and **every** `build_publish.py` / `install_genie.py` run, must pass the 5-layer automated suite (`workbench/autotest/`, 110 cases, ~70s) first — **all layers green (0 failed / 0 error) is the publish criterion**. The suite covers static contract, backend API, in-browser behavior, end-to-end flow, and layout/a11y; it does **not** enter the workbench publish bundle (whitelist-built). Canonical spec → `references/workbench_qa.md` (zh: `references/workbench_qa_zh-CN.md`).
 
 ---
 
@@ -180,7 +186,7 @@ All figures follow the **uniform SVG spec shared across the ct-* family** (same 
 
 ## Formulas, Reports & Errors
 
-**Formulas:** `references/formulas.md` (all 65 types, incl. independent t / Schoenfeld survival / Cox-with-covariate / Cluster DEFF) | **Full functions:** `references/extended_functions.md` | **Common error:** coze endpoint not configured → set `CTSS_COZE_ENDPOINT` (real) or `CTSS_COZE_MOCK=1` (demo)
+**Formulas:** `references/formulas.md` (all 67 types, incl. independent t / Schoenfeld survival / Cox-with-covariate / Cluster DEFF) | **Full functions:** `references/extended_functions.md` | **Common error:** coze endpoint not configured → set `CTSS_COZE_ENDPOINT` (real) or `CTSS_COZE_MOCK=1` (demo)
 
 ## Bug Reporting
 

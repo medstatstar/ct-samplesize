@@ -36,7 +36,11 @@ import re
 # 关键词同时匹配中英文（IGNORECASE 对中文无副作用，对英文生效）。
 RULES = [
     # ── 显式 test 名（最高权重，几乎一锤定音）──
-    ("ttest_ind", [r"ttest_ind", r"两样本\s*t", r"独立\s*t", r"独立样本\s*t", r"独立样本", r"两独立样本", r"平行组.*均值", r"两样本t检验", r"两组.*均数", r"两组.*均值", r"两组.*比较", r"两独立", r"独立两组", r"two[- ]?sample", r"t[- ]?test", r"independent"], 10),
+    ("ttest_ind", [r"ttest_ind", r"两样本\s*t", r"独立\s*t", r"独立样本\s*t", r"独立样本", r"两独立样本", r"平行组.*均值", r"两样本t检验", r"两组.*均数", r"两组.*均值", r"两独立", r"独立两组", r"two[- ]?sample", r"t[- ]?test", r"independent"], 10),
+    # v5.13.33 C：泛化「两组比较」降权至 4 + 负例——出现生存/率/卡方等终点词时禁用，
+    # 防「两组 PFS 比较」「两组生存曲线比较」被抢成 t 检验（历史误判案例）。
+    ("ttest_ind", [r"两组.*比较", r"两组.*对比"], 4,
+     [r"生存", r"率", r"比例", r"卡方", r"χ2", r"PFS", r"OS\b", r"logrank", r"HR\b", r"风险比", r"无进展", r"总生存", r"死亡"]),
     # 基础连续终点（低权重兜底，对齐对话模式对泛化表述的推断：
     # 「两种降压药/收缩压下降…标准差」「血糖/胆固醇」等连续结局 → 两样本 t 检验）
     ("ttest_ind", [r"收缩压", r"舒张压", r"血糖", r"胆固醇",
@@ -93,6 +97,14 @@ RULES = [
     ("adaptive_simulate", [r"adaptive_simulate", r"蒙特卡洛.*仿真", r"模拟.*验证.*设计", r"adaptive.*sim"], 10),
     ("conditional_power", [r"conditional_power", r"条件功效", r"样本量再估计", r"ssr"], 10),
     ("assurance", [r"assurance", r"贝叶斯保证", r"assurance"], 10),
+    # ── 非参数 Wilcoxon（NP1/NP2, v5.13.39）──
+    # 显式 test 名/中英文标准名一锤定音；「秩和/符号秩/非参数」为族信号。
+    # 负例防误抢：出现 logrank/生存分析等词时那是生存族，不抢；
+    # 含「符号秩/signed-rank」时归符号秩检验，不抢通用秩和。
+    ("wilcoxon_signed_rank", [r"wilcoxon.*符号秩", r"signed[- ]?rank", r"符号秩", r"配对.*秩"], 10),
+    ("wilcoxon", [r"wilcoxon", r"mann[- ]?whitney", r"秩和", r"rank[- ]?sum"], 10,
+     [r"符号秩", r"signed[- ]?rank", r"生存", r"logrank", r"PFS", r"OS\b", r"风险比", r"\bHR\b"]),
+    ("wilcoxon", [r"非参数.*(样本量|检验|设计)", r"(样本量|检验|设计).*非参数", r"偏态.*(样本量|检验|设计)", r"中位数.*(标准误|四分位).*(样本量|检验|设计)"], 8),
 
     # ── 基础终点类型（低权重，作为兜底归并）──
     ("ttest_ind", [r"均值", r"均数", r"t\s*检验", r"连续变量", r"血压", r"hb[a1]?c", r"评分", r"连续结局"], 4),
@@ -152,7 +164,11 @@ def classify(nl, test_hint=None):
     #    同一 test 的得分取「最高单次权重」(max)，而非 weight*命中数 累加——
     #    避免基础终点词（如 survival 在 RULES 中双定义：显式「生存分析」w10 + 基础「生存」w4）
     #    多次命中累加虚高，反向压过更特异的修饰族（ni_survival w12 等）。
-    for test, keywords, weight in RULES:
+    for rule in RULES:
+        test, keywords, weight = rule[0], rule[1], rule[2]
+        neg = rule[3] if len(rule) > 3 else None
+        if neg and any(re.search(n, nl, flags=re.IGNORECASE) for n in neg):
+            continue    # v5.13.33 C：负例命中——泛化模式在该语境下禁用
         hits = _score_test(keywords, nl)
         if hits:
             scores[test] = max(scores.get(test, 0), weight)
@@ -196,7 +212,7 @@ def classify(nl, test_hint=None):
 
 
 # RULES 中 test 出现顺序（best 并列时靠前优先 → 更特异规则先定义在前）
-RULES_ORDER = [t for t, _, _ in RULES]
+RULES_ORDER = [r[0] for r in RULES]
 
 
 if __name__ == "__main__":

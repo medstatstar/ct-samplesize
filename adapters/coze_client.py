@@ -434,7 +434,8 @@ def _load_contract_required(test):
     _CONTRACT_REQUIRED_CACHE = {}
     try:
         idx_path = (Path(__file__).resolve().parent.parent
-                    / "tests" / "coze_cases" / "_contract_index.json")
+                    / "adapters" / "workbench" / "publish" / "tests" / "coze_cases"
+                    / "_contract_index.json")
         data = json.loads(Path(idx_path).read_text(encoding="utf-8"))
         for entry in data.get("tests", []):
             _CONTRACT_REQUIRED_CACHE[entry["test"]] = frozenset(entry.get("required", []))
@@ -737,7 +738,13 @@ def _fill_external_svgs_legacy(parsed, timeout=30):
 # ---------------------------------------------------------------------------
 # 公共 POST / 外层响应解析（2026-08-31 抽取：单请求 call() 与批量 call_batch() 复用）
 # ---------------------------------------------------------------------------
-def _post(payload_dict: dict):
+# 2026-10-24 修复（524 根因）：计算请求专用短超时。Cloudflare 网关 100s 切断，
+# 默认 600s 的 read_timeout 会让 server 傻等且用户只看到不可诊断的 524。
+# 计算请求设 95s（<100s 网关），超时返回可控 504 + 友好提示。
+_COMPUTE_TIMEOUT = float(os.environ.get("CTSS_COMPUTE_TIMEOUT", "95"))
+
+
+def _post(payload_dict: dict, read_timeout=None):
     """POST payload 到 coze 端点，返回解析后的外层响应 dict（出错抛 URLError）。
 
     出站授权（ct-base §5）已在调用方 _check_outbound_authorization 门控后调用本函数；
@@ -752,7 +759,7 @@ def _post(payload_dict: dict):
     body = json.dumps(payload_dict, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
     _acquire_rate_limit()
-    with _urlopen_with_proxy_fallback(req) as resp:
+    with _urlopen_with_proxy_fallback(req, read_timeout=read_timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -914,7 +921,7 @@ def _billing_from_env() -> tuple:
 
 
 def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
-         user_language=None, account_id=None, billing_token=None):
+         user_language=None, account_id=None, billing_token=None, read_timeout=None):
     """调用 coze 服务，返回 R 引擎信封 dict（重构 v5 协议）。
 
     模式（优先级从高到低）：
@@ -966,8 +973,14 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
             account_id, billing_token = _billing_from_env()
         attach_billing(payload, account_id, billing_token)
         try:
-            outer = _post(payload)
-        except urllib.error.URLError as e:
+            outer = _post(payload, read_timeout=read_timeout)
+        except (urllib.error.URLError, socket.timeout, TimeoutError) as e:
+            # 超时（read_timeout 触发）统一转 COZE_TIMEOUT 标记，server 侧据此返回 504
+            _reason = getattr(e, "reason", e)
+            _is_timeout = (isinstance(e, socket.timeout) or isinstance(_reason, socket.timeout)
+                           or "timed out" in str(e).lower() or "timeout" in str(e).lower())
+            if _is_timeout:
+                raise RuntimeError("COZE_TIMEOUT: coze 计算超时（%s，超过 %ss 上限）" % (endpoint, _COMPUTE_TIMEOUT))
             # 只打异常类型 + 端点（绝不回显 token / payload）
             raise RuntimeError("coze 调用失败（%s）: %s" % (endpoint, e))
         return _parse_outer(outer)
@@ -977,7 +990,7 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
 
 
 def call_batch(specs, return_r_code=True, user_language=None,
-               account_id=None, billing_token=None):
+               account_id=None, billing_token=None, read_timeout=None):
     """v5.7 批量计算：specs = [(test, args, ctx), ...]（与 build_batch 入参一致）。
 
     返回服务端聚合的**完整**结果 dict（agg_full，含每项 out 完整信封）；
@@ -1020,8 +1033,13 @@ def call_batch(specs, return_r_code=True, user_language=None,
         # batch 内 params 同样脱敏（剥离 PII）
         envelope["batch"] = sanitize(envelope["batch"])
         try:
-            outer = _post(envelope)
-        except urllib.error.URLError as e:
+            outer = _post(envelope, read_timeout=read_timeout)
+        except (urllib.error.URLError, socket.timeout, TimeoutError) as e:
+            _reason = getattr(e, "reason", e)
+            _is_timeout = (isinstance(e, socket.timeout) or isinstance(_reason, socket.timeout)
+                           or "timed out" in str(e).lower() or "timeout" in str(e).lower())
+            if _is_timeout:
+                raise RuntimeError("COZE_TIMEOUT: coze 批量计算超时（%s，超过 %ss 上限）" % (endpoint, _COMPUTE_TIMEOUT))
             raise RuntimeError("coze 批量调用失败（%s）: %s" % (endpoint, e))
         return _parse_outer(outer)
     raise RuntimeError(
@@ -1106,7 +1124,8 @@ class CozeBackend(ComputeBackend):
                    locale=ctx.get("user_language") or _current_locale(),
                    user_language=ctx.get("user_language") or _current_locale(),
                    resolved_spec=resolved_spec,
-                   account_id=account_id, billing_token=billing_token)
+                   account_id=account_id, billing_token=billing_token,
+                   read_timeout=_COMPUTE_TIMEOUT)
         # AUTH-BLOCK：未授权不发送，提示用户（授权不阻断流程）
         if env is None:
             raise RuntimeError(
@@ -1130,7 +1149,7 @@ class CozeBackend(ComputeBackend):
             if ul:
                 user_language = ul
                 break
-        agg = call_batch(specs, return_r_code=True, user_language=user_language)
+        agg = call_batch(specs, return_r_code=True, user_language=user_language, read_timeout=_COMPUTE_TIMEOUT)
         if agg is None:
             raise RuntimeError(
                 "出站未授权：批量请求未发送到云端计算。"
@@ -1221,10 +1240,17 @@ def _envelope_to_result(env, test, ctx):
     env["_needs_upgrade"] = needs_upgrade
     if drift_notes:
         env["_contract_drift"] = drift_notes
-    # 契约 §5：coze 出错可返回 {"error": {...}}；原样呈现 message
+    # 契约 §5：coze 出错可返回 {"error": {...}}；原样呈现 message。
+    # v5.13.39：err 亦可能是**裸字符串**（实测限流时 coze 返回
+    # {"ok": false, "error": "rate_limited"}，经 call() 归一成 {"error": ...}）——
+    # 旧代码 err.get("message") 遇 str 直接 AttributeError，把真实错误
+    # （rate_limited 限流）吞成栈跟踪。按类型分流，字符串原样呈现。
     err = env.get("error")
     if err:
-        msg = err.get("message") or err.get("code") or "coze 端返回未知错误"
+        if isinstance(err, dict):
+            msg = err.get("message") or err.get("code") or "coze 端返回未知错误"
+        else:
+            msg = str(err) or "coze 端返回未知错误"
         raise RuntimeError("coze 计算失败: %s" % msg)
     status = env.get("status")
     if status in ("error", "unknown_task"):
