@@ -1,5 +1,14 @@
 # Changelog / 版本历史
 
+
+## 2026-11-13 · 共享资产契约同步（§11 / §19.2，非 UI 决策变更，页面版本号不变）
+
+按 ct-base 2026-11-13 增补批次同步共享资产：`workbench/wb-list.css` 注入卡片动作统一右列锚点（`.wb-list-cardacts-bottom` + `--wb-cardact-right` / `--wb-cardact-gutter`）；`workbench/tokens.css` 补 `--wb-pill-base` / `--wb-cardact-right` / `--wb-cardact-gutter`；`publish/` 下同名副本一并同步。
+
+采用**精确注入**而非整文件覆盖：ct-base 真源 `wb-list.css` 的字号仍是裸 px，多数叶子已自行令牌化；整文件覆盖会把字号退回裸 px，并可能丢失技能自有令牌/增强，故只替换契约部分、保留其余原文。
+
+**验证**：CSS 花括号平衡；Playwright 实测 `--wb-cardact-right=10px`、`--wb-cardact-gutter=0px`、`--wb-pill-base` 生效，右上/右下动作规则均取 `var(--wb-cardact-right)`、`cardbody` 取 `var(--wb-cardact-gutter)`，页面 JS 错误 0；publish 副本与源逐字节一致。
+
 ## 5.14.7 — 2026-11-01 · 修 coze 方法默认图的 meta 参数断链（标题恒 (smd) + 曲线口径错）
 
 ### Fixed

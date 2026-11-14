@@ -3,7 +3,7 @@ slug: ct-samplesize
 displayName: Clinical Trial Sample Size / 临床试验样本量专家
 name: ct-samplesize
 cn_name: 临床试验样本量专家
-version: 5.14.7
+version: 5.14.9
 invocable: true
 required_commands: [python]
 summary: 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 67 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
@@ -34,6 +34,27 @@ permissions:
   data: "no patient/external data leaves the boundary — only trial-design parameters plus the hostname hash (query_origin), the skill version (skill_version) and locale metadata are sent to the coze service"
 
 ---
+## Data Egress Guardrail (CT family standard · F33)
+
+This skill may call external endpoints (Coze services, shared third-party search
+endpoints, public APIs or LLMs). **Internal confidential data must not leave the
+local domain.** Mandatory rules:
+
+- **Never outbound**: patient-level records, unpublished protocols / CSRs / internal
+  documents, personal identifiers or sponsor-confidential content — as query terms,
+  attachments or prompt payload.
+- **Allowed minimum**: public search terms and non-content metadata only (machine
+  hash, skill version, entry point, language, request id). Results from public
+  registries (ct.gov / CDE / FAERS / OpenAlex / PubMed, etc.) are processed locally.
+- **Local first**: computation, de-identification, aggregation and reporting stay on
+  this machine; confirm the payload carries no confidential field before any cloud call.
+- **Visible disclosure**: workbench search forms must state the outbound endpoint and
+  this boundary in visible text, not only in a hover tooltip.
+- **Fail loud**: stop and tell the user if any rule cannot be guaranteed; never
+  degrade silently.
+
+Machine-checked by `ct-base/scripts/spec_lint.py` rule **F33**.
+
 
 # Clinical Trial Sample Size
 
@@ -71,7 +92,7 @@ This skill provides clinical trial researchers with an easy-to-use, comprehensiv
 | **① Sample size ⇄ Power (bidirectional)** | Solve n given target power, AND solve achievable power given fixed n. `--power` (forward) and `--nobs` (reverse) are mutually exclusive; covers all 67 types. | Sample size fixed, evaluate if power meets target |
 | **② Power curve** | Given a sample-size sequence, batch-compute and plot the **Power curve** (x=sample size, y=power), with a target-power reference line. | Sample-size sensitivity analysis, protocol reporting |
 | **③ Sample-size curve** | Given a power-target sequence, batch-compute and plot the **sample-size curve** (x=target power, y=required n). | Resource planning, feasibility assessment |
-| **④ Deterministic NL pre-route (zero-LLM)** | `--nl "<natural language>"` runs a local zero-LLM deterministic detector that identifies `--test` and extracts params (power 80%→0.8, rate 70%→0.7, "enroll 30"→reverse-solve power, etc.), emitting a strong signal for the coze request; when confidence is low / params incomplete it prints a structured prompt and **never silently mis-params** — the local agent then asks the user for the missing test/params (≤2 rounds, then defaults); **raw NL text is never sent to coze** (the workbench is **deterministic-first** — `classify_test` + `param_aliases`, identical to conversation mode; the LLM fallback in `workbench/nl_llm.py` defaults to the family backend model LongCat-2.0 per ct-base §12 (key via `load_llm_key()`: `LONGCAT_API_KEY` env > obfuscated `config/llm_key.py`; `CTSS_NL_ENDPOINT` overrides to any OpenAI-compatible model) and may only propose a test when rules fail — never override a rule-identified test; the coze compute endpoint has no NL/LLM path). Logic in `scripts/classify_test.py` + `scripts/param_aliases.py`; per-test contract baselines in `tests/coze_cases/` (fixture data), 67-test enumeration in `adapters/coze/coze_contract.md`. | User phrases it colloquially, e.g. "non-inferiority survival trial, NI margin 1.25…" |
+| **④ Deterministic NL pre-route (zero-LLM)** | `--nl "<natural language>"` runs a local zero-LLM deterministic detector that identifies `--test` and extracts params (power 80%→0.8, rate 70%→0.7, "enroll 30"→reverse-solve power, etc.), emitting a strong signal for the coze request; when confidence is low / params incomplete it prints a structured prompt and **never silently mis-params** — the local agent then asks the user for the missing test/params (≤2 rounds, then defaults); **raw NL text is never sent to coze** (the workbench is **deterministic-first** — `classify_test` + `param_aliases`, identical to conversation mode; the LLM fallback in `workbench/nl_llm.py` defaults to the family backend model resolved dynamically from the Feishu configtbl per ct-base §12 (packaged snapshot fallback LongCat-2.5;key via `load_llm_key()`: `LONGCAT_API_KEY` env > obfuscated `config/llm_key.py`; `CTSS_NL_ENDPOINT` overrides to any OpenAI-compatible model) and may only propose a test when rules fail — never override a rule-identified test; the coze compute endpoint has no NL/LLM path). Logic in `scripts/classify_test.py` + `scripts/param_aliases.py`; per-test contract baselines in `tests/coze_cases/` (fixture data), 67-test enumeration in `adapters/coze/coze_contract.md`. | User phrases it colloquially, e.g. "non-inferiority survival trial, NI margin 1.25…" |
 
 - ②③ curve mode: list `"20,40,200"` or auto-seq `"20:20:200"` (start:step:stop); overlay multiple effect-size curves for sensitivity (continuous/survival solvers; proportion solvers plot the single p1/p2 series); returns the figure (SVG default per the ct-* uniform figure spec, PNG fallback) **plus the numeric series as machine-readable stats (x/y arrays)**. Full parameters & 67-test examples → `references/cli_examples.md`.
 - **Specialized curve modes (`--effect_seq` / `--dist_plot` / `--power_time_seq` / `--heatmap`, added 2026-08-28):** effect-axis / H0–H1 overlap / follow-up-power / 2-D sensitivity scans for the 9 curve solvers; full parameters & 67-test examples → `references/cli_examples.md`.

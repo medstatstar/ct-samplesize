@@ -3,7 +3,7 @@
 """
 ct-base · 后台大模型 key 安全加载器（共用）
 ==========================================
-发布为应用后，后台若需调用大模型（家族统一 LongCat-2.0，2026-09-25 起；
+发布为应用后，后台若需调用大模型（家族统一 LongCat-2.5，2026-09-25 起；
 旧 deepseek v4-flash 约定作废），一律通过本模块取 key，
 **禁止在代码或配置里硬编码明文 key（sk- / ak_ 前缀）**。
 
@@ -57,17 +57,47 @@ def _read_blob_from_py(py_path: str) -> str:
         )
 
 
+def _key_from_workbuddy_models():
+    """ct-base §5 家族统一标准（v1.4.19）：从 WorkBuddy 自定义模型配置读 LongCat key。
+
+    路径 ~/.workbuddy/models.json，取 id/name 含 longcat（不区分大小写）条目的 apiKey。
+    读失败/无条目返回空串；绝不打印 key 明文。models.json 属用户本机资产，不进发布包。
+    """
+    try:
+        p = os.path.join(os.path.expanduser("~"), ".workbuddy", "models.json")
+        with open(p, "r", encoding="utf-8") as f:
+            d = json.load(f)
+        items = d if isinstance(d, list) else (d.get("models") or d.get("customModels") or [])
+        for m in items:
+            if not isinstance(m, dict):
+                continue
+            ident = (str(m.get("id", "")) + " " + str(m.get("name", ""))).lower()
+            if "longcat" in ident and m.get("apiKey"):
+                return str(m["apiKey"])
+    except Exception:
+        pass
+    return ""
+
+
 def load_llm_key(env_name: str = "LONGCAT_API_KEY", key_path: str | None = None,
                  dat_path: str | None = None) -> str:
-    """按 env > .py 混淆文件 优先级返回后台大模型 key（家族统一 LongCat-2.0）。缺失时抛 RuntimeError（不含明文）。"""
+    """按 env > .py 混淆文件 优先级返回后台大模型 key（家族统一 LongCat-2.5）。缺失时抛 RuntimeError（不含明文）。"""
     v = (os.environ.get(env_name) or "").strip()
     if v:
         return v
     path = key_path or dat_path or "config/llm_key.py"
     if path.endswith(".py"):
-        blob = _read_blob_from_py(path)
+        try:
+            blob = _read_blob_from_py(path)
+        except Exception:
+            blob = ""
         if blob:
             return _xor_decode(blob)
+        # v1.4.20（ct-base §5 家族统一标准，2026-10-24）：WorkBuddy 自定义模型配置兜底——
+        # ~/.workbuddy/models.json 中 id/name 含 longcat 条目的 apiKey。key 只取用不回显。
+        wb = _key_from_workbuddy_models()
+        if wb:
+            return wb
         raise RuntimeError(
             "未在 %s 找到 LLM_API_KEY_BLOB 常量；请用 `python llm_loader.py gen <key>` 生成" % path
         )
