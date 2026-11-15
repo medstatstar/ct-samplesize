@@ -3,12 +3,12 @@ slug: ct-samplesize
 displayName: Clinical Trial Sample Size / 临床试验样本量专家
 name: ct-samplesize
 cn_name: 临床试验样本量专家
-version: 5.14.9
+version: 5.15.0
 invocable: true
 required_commands: [python]
-summary: 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 67 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。
+summary: 为临床试验从业者提供的样本量与检验效能计算工具，覆盖 67 种检验，并提供 SVG 出版级别图形。自然语言驱动，默认回传完整 R 代码。
 license: MIT
-description: "Sample size and power calculation tool for clinical trial practitioners. No local R install needed — a cloud R compute service covers all 67 test types and returns publication-grade SVG figures. Natural-language driven; full reproducible R code is returned by default; default output in Chinese or English per OS language setting (prompt can force-switch). / 为临床试验从业者提供的样本量与检验效能计算工具。本地无需安装 R，直接提供云端 R 计算服务（覆盖 67 种检验，并提供 SVG 出版级别图形）。自然语言驱动，默认回传完整 R 代码；默认按操作系统语言设定输出中文或英文（提示词可强制切换）。"
+description: "Sample size and power calculation tool for clinical trial practitioners, covering 67 test types and returning publication-grade SVG figures. Natural-language driven; full reproducible R code is returned by default. / 为临床试验从业者提供的样本量与检验效能计算工具，覆盖 67 种检验，并提供 SVG 出版级别图形。自然语言驱动，默认回传完整 R 代码。"
 triggers:
   - "clinical trial sample size"
   - "样本量计算"
@@ -29,32 +29,21 @@ metadata: { openclaw: { emoji: "📊" }, authors: ["medstatstar", "phoe-zip"], l
 permissions:
   scope: "user-space-only"
   network: "required"
-  network_note: "v5 requires the remote coze compute endpoint (CTSS_COZE_ENDPOINT, or CTSS_COZE_MOCK=1 for a local demo) — the published skill has no local compute fallback. Only trial-design parameters leave the machine (no patient data); every request also carries a hostname hash `query_origin` (sha256, for server attribution/rate-limit) and the OS-language-derived `locale`, and the skill version `skill_version` (read from the local SKILL.md, for per-version attribution of cloud usage). Outbound authorization gate: the public endpoint is pre-whitelisted in config/config.json auto_approve_endpoints (never prompts, but the assistant states what is sent on first use); user-custom endpoints trigger a one-time AUTH-BLOCK user confirmation before any data leaves the machine. Payloads are sanitized (PII stripped) before sending."
+  network_note: "Requires remote Coze compute (CTSS_COZE_ENDPOINT; CTSS_COZE_MOCK=1 for demo); no local fallback. Only trial-design parameters (no patient data) + query_origin hostname-hash, skill_version, locale leave the machine; payloads PII-stripped."
   filesystem: "writes figures to CTSS_OUTPUT_DIR (default ./outputs) and optional curve PNGs; otherwise read-only"
-  data: "no patient/external data leaves the boundary — only trial-design parameters plus the hostname hash (query_origin), the skill version (skill_version) and locale metadata are sent to the coze service"
-
+  data: "no patient/external data leaves the boundary — only trial-design parameters plus hostname hash (query_origin), skill version (skill_version) and locale metadata are sent"
 ---
 ## Data Egress Guardrail (CT family standard · F33)
 
-This skill may call external endpoints (Coze services, shared third-party search
-endpoints, public APIs or LLMs). **Internal confidential data must not leave the
-local domain.** Mandatory rules:
+This skill may call external endpoints (Coze services, shared third-party search endpoints, public APIs or LLMs). **Internal confidential data must not leave the local domain.** Mandatory rules:
 
-- **Never outbound**: patient-level records, unpublished protocols / CSRs / internal
-  documents, personal identifiers or sponsor-confidential content — as query terms,
-  attachments or prompt payload.
-- **Allowed minimum**: public search terms and non-content metadata only (machine
-  hash, skill version, entry point, language, request id). Results from public
-  registries (ct.gov / CDE / FAERS / OpenAlex / PubMed, etc.) are processed locally.
-- **Local first**: computation, de-identification, aggregation and reporting stay on
-  this machine; confirm the payload carries no confidential field before any cloud call.
-- **Visible disclosure**: workbench search forms must state the outbound endpoint and
-  this boundary in visible text, not only in a hover tooltip.
-- **Fail loud**: stop and tell the user if any rule cannot be guaranteed; never
-  degrade silently.
+- **Never outbound**: patient-level records, unpublished protocols / CSRs / internal documents, personal identifiers or sponsor-confidential content — as query terms, attachments or prompt payload.
+- **Allowed minimum**: public search terms and non-content metadata only (machine hash, skill version, entry point, language, request id). Results from public registries (ct.gov / CDE / FAERS / OpenAlex / PubMed, etc.) are processed locally.
+- **Local first**: computation, de-identification, aggregation and reporting stay on this machine; confirm the payload carries no confidential field before any cloud call.
+- **Visible disclosure**: workbench search forms must state the outbound endpoint and this boundary in visible text, not only in a hover tooltip.
+- **Fail loud**: stop and tell the user if any rule cannot be guaranteed; never degrade silently.
 
 Machine-checked by `ct-base/scripts/spec_lint.py` rule **F33**.
-
 
 # Clinical Trial Sample Size
 
@@ -69,10 +58,7 @@ Machine-checked by `ct-base/scripts/spec_lint.py` rule **F33**.
 | Deployed as | Static site (`python -m http.server $PORT --bind 0.0.0.0`) |
 | Payload | `WorkBuddy/2026-09-14-14-39-40/deploy_ctss/static/index.html` |
 
-> **Re-publish rule**: always overwrite with the existing `appId` — the link must stay
-> `https://ct-samplesize.app.workbuddy.host/`. Never `createNewApp`. After deploy, assert the returned
-> `shareLink` equals the expected URL (see ct-base `references/workbench_ui.md` §13.0 dirty-binding red line). Last republished
-> 2026-09-26 (feedback two-stage fix).
+> **Re-publish rule**: always overwrite with the existing `appId` — the link must stay `https://ct-samplesize.app.workbuddy.host/`. Never `createNewApp`. After deploy, assert the returned `shareLink` equals the expected URL (see ct-base `references/workbench_ui.md` §13.0 dirty-binding red line). Last republished 2026-09-26 (feedback two-stage fix).
 
 ## Language
 
@@ -123,6 +109,9 @@ Before answering, triage the request into the four-level difficulty **Simple / M
 
 ## Batch-call governance (v5.7, must-read)
 Mandatory constraints (curve-already-contains-single-point; batch-grid-submit; trim-envelope via `build_params`) + Feishu-backend evidence + outbound envelope guard + local `--batch-file` → `references/batch_calls.md`.
+
+## Request-level log aggregation (v5.15, must-read)
+**One user request → as few Feishu rows as possible.** Wrap one user demand in `request_scope()` (CLI `main()` does this automatically); all coze sub-calls then share `request_id`, and the coze `feishu_save` node merges them by `update_records` into one row (`call_count` / `calls[]` / `statuses`). Prefer `call_paired()` (n + achieved power in one POST) and `call_grid()`/`call_batch()` (parameter sweep in one POST) over N serial calls. `call()` also de-duplicates identical successful signatures within 60 s locally (no POST, no new row) and rejects out-of-domain params before any network round-trip. Old clients without `request_id` keep the legacy one-POST-one-row behaviour. Contract: one generated artifact per deploy unit — local client reads `config/log_contract.json`, workbench reads its own `workbench/publish/config/log_contract.json`, coze runtime imports the baked-in constant module `src/graphs/nodes/log_contract_data.py` (no path probing, no defensive duplicates; regenerate all via `scripts/build_log_contract.py`). Capability discovery: `scripts/route_intent.py`. Details → `references/request_log_aggregation.md`.
 
 ## Quick Menu — two-level routing (level-1 only here; level-2 in `references/menu.md`)
 
@@ -208,15 +197,6 @@ All figures follow the **uniform SVG spec shared across the ct-* family** (same 
 ## Formulas, Reports & Errors
 
 **Formulas:** `references/formulas.md` (all 67 types, incl. independent t / Schoenfeld survival / Cox-with-covariate / Cluster DEFF) | **Full functions:** `references/extended_functions.md` | **Common error:** coze endpoint not configured → set `CTSS_COZE_ENDPOINT` (real) or `CTSS_COZE_MOCK=1` (demo)
-
-## Bug Reporting
-
-Agent behavior only; implementation → `adapters/bug_report.py`, protocol → `references/bug_report_endpoint.md`.
-
-- **Trigger (strong signal, max 1 proposal/session):** unexpected non-zero exit / engine or compute error / user explicitly questions the result — **and** the same operation was retried ≥1. Weak signal (repeated tuning) never triggers. Explicit user request (e.g., "report a bug") also triggers, without the once-per-session limit.
-- **Two-stage confirmation:** ① propose-with-preview — show the bilingual `confirm_prompt` **with** the full sanitized report (`render_report_text`); user may add a `description` (re-render & re-show before consent) → ② on explicit consent, `send_to_endpoint` (action=report, endpoint `https://ct-bugreport.coze.site/run`). If declined, never re-propose this session.
-- **Sanitization is hard:** report carries only the 11-key whitelist — never raw data or subject records. `description` is the only free-text field, **user-reviewed**; hard boundary: no identifiable person/institution/subject info. If the session had **no** cloud call, `save_local_report()` writes locally (data never leaves the machine).
-- **Client-only:** send `report` only. Governance actions (get/update/download/delete) are reserved for `ct-update`; never call them here.
 
 ---
 

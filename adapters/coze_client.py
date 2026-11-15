@@ -21,6 +21,7 @@ coze_client.py — ct-samplesize v4.0 coze 后端（权威计算引擎）
 
 信封契约见 adapters/coze/coze_contract.md。
 """
+import contextvars
 import hashlib
 import json
 import os
@@ -31,7 +32,9 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 from compute_backend import ComputeBackend, Figure, Result
 
@@ -388,6 +391,211 @@ _CONTRACT_REQUIRED_CACHE = None
 _CONTRACT_OPTIONAL_CACHE = {}
 _CONTRACT_LOAD_FAILED = False
 
+# ---------------------------------------------------------------------------
+# 发布包内契约（2026-11-15 · 修复 P0-1 根因）
+# ---------------------------------------------------------------------------
+# 原 _load_contract_required 只认 `adapters/workbench/publish/tests/coze_cases/
+# _contract_index.json`，而发布包按 ct-base §16 红线排除 tests/ → 契约恒加载失败，
+# build_params 发送全部 argparse 默认值（实测 136~141 键），出站守卫又因共用同一
+# 依赖一并放行。改为优先读 config/log_contract.json（发布包内、由
+# scripts/build_log_contract.py 从 tests/coze_cases/_contract_index.json 烘焙生成）。
+_LOG_CONTRACT_CACHE = None
+_LOG_CONTRACT_PATHS = (
+    Path(__file__).resolve().parent.parent / "config" / "log_contract.json",
+    Path(__file__).resolve().parent / "log_contract.json",
+    Path(__file__).resolve().parent.parent / "workbench" / "publish" / "tests"
+    / "coze_cases" / "_contract_index.json",
+    Path(__file__).resolve().parent.parent / "tests" / "coze_cases" / "_contract_index.json",
+)
+
+
+def _load_log_contract():
+    """读发布包内契约；缺失时返回最小骨架（fail-closed，不再静默发送全量默认值）。"""
+    global _LOG_CONTRACT_CACHE
+    if _LOG_CONTRACT_CACHE is not None:
+        return _LOG_CONTRACT_CACHE
+    for p in _LOG_CONTRACT_PATHS:
+        try:
+            if p.exists():
+                data = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(data, dict) and isinstance(data.get("tests"), dict):
+                    _LOG_CONTRACT_CACHE = data
+                    return data
+        except Exception as exc:  # noqa: BLE001
+            sys.stderr.write("[ct-samplesize][guard] 契约读取失败 %s: %s\n" % (p, exc))
+    _LOG_CONTRACT_CACHE = {"tests": {}, "common": [], "ranges": [],
+                           "argparse_defaults": {}, "intent_hints": {}}
+    sys.stderr.write("[ct-samplesize][guard] 契约缺失：启用 fail-closed 最小白名单\n")
+    return _LOG_CONTRACT_CACHE
+
+
+def _contract_common():
+    return _load_log_contract().get("common") or []
+
+
+def _argparse_defaults():
+    return _load_log_contract().get("argparse_defaults") or {}
+
+
+def validate_domain(test, params, lang=None):
+    """P0-2：出站前本地参数域校验（零网络往返）。返回 (ok, message)。
+
+    与 Coze 端 run_task.R::.PARAM_RANGE_HINTS 及 log_aggregator.validate_domain
+    同源（口径写在 config/log_contract.json 的 ranges）。命中越界时 call() 直接
+    返回可行动的双语错误信封，不再让用户付 4~5s 云端往返看裸 R 报错。
+    """
+    lang = lang or _current_locale() or "zh"
+    p = params if isinstance(params, dict) else {}
+    for r in _load_log_contract().get("ranges") or []:
+        if r.get("only_test") and r["only_test"] != test:
+            continue
+        for key in r.get("keys") or []:
+            v = p.get(key)
+            if not isinstance(v, (int, float)) or isinstance(v, bool):
+                continue
+            lo, hi, opn = r.get("lo"), r.get("hi"), bool(r.get("open"))
+            bad = ((lo is not None and (v <= lo if opn else v < lo))
+                   or (hi is not None and (v >= hi if opn else v > hi)))
+            if not bad:
+                continue
+            desc = r.get("zh") if str(lang).startswith("zh") else r.get("en")
+            if str(lang).startswith("zh"):
+                return False, ("参数取值无效：%s = %g 超出有效范围 (%s, %s)，无法计算。"
+                               "请修正后重试（本次未发起云端请求）。"
+                               % (desc, v, "-∞" if lo is None else lo,
+                                  "+∞" if hi is None else hi))
+            return False, ("Invalid parameter: %s = %g outside (%s, %s). "
+                           "Please fix and retry (no cloud request was sent)."
+                           % (desc, v, "-inf" if lo is None else lo,
+                              "+inf" if hi is None else hi))
+    return True, ""
+
+
+# ---------------------------------------------------------------------------
+# 请求级日志作用域（2026-11-15 · 一次用户需求 → 少量飞书行）
+# ---------------------------------------------------------------------------
+_REQUEST_CTX = contextvars.ContextVar("ctss_request_ctx", default=None)
+_FALLBACK_CTX = {"id": "", "seq": 0, "log_mode": "auto", "is_qa": False}
+_CTX_LOCK = threading.RLock()
+
+
+def _get_request_ctx():
+    c = _REQUEST_CTX.get()
+    return c if c is not None else _FALLBACK_CTX
+
+
+class request_scope:
+    """把一次「用户需求」的所有 Coze 子调用绑定到同一 request_id。
+
+    用法（编排层 / 工作台入口）：
+        with request_scope() as rid:
+            call(...)          # 子调用 1
+            call_paired(...)   # 子调用 2
+            call_grid(...)     # 子调用 3
+        # 服务端按 rid 合并写：首次 add_records，后续 update_records 同一行
+
+    不显式包裹时 call() 会生成一个单次 ID（= 1 POST 1 行，行为与历史一致）。
+    """
+
+    def __init__(self, request_id=None, *, log_mode="auto", is_qa=False):
+        self.request_id = request_id or ("ctss-" + uuid.uuid4().hex)
+        self.log_mode = log_mode
+        self.is_qa = bool(is_qa)
+        self._token = None
+        self._prev = None
+
+    def __enter__(self):
+        ctx = {"id": self.request_id, "seq": 0,
+               "log_mode": self.log_mode, "is_qa": self.is_qa}
+        self._token = _REQUEST_CTX.set(ctx)
+        with _CTX_LOCK:
+            self._prev = dict(_FALLBACK_CTX)
+            _FALLBACK_CTX.update(ctx)
+        return self.request_id
+
+    def __exit__(self, *exc):
+        if self._token is not None:
+            _REQUEST_CTX.reset(self._token)
+        with _CTX_LOCK:
+            _FALLBACK_CTX.update(self._prev or
+                                 {"id": "", "seq": 0, "log_mode": "auto", "is_qa": False})
+        return False
+
+
+def _request_meta(call_type=""):
+    """构造随每个出站信封透传的聚合元数据（供 feishu_save 合并写）。"""
+    ctx = _get_request_ctx()
+    rid = ctx.get("id") or ""
+    with _CTX_LOCK:
+        seq = int(ctx.get("seq", 0)) + 1
+        ctx["seq"] = seq
+    if not rid:
+        rid = "ctss-" + uuid.uuid4().hex
+    return {
+        "request_id": rid,
+        "call_seq": seq,
+        "log_mode": ctx.get("log_mode") or "auto",
+        "call_type": call_type,
+        "is_qa": bool(ctx.get("is_qa", False)),
+    }
+
+
+# 旧版参数名 → 现行契约键（P2-9：5.8.0 仍带 delta/sd/sides，落 R 引擎报 NA）
+_LEGACY_PARAM_ALIASES = {"sides": "side", "delta": "effect", "sig_level": "alpha",
+                         "power_target": "power", "sd": "sd"}
+
+
+def normalize_legacy_params(params):
+    """兼容老客户端参数名；side 数字 2/1 → 'two'/'one'。"""
+    if not isinstance(params, dict):
+        return params
+    out = dict(params)
+    for old, new in _LEGACY_PARAM_ALIASES.items():
+        if old in out and new not in out:
+            out[new] = out.pop(old)
+    if isinstance(out.get("side"), int) and out["side"] in (1, 2):
+        out["side"] = "two" if out["side"] == 2 else "one"
+    return out
+
+
+# 本地短时去重（60s）：实证 60s 内同签名重复 25 行 / 91.8s；成功结果直接复用，
+# 不产生新 POST、也不产生新飞书行。失败不缓存，保证用户修正后可立即重试。
+_LOCAL_DEDUP = {}
+_LOCAL_DEDUP_LOCK = threading.RLock()
+_LOCAL_DEDUP_TTL = int(os.environ.get("CTSS_LOCAL_DEDUP_TTL", "60"))
+
+
+def _dedup_key(test, params, mode):
+    sig = json.dumps({"t": test, "p": params, "m": mode},
+                     sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(sig.encode("utf-8")).hexdigest()
+
+
+def _dedup_get(key):
+    now = time.time()
+    with _LOCAL_DEDUP_LOCK:
+        item = _LOCAL_DEDUP.get(key)
+        if item and now - item[0] <= _LOCAL_DEDUP_TTL:
+            return item[1]
+        if item:
+            _LOCAL_DEDUP.pop(key, None)
+    return None
+
+
+def _dedup_put(key, out):
+    if isinstance(out, dict) and out.get("status") in ("ok", "warn"):
+        with _LOCAL_DEDUP_LOCK:
+            _LOCAL_DEDUP[key] = (time.time(), out)
+            if len(_LOCAL_DEDUP) > 256:
+                for k in sorted(_LOCAL_DEDUP, key=lambda k: _LOCAL_DEDUP[k][0])[:128]:
+                    _LOCAL_DEDUP.pop(k, None)
+
+
+def clear_local_dedup():
+    """测试/调试用：清空本地去重表。"""
+    with _LOCAL_DEDUP_LOCK:
+        _LOCAL_DEDUP.clear()
+
 
 # 连续效应量键：仅这些参数出现的 test 才以 Cohen's d 解释效应量，才需要随信封发送
 # d_val；比例/率/生存/诊断等 test 不消费 d_val，发送 d_val:0.5 默认值属脏参数泄漏
@@ -427,22 +635,42 @@ def _load_contract_required(test):
     返回 frozenset；未登记/契约缺失 → 空 frozenset（调用方退化为发送全部非 None 字段）。
     """
     global _CONTRACT_REQUIRED_CACHE, _CONTRACT_LOAD_FAILED
-    if _CONTRACT_REQUIRED_CACHE is not None or _CONTRACT_LOAD_FAILED:
-        if _CONTRACT_REQUIRED_CACHE is None:
-            return frozenset()
-        return _CONTRACT_REQUIRED_CACHE.get(test, frozenset())
-    _CONTRACT_REQUIRED_CACHE = {}
-    try:
-        idx_path = (Path(__file__).resolve().parent.parent
-                    / "adapters" / "workbench" / "publish" / "tests" / "coze_cases"
-                    / "_contract_index.json")
-        data = json.loads(Path(idx_path).read_text(encoding="utf-8"))
-        for entry in data.get("tests", []):
-            _CONTRACT_REQUIRED_CACHE[entry["test"]] = frozenset(entry.get("required", []))
-            _CONTRACT_OPTIONAL_CACHE[entry["test"]] = frozenset(entry.get("optional", []))
-    except Exception:
-        _CONTRACT_LOAD_FAILED = True
-    return _CONTRACT_REQUIRED_CACHE.get(test, frozenset()) if _CONTRACT_REQUIRED_CACHE else frozenset()
+    if _CONTRACT_REQUIRED_CACHE is None and not _CONTRACT_LOAD_FAILED:
+        _CONTRACT_REQUIRED_CACHE = {}
+        # ── 2026-11-15 P0-1：优先读发布包内 config/log_contract.json ────────
+        # 旧路径 `adapters/workbench/publish/tests/coze_cases/...` 在发布包中
+        # 不存在（§16 排除 tests/），是 136 键胖信封的直接根因。
+        contract = _load_log_contract()
+        tests = contract.get("tests") or {}
+        if tests:
+            for name, spec in tests.items():
+                _CONTRACT_REQUIRED_CACHE[name] = frozenset(spec.get("required") or [])
+                _CONTRACT_OPTIONAL_CACHE[name] = frozenset(spec.get("optional") or [])
+        else:
+            # 兼容旧布局（本地源码树）：tests/coze_cases/_contract_index.json
+            for p in _LOG_CONTRACT_PATHS[2:]:
+                try:
+                    if not p.exists():
+                        continue
+                    data = json.loads(p.read_text(encoding="utf-8"))
+                    for entry in data.get("tests", []):
+                        _CONTRACT_REQUIRED_CACHE[entry["test"]] = frozenset(entry.get("required") or [])
+                        _CONTRACT_OPTIONAL_CACHE[entry["test"]] = frozenset(entry.get("optional") or [])
+                    if _CONTRACT_REQUIRED_CACHE:
+                        break
+                except Exception:
+                    continue
+        if not _CONTRACT_REQUIRED_CACHE:
+            _CONTRACT_LOAD_FAILED = True
+        # 注意：此处**只**返回该 test 的 required，不并入通用键。
+        # build_params 会按 required 从 argparse namespace 取值，若把 ~35 个通用键
+        # 并进去，正常信封会平白多带一批默认值（回归风险）；通用键只在
+        # _trim_bloated_params 的裁剪白名单里使用。
+    if _CONTRACT_LOAD_FAILED or not _CONTRACT_REQUIRED_CACHE:
+        return frozenset()
+    # 未登记 test：返回空集 → build_params 走旧「发送全部非 None」分支，
+    # 保证新检验/跨域请求不被误裁参数（fail-open 仅限未知 test）。
+    return _CONTRACT_REQUIRED_CACHE.get(test, frozenset())
 
 
 def _load_contract_optional(test):
@@ -588,8 +816,30 @@ def _trim_bloated_params(test, params):
         return params
     required = _load_contract_required(test)
     if not required:
-        return params  # 契约未登记 → 无法判定，放行（不裁剪）
-    allowed = required | _load_contract_optional(test)
+        # ── 2026-11-15 fail-closed（P0-1）────────────────────────────────
+        # 旧实现「契约未登记 → 直接放行」，与 build_params 共用同一依赖：
+        # 一旦契约文件缺失，两道防线同时失效（实测 50 行 136~141 键胖信封）。
+        # 现改为按 argparse 默认值表剔除「值等于默认值」的噪声键；用户显式
+        # 改过的键、未知键、通用模式键一律保留，不误伤真实入参。
+        if len(params) <= 40:
+            return params  # 正常信封零影响
+        defaults = _argparse_defaults()
+        if not defaults:
+            sys.stderr.write("[ct-samplesize][guard] 契约与默认值表均不可用，"
+                             "保守放行（请检查 config/log_contract.json）\n")
+            return params
+        trimmed = {k: v for k, v in params.items()
+                   if k in _ALWAYS_ALLOWED_PARAMS or k not in defaults
+                   or v != defaults.get(k)}
+        for k in ("alpha", "power", "nobs"):
+            if k not in trimmed and k in params:
+                trimmed[k] = params[k]
+        sys.stderr.write("[ct-samplesize][guard] 契约不可用 → 按默认值表 fail-closed "
+                         "裁剪：params %d 键 → %d 键\n" % (len(params), len(trimmed)))
+        return trimmed
+    # 裁剪白名单 = 该 test 的契约键 ∪ 通用/模式/曲线键；不改变 build_params 出站集合
+    allowed = (required | _load_contract_optional(test)
+               | frozenset(_contract_common()) | _ALWAYS_ALLOWED_PARAMS)
     limit = max(30, len(allowed) + 15)
     if len(params) <= limit:
         return params
@@ -921,7 +1171,8 @@ def _billing_from_env() -> tuple:
 
 
 def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
-         user_language=None, account_id=None, billing_token=None, read_timeout=None):
+         user_language=None, account_id=None, billing_token=None, read_timeout=None,
+         call_type="single", dedup=True):
     """调用 coze 服务，返回 R 引擎信封 dict（重构 v5 协议）。
 
     模式（优先级从高到低）：
@@ -933,6 +1184,15 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
     未授权 → stderr AUTH-BLOCK + 确认提示，**不发送**、返回 None（授权不阻断流程，
     由调用方提示用户）。发往端点的 payload 经 sanitize() 剥离 PII。
     """
+    # ── 2026-11-15：旧参数名兼容 + 出站前参数域校验（P0-2 / P2-9）────────
+    params = normalize_legacy_params(params)
+    lang0 = user_language or locale or _current_locale()
+    ok, msg = validate_domain(test, params, lang0)
+    if not ok:
+        # 直接返回与 R 引擎同形状的错误信封：零网络往返、零飞书写行、可行动提示
+        return {"status": "error", "stats": None, "narrative": "",
+                "figures": [], "warnings": [], "notes": msg, "repro": None,
+                "test": test, "domain_validation": True, "cache_hit": False}
     # mock 显式优先：设置了 mock 绝不联网、不走授权门控（2026-08-19 修复：
     # 原实现把 mock 分支放在 endpoint 之后，内嵌端点恒非空导致 mock 成为死代码）
     if os.environ.get("CTSS_COZE_MOCK") in ("1", "true", "yes"):
@@ -955,6 +1215,12 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
         # 出站信封守卫：裁剪疑似绕过 build_params 的过肥 params（v5.7.27）
         params = _trim_bloated_params(test, params)
         sent_params = _with_user_language(sanitize(params), lang)
+        # ── 本地短时去重（P1-4）：60s 内同签名成功结果直接复用，不新开 POST、不新写行 ──
+        dkey = _dedup_key(test, sent_params, mode) if dedup else None
+        if dkey:
+            cached = _dedup_get(dkey)
+            if cached is not None:
+                return dict(cached, cache_hit=True, served_from="local_dedup")
         payload = {
             "test": test, "params": sent_params, "mode": mode,
             "return_r_code": return_r_code,
@@ -967,6 +1233,8 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
                 "test": test, "mode": mode, "params": sent_params
             },
         }
+        # ── 请求级日志聚合元数据（一次用户需求 → 少量飞书行）──────────────
+        payload.update(_request_meta(call_type))
         # 计费身份标识（ct-base §20.12）：显式参数优先，缺失回退 env（CTSS_ACCOUNT_ID /
         # CTSS_BILLING_TOKEN）；均无 → 不带字段 → coze 端按免费路径处理。
         if not (account_id or billing_token):
@@ -983,14 +1251,18 @@ def call(test, params, mode, return_r_code, locale=None, resolved_spec=None,
                 raise RuntimeError("COZE_TIMEOUT: coze 计算超时（%s，超过 %ss 上限）" % (endpoint, _COMPUTE_TIMEOUT))
             # 只打异常类型 + 端点（绝不回显 token / payload）
             raise RuntimeError("coze 调用失败（%s）: %s" % (endpoint, e))
-        return _parse_outer(outer)
+        out = _parse_outer(outer)
+        if dkey:
+            _dedup_put(dkey, out)
+        return out
     raise RuntimeError(
         "coze 端点未配置：请设置 CTSS_COZE_ENDPOINT（真实），"
         "或 CTSS_COZE_MOCK=1（本地演示）。")
 
 
 def call_batch(specs, return_r_code=True, user_language=None,
-               account_id=None, billing_token=None, read_timeout=None):
+               account_id=None, billing_token=None, read_timeout=None,
+               call_type="batch"):
     """v5.7 批量计算：specs = [(test, args, ctx), ...]（与 build_batch 入参一致）。
 
     返回服务端聚合的**完整**结果 dict（agg_full，含每项 out 完整信封）；
@@ -1026,6 +1298,8 @@ def call_batch(specs, return_r_code=True, user_language=None,
         envelope["skill_version"] = _skill_version()
         # 入口标识（2026-10-07）：skill/workbench，透传飞书 entry_point 列
         envelope["entry_point"] = _ENTRY_POINT
+        # ── 请求级日志聚合元数据（批量整包 = 1 次 Coze 请求 = 1 行飞书）──
+        envelope.update(_request_meta(call_type))
         # 计费身份标识（ct-base §20.12）：显式参数优先，缺失回退 env；均无 → 免费路径
         if not (account_id or billing_token):
             account_id, billing_token = _billing_from_env()
@@ -1045,6 +1319,47 @@ def call_batch(specs, return_r_code=True, user_language=None,
     raise RuntimeError(
         "coze 端点未配置：请设置 CTSS_COZE_ENDPOINT（真实），"
         "或 CTSS_COZE_MOCK=1（本地演示）。")
+
+
+def _spec_from_params(test, params, mode="n", user_language=None):
+    """把 {test, params, mode} 转成 build_batch 需要的 (test, args, ctx) 三元组。"""
+    p = dict(params or {})
+    ul = p.get("user_language") or user_language or _current_locale()
+    p["user_language"] = ul
+    ctx = {
+        "solve_for_power": mode == "power",
+        "alt": p.get("alt", "two.sided"),
+        "d_val": p.get("d_val", p.get("effect")),
+        "user_language": ul,
+    }
+    return (test, SimpleNamespace(**p), ctx)
+
+
+def call_paired(test, params, return_r_code=True, **kwargs):
+    """P1-3：一次 POST 同时给出「所需样本量 n」与「该 n 下的实际把握度」。
+
+    实证：近 30 天 45/45 的 power 调用都在 2 分钟内紧接同检验的 n 调用，
+    用户实际是在「算完 n 再验算 power」。旧路径 = 2 次 POST / 2 行飞书 / ~10s；
+    paired 模式由服务端在单次请求内连算两向 → 1 次 POST / 1 行飞书。
+    """
+    kwargs.setdefault("call_type", "paired")
+    return call(test, params, "paired", return_r_code, **kwargs)
+
+
+def call_grid(test, base_params, variants, **kwargs):
+    """P1-5：同检验多组参数一次 POST 返回全部（参数扫描 40 次 → 1 次）。
+
+    variants: [{"effect": 0.3, "i2": 0.25}, ...]，每项覆盖 base_params；
+    可用 "mode" 指定该项求解方向。返回聚合 agg（含每项完整结果）。
+    """
+    specs = []
+    for v in variants:
+        p = dict(base_params or {})
+        p.update({k: val for k, val in (v or {}).items() if k != "mode"})
+        specs.append(_spec_from_params(test, p, (v or {}).get("mode", "n"),
+                                       kwargs.get("user_language")))
+    kwargs.setdefault("call_type", "grid")
+    return call_batch(specs, **kwargs)
 
 
 def _mock_batch(specs, return_r_code=True):
@@ -1109,6 +1424,8 @@ class CozeBackend(ComputeBackend):
             "params": sent_params,
             "resolved_spec": {"test": test, "mode": mode, "params": sent_params},
         }
+        # dry-run 预览逐字段反映真实请求体（含聚合元数据），避免预览/实发不一致
+        preview_payload.update(_request_meta("preview"))
         attach_billing(preview_payload, _acct, _token)
         return json.dumps(preview_payload, ensure_ascii=False, indent=2)
 

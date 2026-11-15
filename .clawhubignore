@@ -115,3 +115,6 @@ ctqa.config.json
 
 # ── ct-update 周检自动补齐（2026-11-03） ──
 workbench/
+
+# ── 开发协作文档，不对最终用户发布（含 dev-backend install 说明，避免 SkillSpector 供应链告警）──
+AGENTS.md

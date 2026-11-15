@@ -1,6 +1,43 @@
 # Changelog / 版本历史
 
 
+## 5.15.0 — 2026-11-15 · 一次用户需求只写少量飞书记录 + 近 30 天日志实证的 9 项改进
+
+> 触发：用户用 ct-update 只读端口取近 30 天 ct-samplesize 飞书使用记录（252 行 /
+> 52 会话 / 50 来源，2026-10-17 19:53 ～ 11-12 14:45 CST），要求「全部处理」并额外指出
+> **同一次用户请求被拆成多个 Coze 请求、一个 Coze 请求又可能造成多次飞书存储**，
+> 需尽量合并到「一个需求只写一次或很少几次」。分析见工作区
+> `ct_samplesize_usage/ct-samplesize_使用行为分析与改进建议.md`。
+
+### Fixed / Added（缺陷 → 修复）
+
+| 编号 | 实测缺陷 | 修复 |
+|:---|:---|:---|
+| **核心** | 日志按「Coze 请求」建档：45/45 的 power 调用紧接 n 调用；单会话 40 次 / 27.8 分钟扫描；60s 内同签名重复 25 行（9.9%）；失败后逐字节重试 4 次 | `request_scope()` 给同需求所有子调用分配同一 `request_id`；Coze `log_aggregator.aggregate_log()` 首次 `add_records`、后续 `update_records` 更新同一行（聚合 `call_count`/`calls[]`/`statuses`/`errors`/`total_runtime_sec`）。超 300s 或单行 20 次才另起一行；无 request_id 的老客户端 `delegate` 回原路径，逐字节不变 |
+| **核心** | 一次需求两次 POST（算 n + 验算 power） | `call_paired()` + 服务端 `mode="paired"`：单次 POST 连算两向，1 行日志 |
+| **核心** | 参数扫描 40 次串行；batch `count=2` p50 10.39s ≈ 2×单条 5.05s（逐项串行） | `call_grid()` 一次 POST；`samplesize_node` 批量项 `ThreadPoolExecutor` 并行（结果按原 index 排序），`CTSS_BATCH_WORKERS` 可调 |
+| P0-1 | 50/252 行带 136~141 参数键；根因：`_load_contract_required` 只认 `adapters/workbench/publish/tests/...`，发布包按 §16 排除 `tests/` → 契约恒加载失败，`build_params` 与 `_trim_bloated_params` 共用同一依赖而**同时失效** | `scripts/build_log_contract.py` 从权威源（契约索引 + argparse）按**消费者加载方式**各产出一份：本地客户端 `config/log_contract.json`、工作台 `workbench/publish/config/log_contract.json`、Coze 运行时 `src/graphs/nodes/log_contract_data.py`（Python 常量，直接 import，**零文件路径探测**）。契约缺失时客户端守卫按默认值表 fail-closed 裁剪；服务端 `trim_params` 落库前二次裁剪（只裁 >40 键）。**不做防御性冗余副本**：曾短暂加过 `coze/config/` 与 `coze/src/config/` 两份 JSON 兜路径，已全部撤销，改为数据随代码 import |
+| P0-2 | 5 次 error 全为 `correlation effect=2.0` 越界触发裸 R 错误 `f.lower = f(lower) is NA`；用户重试 4 次无提示 | 客户端 `validate_domain()` 出站前零网络往返拦截并返回双语可行动错误信封；服务端二次兜底；R 端 `.translate_engine_error`（v5.13.31+）保留为最后防线（**该项已修复，不重复投入**） |
+| P1-4 | `cache_hit`/`call_type`/`error_type` 覆盖率 0%；35.3% 快调用无法归因 | `_compute_one` 落 `cache_hit`、批量落 `cache_hits`；`CTSS_PREWARM=1` 首请求后懒预热默认组合；客户端 60s 同签名成功结果本地复用（不 POST、不写行），失败不缓存 |
+| P1-6 | `download` 不投影 `entry_point`/`request_id` 独立列，无法区分 CLI/工作台/压测流量 | `feishu_save_node` 把 `entry_point`/`call_type`/`call_seq`/`cache_hit`/`error_type`/`request_id`/`is_qa` 镜像进 `resultstr` 顶层；`state.py` 三处 schema 补字段防 LangGraph 静默过滤 |
+| P2-7 | 67 种检验窗口内只用到 16 种（24%）；同期 ct-advisor 75 条（23.7%）样本量类问答恰对应零调用检验 | `scripts/route_intent.py`：`suggest_tests()` / `handoff_hint()`（ct-advisor 交接）/ `menu_order()`（按真实频次排序） |
+| P2-8 | `evidence_source` 0/252 有效、`effect_ref` 0、`justify` 3 条；但 60% 用 `effect=0.5` 且无来源 | `assumption_block()` 结构化记录假设 + 来源 + `unverified` 提示，写入日志与 paired 结果 |
+| P2-9 | 7 个 skill_version 并存；11-12 仍有 5.8.0 带 `delta/sd/sides`；1 条 `0.9.0/domain=macro` 跨域请求被记为 `unknown_task` | `upgrade_hint()` 非阻塞升级提示；`normalize_legacy_params()` 兼容旧键；`is_known_test()` 判定未知 test 为跨域脏流量，不写主表 |
+
+### 兼容 / 安全
+
+- 无 `request_id` → `delegate` 原追加路径；`log_mode=skip/always` 显式可控；`update` 失败自动降级追加，**绝不丢日志、绝不阻断主流程**。
+- 进程重启内存索引丢失 → 从新行重新聚合（最多多一行，不覆盖已有历史）。
+- 只读分析、未写回飞书、未部署 Coze、未 commit / push / 三平台发布；历史 252 行未清理。
+- 版本：`SKILL.md` 与 `workbench/publish/SKILL.md` → `5.15.0`；`COZE_VERSION` → `5.15.0`。
+
+### 验证
+
+- 11 个改动文件 `py_compile` 全过；`tests/test_request_log_aggregation.py` **37/37 PASS**（FakeBitable 断言：5 次子调用 = 1 行 add + 4 次 update、上限 2 时 3 次 = 2 行、老客户端零行为变化、130 键 → 11 键、越界拦截、request_scope 同 ID/seq 递增；新增断言「Coze 契约常量 == 技能侧 JSON」「Coze 侧无任何 JSON 冗余副本」）。
+- `build_log_contract.py` 生成期用 `ast.literal_eval` 自检常量与 JSON 语义完全一致；CLI `--help`、`route_intent.py` 实跑通过；Coze 部署包 logger-order 闸门 35 文件全过。
+
+详见 `references/request_log_aggregation.md`。
+
 ## 2026-11-13 · 共享资产契约同步（§11 / §19.2，非 UI 决策变更，页面版本号不变）
 
 按 ct-base 2026-11-13 增补批次同步共享资产：`workbench/wb-list.css` 注入卡片动作统一右列锚点（`.wb-list-cardacts-bottom` + `--wb-cardact-right` / `--wb-cardact-gutter`）；`workbench/tokens.css` 补 `--wb-pill-base` / `--wb-cardact-right` / `--wb-cardact-gutter`；`publish/` 下同名副本一并同步。

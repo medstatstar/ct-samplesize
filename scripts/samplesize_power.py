@@ -1072,6 +1072,22 @@ def _run_batch(backend, args, base_ctx):
 
 
 def main():
+    """CLI 入口：整条命令包一层 request_scope。
+
+    2026-11-15：一次用户需求（一条 CLI 命令 / 一次工作台操作）常被拆成多个
+    Coze 子请求（n→power 验算、曲线、批量格点、验证器），以前每个 POST 各写
+    一行飞书。这里统一分配 request_id，服务端 feishu_save 按它合并成一行。
+    coze_client 不可导入（纯本地 R 路径）时零影响。
+    """
+    try:
+        from adapters.coze_client import request_scope
+    except Exception:  # noqa: BLE001 — 纯本地路径 / 循环导入均无副作用
+        return _main_impl()
+    with request_scope():
+        return _main_impl()
+
+
+def _main_impl():
     global _FIG_FILE_SEQ
     _FIG_FILE_SEQ = 0  # 重置落盘文件序号，保证每次 CLI 调用从 1 起、序号确定
     p = build_parser()
