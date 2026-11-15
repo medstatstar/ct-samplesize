@@ -8,6 +8,10 @@
 
 > **Works without installation:** If you'd rather not install and just want to quickly use this skill's basic features, you can also visit the ct-series unified web portal **https://ct.medstatstar.com** directly.
 
+<p align="center">
+  <img src="assets/screenshots/en/01-home.jpg" width="100%" alt="ct-samplesize Workbench home page (Sample-size & power)">
+</p>
+
 > **Easy-to-use Clinical Sample Size & Power Calculator for Clinical Researchers**
 >
 > You don't need to code or memorize commands — just describe your trial design in **plain language inside a chat**, and the skill performs **65** professional sample-size & power calculations for you. The default authoritative engine is a **remote coze R compute service** (rpact, TrialSize, PowerTOST and 20+ other packages running server-side, so your machine needs **no local R**; the published skill has **no local compute fallback**). Results come in Chinese or English per your OS setting (force-switchable via prompt). By default the skill shows a **SAFE PREVIEW** of the exact request it would send to coze — nothing leaves your machine until you confirm; full R code can be returned on request.
@@ -40,7 +44,7 @@ Three typical ways in: **state the design and compute** → **unsure? the assist
 > Here is the **SAFE PREVIEW** for the two-sample t-test (d=0.5, power=0.8, two-sided α=0.05) — the exact request envelope, nothing sent or computed. Say "please compute directly" and you get: ≈ **64 per group** (128 total) plus an auto-attached power-vs-n curve (inline SVG, editable); say "show me the full R code" for the reproducible script.
 
 **📌 Three steps**: describe the design → review the SAFE PREVIEW → say "please compute directly". Nothing leaves by default; "show me the full R code" works for every test.
-
+**🖥️ Workbench:** open **https://ct.medstatstar.com** → **ct-samplesize** → the **Natural-language entry (conversational)** box on the home page → type the same sentence → click **Compute**. The result card shows n per group / total, the power-vs-n curve, and an **Export HTML report** button. Prefer the form? Pick the test family in the left sidebar (e.g. *Continuous outcome* → two-sample means), fill the parameters and click **Compute** — the same numbers come out.
 
 ### Example 2 · Not sure which test (most common opening)
 **You say:**
@@ -62,6 +66,7 @@ Three typical ways in: **state the design and compute** → **unsure? the assist
 > *(Once the test and effect expression are locked, I'll echo a **needs portrait + recommended test + missing params** summary for your confirmation, then compute — no 65-test menu dumped on you in the meantime.)*
 
 **📌 Note:** When you say "not sure which test", the assistant uses **branch-by-branch probing** to clarify your needs, instead of dumping the 65-test menu. Once clarified, it moves to computation.
+**🖥️ Workbench:** the workbench has no grill-me dialogue — use the left sidebar as the decision aid instead: it groups the 67 tests into 12 families (continuous / rates & counts / equivalence / survival / diagnostic / cluster / CI precision / dose-finding / multiplicity / group-sequential / Bayesian / meta-analysis), and each family lists its tests with the parameter fields each one needs. Pick the closest family, open a test, and the form tells you exactly which inputs are still missing.
 
 ### Example 3 · Test selection / design-family choice (popup menu)
 **You say:**
@@ -83,6 +88,7 @@ Three typical ways in: **state the design and compute** → **unsure? the assist
 > Pick your preferences for ①–②, or choose ③ to hear the explanation, and I'll lock the test and move to parameter completion / computation.
 
 **📌 Note:** When you've **named the test type but are stuck on "which option / design family"** (e.g. superiority vs non-inferiority, with/without interim), the assistant **pops a routing menu** to confirm step by step — instead of deciding for you or dumping the full 65-test menu. The menu also offers an "explain the differences" option — when you're unsure, it explains before you decide. Expand the full classification tree any time by saying **"list all 65 tests"**.
+**🖥️ Workbench:** in the workbench the two forks become two sidebar entries rather than a menu: *Equivalence & bioequivalence* covers superiority / non-inferiority / equivalence margins, and *Group-sequential & adaptive* covers the with/without-interim decision. Open each, compare the parameter fields side by side, then compute the one you settled on — you can keep both results in the history panel and compare.
 
 > 💡 **Tip:** Most tests need only three things — effect size (or rate / HR) + power + α. Anything you omit (e.g. two-sided α=0.05, 1:1 randomization, follow-up) is filled with sensible defaults. It's fine to be incomplete — the assistant will tell you what's missing.
 
@@ -200,7 +206,7 @@ A: Yes. Most tests need only three things — effect size (or rate / HR) + power
 A: By default it's **per group**; paired / crossover designs report per-sequence, and survival often reports total events needed. The output always labels this clearly, so no confusion.
 
 **Q: It only shows code, not the number. How do I get the actual result?**
-A: Just say **"please compute directly"** in the chat — the assistant will really run the compute and give you the number. (On the coze engine this natural-language trigger fires the compute, **no `--yes` needed**; the legacy `--yes` flag applies only to the optional local-R dev backend.) This is the default safe design: see the request envelope first, compute once you're sure.
+A: Just say **"please compute directly"** in the chat — the assistant will really run the compute and give you the number. That natural-language trigger is all it takes; there is no extra switch to flip. This is the default safe design: see the request envelope first, compute once you're sure.
 
 **Q: I want the reproducible R code for submission or audit — how do I ask?**
 A: Say **"give me the full R code"**. The code is also shown in safe preview by default, so you can copy, modify, and re-run it yourself.
@@ -248,7 +254,7 @@ During the design phase you can anchor assumptions on **published public meta-an
 **What the assistant does (explicit adoption, auditable source):**
 > Plugs the chosen CI endpoint into the computation; the source and `basis` print alongside the result, are written into the assumptions block, and the reproducible R code comments cite the same source. For sensitivity you can run a **three-point check** (CI lower / median / upper, one computation each), or **pin one single source by index**.
 
-**Adoptable reference types** (`param`/`scale`): `effect` (d/MD/SMD — t-test / ANOVA / meta_planning), `hazard_ratio` (HR — survival tests), `odds_ratio` (OR — ci_or / regression_logistic), `risk_ratio` (RR — ci_rr / regression_poisson / rates_ext; OR/RR references land on `--effect` because the engine's ratio channel reads `effect`). Ratio-type estimates and CIs must be strictly positive; **references whose CI crosses the null (0 for effect, 1 for ratios) are display-only and can never be adopted** (the true effect may be zero or reversed); aggregate picks (median/conservative/...) are rejected on mixed-scale files (cross-scale averaging is meaningless) — pin one single source **by index** instead. Worked chat examples for each of these: §4.13 N3–N5.
+**Adoptable reference types** (`param`/`scale`): `effect` (d/MD/SMD — t-test / ANOVA / meta_planning), `hazard_ratio` (HR — survival tests), `odds_ratio` (OR — ci_or / regression_logistic), `risk_ratio` (RR — ci_rr / regression_poisson / rates_ext; OR/RR references are fed through the effect channel, which the engine reads for ratios). Ratio-type estimates and CIs must be strictly positive; **references whose CI crosses the null (0 for effect, 1 for ratios) are display-only and can never be adopted** (the true effect may be zero or reversed); aggregate picks (median/conservative/...) are rejected on mixed-scale files (cross-scale averaging is meaningless) — pin one single source **by index** instead. Worked chat examples for each of these: §4.13 N3–N5.
 
 **Red line**: reference ≠ adoption — comparability of population / endpoint / effect-scale is yours to re-check; scale conflicts (an HR reference fed to a t-test, an OR reference fed to a t-test) are hard-rejected.
 
@@ -270,7 +276,9 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 | **Complex** | You know the design but hesitate between test types / design families | Shows a **two-level routing menu** + an "explain the differences" option |
 | **Vague** | "I'm not sure which test to use" | **Bounded grill-me** probing (≤3 rounds), never dumps the 65-test menu |
 
-> By default the skill shows a **SAFE PREVIEW** (the exact coze request envelope) and sends nothing. Say **"please compute directly"** to really run it (no `--yes` needed on the coze engine). Say **"give me the full R code"** for the reproducible script. These two triggers appear throughout the gallery.
+> By default the skill shows a **SAFE PREVIEW** (the exact coze request envelope) and sends nothing. Say **"please compute directly"** to really run it — that is all it takes. Say **"give me the full R code"** for the reproducible script. These two triggers appear throughout the gallery.
+
+**🖥️ Workbench for the whole gallery:** every card below maps to the same two-step move on the web workbench — ① pick the matching family in the left sidebar (the cards are grouped by the same families: 4.1 continuous → *Continuous outcome*, 4.2 binary → *Rates & counts*, 4.4 survival → *Survival & time-to-event*, and so on) ② fill the parameters the form asks for and click **Compute**. Results stay in the **History** panel, so you can re-open an earlier run, change one assumption and recompute — which is how most of the "Middle" and "Complex" cards are meant to be explored.
 
 ---
 
@@ -361,7 +369,7 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 > I want 2 interims on a continuous endpoint (effect 0.4), Pocock spending, and I also want a futility stop. 90% power.
 
 **Assistant replies (sketch):**
-> `group_sequential` with `--spending_func Pocock --futility`: 2 interims, effect 0.4, 90% power → **≈ 95 per arm**. Pocock gives equal boundaries across looks; adding futility lets you stop early if the treatment is clearly failing (saves subjects), at a small efficiency cost.
+> Group-sequential design with Pocock boundaries + futility stopping: 2 interims, effect 0.4, 90% power → **≈ 95 per arm**. Pocock gives equal boundaries across looks; adding futility lets you stop early if the treatment is clearly failing (saves subjects), at a small efficiency cost.
 
 ### 4.7 Adaptive / Bayesian / assurance
 
@@ -418,7 +426,7 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 > We already enrolled 50 per group for the t-test (d=0.5). What power do we actually have?
 
 **Assistant replies (sketch):**
-> Reverse solve (`--nobs 50`): with n = 50/group and d = 0.5 you have **≈ 70% power** (not the 80% you'd sized for). Consider increasing n or accepting lower power — say the word and I'll show the power curve.
+> Reverse solve (fix n = 50 per group): with n = 50/group and d = 0.5 you have **≈ 70% power** (not the 80% you'd sized for). Consider increasing n or accepting lower power — say the word and I'll show the power curve.
 
 ### 4.11 Curve mode & default figures
 
@@ -437,8 +445,6 @@ Each card is tagged with a **difficulty level** that mirrors how the assistant t
 
 **Assistant replies (sketch):**
 > Yes. We run the *framework* only — replace any real numbers with placeholders, I output the **full R code**, and you execute it locally with your real, confidential values. Only design parameters ever reach coze; raw documents/data never do. (For fully offline runs, set `CTSS_COZE_MOCK=1` for a demo or use the optional local-R dev backend.)
-
-
 
 ### 4.13 Effect-size reference from public literature
 
@@ -495,7 +501,7 @@ Sixteen tests were added in v5.9–v5.10 (49 → 61 → 65), closing the PASS-co
 > We're planning a meta-analysis: expected SMD 0.3, about 100 patients per study, heterogeneity I² around 30%. How many studies do we need for 80% power? And what if heterogeneity turns out worse?
 
 **Assistant replies (sketch):**
-> `meta_planning` (Hedges & Pigott 2001 random-effects): at I² = 0.30 you need **K = 3 studies**. The default output also includes the **heterogeneity sweep** — required K at I² ∈ {0, 0.25, 0.5, 0.75, 0.9} (here ≈ 2 / 3 / 4 / 8 / 18) plus a K–I² curve — so you can see how sensitive the plan is to heterogeneity. You can pass `--R` directly instead of `--i2` (R = I²/(1−I²); R = 0 → fixed effect), or flip the question with `--k_studies` (given K, what power?); for a non-null H0 effect (e.g. a prior meta-analytic pooled value) use `--effect0` in the λ numerator. Cluster-designed studies add `--cluster_cv` (cluster-size variation inflates the design effect).
+> `meta_planning` (Hedges & Pigott 2001 random-effects): at I² = 0.30 you need **K = 3 studies**. The default output also includes the **heterogeneity sweep** — required K at I² ∈ {0, 0.25, 0.5, 0.75, 0.9} (here ≈ 2 / 3 / 4 / 8 / 18) plus a K–I² curve — so you can see how sensitive the plan is to heterogeneity. You can give R directly instead of I² (R = I²/(1−I²); R = 0 → fixed effect), or flip the question — give K and ask what power you get. For a non-null null-hypothesis effect (e.g. a prior meta-analytic pooled value), just say so and it goes into the λ numerator. Cluster-designed studies can declare cluster-size variation, which inflates the design effect.
 
 #### Q3 · Middle — Unequal cluster sizes & over-dispersed rates
 **You say:**
@@ -511,14 +517,14 @@ Sixteen tests were added in v5.9–v5.10 (49 → 61 → 65), closing the PASS-co
 > Give me a sample-size justification paragraph I can paste into the protocol.
 
 **Assistant replies (sketch):**
-> After a successful computation the CLI prints a one-line offer — **I'll ask you before generating anything**. On your yes it re-runs with `--justify` and appends a **bilingual, IRB/SAP-ready paragraph** (skeleton: CONSORT-SPIRIT Item 14 / DELTA2 Box 4 + CDE《样本量估计指导原则(试行)》2024-12-23), rendering software as `R <ver> + rpact / TrialSize <ver>` (versions from the result envelope — no cloud/local wording). Placeholders (e.g. your MCID source) are left for you to fill — anti fake-precision.
+> After a successful computation the CLI prints a one-line offer — **I'll ask you before generating anything**. On your yes it appends a **bilingual, IRB/SAP-ready paragraph** (skeleton: CONSORT-SPIRIT Item 14 / DELTA2 Box 4 + CDE《样本量估计指导原则(试行)》2024-12-23), naming the software actually used with its version taken from the result (no cloud/local wording). Placeholders (e.g. your MCID source) are left for you to fill — anti fake-precision.
 
 #### R2 · Complex — Audit the assumptions before computing
 **You say:**
 > Before computing, audit my design assumptions — the effect 0.5 came from a pilot with 20 patients — and tell me the weakest link.
 
 **Assistant replies (sketch):**
-> `--audit` grades every assumption **known / weak / unknown / missing** (fabrication-signature heuristics + `--evidence-source` promotion), maps the design into 7 design-logic families with self-consistency checks, and emits **fallback / contingency plans** for the weakest assumption — then exits *without* computing. A pilot-derived d = 0.5 typically grades "weak" (small-n inflation risk) with a conservative-effect fallback. Separately, `--verify` re-simulates an analytic solution with an **independent** Monte-Carlo engine (empirical power ±2 pp / type-I error ±0.5 pp) and returns `INCONCLUSIVE` rather than a false PASS — pure local, no network.
+> Ask for an **assumption audit** and it grades every assumption **known / weak / unknown / missing** (fabrication-signature heuristics, with promotion when you supply an evidence source), maps the design into 7 design-logic families with self-consistency checks, and emits **fallback / contingency plans** for the weakest assumption — then stops *without* computing. A pilot-derived d = 0.5 typically grades "weak" (small-n inflation risk) with a conservative-effect fallback. Separately, a verification pass re-simulates an analytic solution with an **independent** Monte-Carlo engine (empirical power ±2 pp / type-I error ±0.5 pp) and returns `INCONCLUSIVE` rather than a false PASS — pure local, no network.
 
 ---
 
@@ -553,7 +559,7 @@ Sixteen tests were added in v5.9–v5.10 (49 → 61 → 65), closing the PASS-co
 
 ## 5. Safety & Disclaimer
 
-- **What is Safe Preview / coze compute:** The published skill **never runs R or a shell on your machine.** By default it calls the remote **coze** compute service (endpoint: `https://ct-samplesize.coze.site/run`) with only your trial-design parameters (never patient data). To inspect first, say **"preview only / --dry-run"** — it prints the exact request envelope and sends nothing. Say **"please compute"** to send and get the numbers + optional figures — on the coze stateless engine this natural-language trigger fires the compute, **no `--yes` needed** (the legacy `--yes` flag applies only to the optional local-R dev backend, not the published skill). Say **"show code / --show-code"** to see the coze request JSON (and the R source on request).
+- **What is Safe Preview / coze compute:** The published skill **never runs R or a shell on your machine.** By default it calls the remote **coze** compute service (endpoint: `https://ct-samplesize.coze.site/run`) with only your trial-design parameters (never patient data). To inspect first, say **"preview only"** — it prints the exact request envelope and sends nothing. Say **"please compute"** to send and get the numbers + optional figures — that natural-language trigger is all it takes. Say **"show code"** to see the request payload (and the R source on request).
 - **What leaves the machine (metadata disclosure):** each coze request carries (1) your trial-design parameters (test type, effect size, α, power, n …), (2) `locale` derived from your OS language (for bilingual output), and (3) a **hostname hash** `query_origin` (SHA-256 of your computer's hostname — not the hostname itself; used by the author only for server attribution / abuse rate-limiting), and (4) your **skill version** `skill_version` (read from the local SKILL.md; used to attribute usage and failures per released version). No patient data, file content, or personally identifiable information is sent.
 - **Bug reports (optional, opt-in only):** if a likely skill defect is detected (e.g. engine error after retry), the assistant may ask whether to send a **sanitized** bug report to the author via the unified report endpoint (`https://ct-bugreport.coze.site/run`). It contains skill name/version/error type plus a **problem description you review and approve** — you may include the algorithm/function used, values and study design if needed; only identifiable person/institution/subject info is avoided. Nothing is sent without your confirmation; you can always decline, and in fully local sessions the report is saved as a file with the author's email instead.
 - **coze-only (v5):** the published skill has **no local compute fallback** — if the cloud compute service (`https://ct-samplesize.coze.site/run`) is unreachable, the skill reports the configuration error and guides you to set `CTSS_COZE_ENDPOINT` (or `CTSS_COZE_MOCK=1` for a local demo). All 65 test types run server-side via coze.
@@ -565,7 +571,7 @@ Sixteen tests were added in v5.9–v5.10 (49 → 61 → 65), closing the PASS-co
 
 CLI examples, bidirectional solving, curve mode, core formulas, system requirements, common errors, file structure, and references for developers have been moved to **[ADVANCED.md](docs/ADVANCED.md)**. Ordinary users don't need it; see Sections 1-5 for daily use.
 
-> **For maintainers**: the workbench page's **standard inspection process (mandatory pre-publish gate)** — a 5-layer automated suite (static contract / backend API / frontend unit / end-to-end / layout a11y, 110 cases) — is documented in **[references/workbench_qa.md](references/workbench_qa.md)**. Must pass before any workbench source change or publish.
+> **For maintainers**: the workbench page's **standard inspection process (mandatory pre-publish gate)** — a 5-layer automated suite (static contract / backend API / frontend unit / end-to-end / layout a11y, 110 cases) — is documented in the workbench QA guide that ships with the skill. Must pass before any workbench source change or publish.
 
 ---
 
@@ -580,8 +586,8 @@ CLI examples, bidirectional solving, curve mode, core formulas, system requireme
 
 ## Confidentiality Notice
 
-> The CT series consists of 20+ specialized domain skills, organized into **two tiers — A, B** — by "whether the input contains confidential information" (network / egress / publish are independent orthogonal attributes), providing full coverage of the entire new-drug clinical trial (Clinical Trial) lifecycle.
+> The CT series consists of 20+ skills, organized into **two tiers — A and B** — by "whether the input contains confidential information", providing full coverage of the new-drug clinical trial lifecycle.
 >
-> - **Tier A (non-confidential input)**: run fully locally using only ordinary data; Tier A may need external public retrieval but involves no confidential information. These skills are published openly on GitHub.
-> - **Tier B (confidential input)**: accept strictly confidential clinical-trial data / protocols / CRFs from pharma sponsors (e.g., ct-analysis, ct-sdtm, ct-protocol, ct-eligibility); Tier B is processed locally and never leaves the boundary (egress=none), or additionally requires policy approval (egress=approval-req, e.g. ct-eligibility). Tier B packages contain zero confidential data but are NOT publicly published (stays fully local) — confidential input never ships with the package or leaves the machine. For custom / on-prem deployment, contact the author.
->
+> - **Tier A (non-confidential input)**: the input is ordinary data and involves no confidential information. Tier A skills can run after local installation or be used via the Web interface, and all Tier A skills are published openly on GitHub.
+> - **Tier B (confidential input)**: the input contains clinical-trial data / protocols / CRFs that pharma sponsors must keep strictly confidential. Tier B skills can either be installed and processed locally (data never leaves your domain) or be used via the Web interface with no installation required (data is de-identified before upload), but Tier B skills themselves are not published openly. For custom / on-prem deployment needs, contact the author.
+
